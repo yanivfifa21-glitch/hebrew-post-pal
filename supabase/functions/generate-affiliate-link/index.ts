@@ -1,27 +1,36 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { crypto } from "https://deno.land/std@0.168.0/crypto/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Generate MD5 signature for AliExpress API
+// Generate HMAC-SHA256 signature for AliExpress API
 async function generateSignature(params: Record<string, string>, appSecret: string): Promise<string> {
+  // Sort parameters alphabetically
   const sortedKeys = Object.keys(params).sort();
-  let signStr = appSecret;
   
+  // Concatenate sorted key-value pairs (no secret prefix/suffix for HMAC)
+  let signStr = '';
   for (const key of sortedKeys) {
     signStr += key + params[key];
   }
-  signStr += appSecret;
   
-  // Use Web Crypto API for MD5-like hashing (using SHA-256 as MD5 isn't available)
-  // AliExpress actually uses HMAC-MD5, but we'll try with the standard approach first
+  // Create HMAC-SHA256 signature using Web Crypto API
   const encoder = new TextEncoder();
-  const data = encoder.encode(signStr);
-  const hashBuffer = await crypto.subtle.digest("MD5", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const keyData = encoder.encode(appSecret);
+  const msgData = encoder.encode(signStr);
+  
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, msgData);
+  const hashArray = Array.from(new Uint8Array(signature));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
 }
 
@@ -53,17 +62,19 @@ serve(async (req) => {
       );
     }
 
-    const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+    // Timestamp in milliseconds (as per AliExpress API docs)
+    const timestamp = Date.now().toString();
     
     // API parameters for link generation
     const params: Record<string, string> = {
       app_key: appKey,
-      timestamp: timestamp,
-      sign_method: 'md5',
       method: 'aliexpress.affiliate.link.generate',
+      timestamp: timestamp,
+      v: '2.0',
+      tracking_id: trackingId,
       promotion_link_type: '0',
       source_values: productUrl,
-      tracking_id: trackingId,
+      sign_method: 'sha256',
     };
 
     // Generate signature
@@ -78,11 +89,12 @@ serve(async (req) => {
     const apiUrl = `https://api-sg.aliexpress.com/sync?${queryString}`;
     
     console.log('Calling AliExpress API for URL:', productUrl);
+    console.log('Request params:', JSON.stringify(params));
 
     const response = await fetch(apiUrl, {
-      method: 'POST',
+      method: 'GET',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/json',
       },
     });
 
