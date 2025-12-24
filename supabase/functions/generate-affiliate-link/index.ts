@@ -67,7 +67,7 @@ serve(async (req) => {
       sign_method: 'md5',
       source_values: productUrl,
       timestamp: timestamp,
-      tracking_id: trackingId,
+      tracking_id: 'TELEGRAM',
       v: '2.0',
     };
 
