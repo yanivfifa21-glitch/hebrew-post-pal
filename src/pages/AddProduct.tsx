@@ -118,15 +118,21 @@ const AddProduct = () => {
       setFetchStatus("Saving draft...");
       setDebugInfo((d) => (d ? { ...d, step: "save-draft" } : d));
 
+      // Normalize rating to 0-5 scale if needed (API might return 0-100)
+      let normalizedRating = meta.rating ?? 0;
+      if (normalizedRating > 5) {
+        normalizedRating = normalizedRating / 20; // Convert 0-100 to 0-5
+      }
+
       const { data: draftRow, error: draftErr } = await supabase
         .from("products")
         .insert({
           original_url: cleanUrl || inputUrl,
           title: meta.title,
-          price: meta.price,
+          price: meta.price ?? 0,
           image_url: meta.image_url || null,
           orders_count: meta.orders_count ?? 0,
-          rating: meta.rating ?? 0,
+          rating: Math.min(normalizedRating, 5), // Cap at 5
           affiliate_link: affiliateLink || null,
           hebrew_description: hebrewDescription || null,
           status: "draft",
@@ -135,7 +141,10 @@ const AddProduct = () => {
         .select("id")
         .single();
 
-      if (draftErr) throw draftErr;
+      if (draftErr) {
+        console.error("Draft save error:", draftErr);
+        throw new Error(`Database error: ${draftErr.message}`);
+      }
       setDraftProductId(draftRow.id);
 
       setFetchedProduct({
