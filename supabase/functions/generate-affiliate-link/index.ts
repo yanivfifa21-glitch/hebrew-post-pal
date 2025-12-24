@@ -2,146 +2,141 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { crypto } from "https://deno.land/std@0.168.0/crypto/mod.ts";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Generate MD5 signature for AliExpress API (with secret wrapping)
-async function generateSignature(params: Record<string, string>, appSecret: string): Promise<string> {
-  // Sort parameters alphabetically by key
+type ApiOk = { success: true; affiliateLink: string; originalUrl: string; cleanUrl: string };
+type ApiErr = {
+  success: false;
+  error: string;
+  code?: string;
+  request_id?: string;
+  trace_id?: string;
+  raw?: unknown;
+};
+
+async function generateMd5Signature(params: Record<string, string>, appSecretRaw: string): Promise<string> {
+  const appSecret = appSecretRaw.trim();
   const sortedKeys = Object.keys(params).sort();
-  
-  // Build string: secret + key1value1key2value2... + secret
+
+  // AliExpress Open Platform style: secret + (k1v1k2v2...) + secret
   let signStr = appSecret;
   for (const key of sortedKeys) {
     signStr += key + params[key];
   }
   signStr += appSecret;
-  
-  console.log('Sign string (first 100 chars):', signStr.substring(0, 100));
-  
-  // Calculate MD5 hash
+
   const encoder = new TextEncoder();
-  const data = encoder.encode(signStr);
-  const hashBuffer = await crypto.subtle.digest('MD5', data);
+  const hashBuffer = await crypto.subtle.digest("MD5", encoder.encode(signStr));
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+}
+
+async function expandShortUrl(url: string): Promise<string> {
+  const u = url.trim();
+  if (!u) return u;
+
+  if (!u.includes("a.aliexpress.com") && !u.includes("s.click.aliexpress.com")) return u;
+
+  try {
+    const resp = await fetch(u, { method: "HEAD", redirect: "follow" });
+    return resp.url || u;
+  } catch {
+    return u;
+  }
+}
+
+function toCleanProductUrl(url: string): { cleanUrl: string; productId?: string } {
+  const productIdMatch =
+    url.match(/\/item\/(\d+)\.html/i) || url.match(/\/(\d+)\.html/i) || url.match(/productId[=:](\d+)/i);
+
+  if (productIdMatch?.[1]) {
+    const productId = productIdMatch[1];
+    return { cleanUrl: `https://www.aliexpress.com/item/${productId}.html`, productId };
+  }
+
+  return { cleanUrl: url };
 }
 
 serve(async (req) => {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { productUrl } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const productUrl = String(body?.productUrl || "").trim();
 
     if (!productUrl) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Product URL is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      const payload: ApiErr = { success: false, error: "Product URL is required" };
+      return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const appKey = Deno.env.get('ALIEXPRESS_APP_KEY');
-    const appSecret = Deno.env.get('ALIEXPRESS_APP_SECRET');
-    const trackingId = Deno.env.get('ALIEXPRESS_TRACKING_ID');
+    const appKey = Deno.env.get("ALIEXPRESS_APP_KEY")?.trim();
+    const appSecret = Deno.env.get("ALIEXPRESS_APP_SECRET")?.trim();
+    const trackingId = Deno.env.get("ALIEXPRESS_TRACKING_ID")?.trim();
 
     if (!appKey || !appSecret || !trackingId) {
-      console.error('Missing AliExpress API credentials');
-      return new Response(
-        JSON.stringify({ success: false, error: 'AliExpress API not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      const payload: ApiErr = { success: false, error: "AliExpress API is not configured" };
+      return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Timestamp in milliseconds
-    const timestamp = Date.now().toString();
-    
-    // API parameters for link generation (using MD5 sign method)
+    const expanded = await expandShortUrl(productUrl);
+    const { cleanUrl } = toCleanProductUrl(expanded);
+
     const params: Record<string, string> = {
       app_key: appKey,
-      method: 'aliexpress.affiliate.link.generate',
-      promotion_link_type: '0',
-      sign_method: 'md5',
-      source_values: productUrl,
-      timestamp: timestamp,
-      tracking_id: 'TELEGRAM',
-      v: '2.0',
+      method: "aliexpress.affiliate.link.generate",
+      timestamp: Date.now().toString(),
+      v: "2.0",
+      sign_method: "md5",
+      tracking_id: trackingId,
+      promotion_link_type: "0",
+      source_values: cleanUrl,
     };
 
-    console.log('Params before signing:', JSON.stringify(params));
+    const sign = await generateMd5Signature(params, appSecret);
 
-    // Generate signature
-    const sign = await generateSignature(params, appSecret);
-    
-    console.log('Generated signature:', sign);
-
-    // Build URL with all params including sign
-    const allParams = { ...params, sign };
-    const queryString = Object.entries(allParams)
+    const qs = Object.entries({ ...params, sign })
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-      .join('&');
+      .join("&");
 
-    const apiUrl = `https://api-sg.aliexpress.com/sync?${queryString}`;
-    
-    console.log('Calling AliExpress API for URL:', productUrl);
+    const apiUrl = `https://api-sg.aliexpress.com/sync?${qs}`;
 
-    const response = await fetch(apiUrl, {
-      method: 'GET',
-    });
+    const resp = await fetch(apiUrl, { method: "GET" });
+    const data = await resp.json().catch(() => ({}));
 
-    const data = await response.json();
-    console.log('AliExpress API response:', JSON.stringify(data));
+    // Success parse
+    const result = data?.aliexpress_affiliate_link_generate_response?.resp_result;
+    const promotionLink = result?.result?.promotion_links?.[0]?.promotion_link;
 
-    // Parse response - check multiple possible structures
-    const result = data.aliexpress_affiliate_link_generate_response?.resp_result 
-                || data.aliexpress_affiliate_link_generate_response;
-    
-    if (result?.resp_code === 200 && result?.result?.promotion_links?.length > 0) {
-      const affiliateLink = result.result.promotion_links[0].promotion_link;
-      
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          affiliateLink,
-          originalUrl: productUrl 
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (result?.resp_code === 200 && promotionLink) {
+      const payload: ApiOk = {
+        success: true,
+        affiliateLink: promotionLink,
+        originalUrl: productUrl,
+        cleanUrl,
+      };
+      return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Handle API errors
-    if (data.error_response) {
-      console.error('AliExpress API error:', data.error_response);
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: data.error_response.msg || 'API error',
-          code: data.error_response.code 
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Error parse
+    const err = data?.error_response;
+    if (err?.msg || err?.code) {
+      const payload: ApiErr = {
+        success: false,
+        error: String(err?.msg || "AliExpress API error"),
+        code: err?.code,
+        request_id: err?.request_id,
+        trace_id: err?._trace_id_,
+        raw: data,
+      };
+      return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Fallback - log full response for debugging
-    console.warn('Unexpected response structure:', JSON.stringify(data));
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: 'Unexpected API response format',
-        debug: data
-      }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-
-  } catch (error: unknown) {
-    console.error('Error generating affiliate link:', error);
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return new Response(
-      JSON.stringify({ success: false, error: message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    const payload: ApiErr = { success: false, error: "Unexpected AliExpress response", raw: data };
+    return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  } catch (e: unknown) {
+    const payload: ApiErr = { success: false, error: e instanceof Error ? e.message : "Unknown error" };
+    return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
