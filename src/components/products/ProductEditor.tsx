@@ -31,14 +31,15 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
           title, 
           ordersCount: productData.orders_count,
           rating: productData.rating,
-          affiliateLink 
         },
       });
 
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || "Failed to generate Hebrew post");
 
-      setHebrewDescription(data.hebrewDescription);
+      // AI generates description only, app appends the link
+      const finalDescription = `${data.hebrewDescription}\n\n👉 לרכישה: ${affiliateLink}`;
+      setHebrewDescription(finalDescription);
       toast({
         title: "Content Generated!",
         description: "AI has created your Hebrew marketing post.",

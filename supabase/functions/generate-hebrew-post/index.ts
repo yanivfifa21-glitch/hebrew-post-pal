@@ -12,11 +12,10 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { title, ordersCount, rating, affiliateLink } = await req.json();
+    const { title, ordersCount, rating } = await req.json();
     const t = String(title || "").trim();
     const orders = Number(ordersCount) || 0;
     const rate = Number(rating) || 0;
-    const link = String(affiliateLink || "").trim();
 
     if (!t) {
       const payload: ApiErr = { success: false, error: "title is required" };
@@ -30,37 +29,42 @@ serve(async (req) => {
     }
 
     // Build social proof context
-    let socialProof = "";
-    if (orders > 0) {
-      socialProof += `\nכמות הזמנות: ${orders > 500 ? "מעל 500" : orders}`;
+    let socialProofText = "";
+    if (orders > 0 || rate > 0) {
+      const parts = [];
+      if (rate > 0) {
+        const displayRating = rate > 5 ? (rate / 20).toFixed(1) : rate.toFixed(1);
+        parts.push(`ציון ${displayRating}/5 כוכבים`);
+      }
+      if (orders > 0) {
+        const ordersText = orders > 500 ? "מאות" : orders > 100 ? "עשרות" : String(orders);
+        parts.push(`${ordersText} הזמנות`);
+      }
+      socialProofText = parts.join(" | ");
     }
-    if (rate > 0) {
-      const displayRating = rate > 5 ? (rate / 20).toFixed(1) : rate.toFixed(1);
-      socialProof += `\nדירוג: ${displayRating}/5`;
-    }
 
-    const systemPrompt = `אתה משווק שותפים ישראלי מקצועי. כתוב פוסט שיווקי קצר וממוקד בעברית.
+    const systemPrompt = `אתה משווק שותפים ישראלי מקצועי. כתוב תיאור שיווקי קצר וממוקד בעברית.
 
-סגנון: פרקטי, נלהב, ישיר לעניין. לא פואטי, לא מתחכם.
+סגנון: פרקטי, נלהב, ישיר. לא פואטי.
 
-מבנה הפוסט:
-1. פתיחה חזקה - שאלה או טענה שקשורה ישירות לקטגוריית המוצר (לא "הרפתקה" או "חלום")
-2. 2-3 יתרונות טכניים/פרקטיים של המוצר (סוללה, תכונות, איכות)
-3. הוכחה חברתית - הזמנות ודירוג אם יש
-4. קריאה לפעולה עם הקישור
+מבנה:
+1. פתיחה חזקה - שאלה או טענה שקשורה למוצר
+2. 2-3 יתרונות טכניים/פרקטיים
+3. הוכחה חברתית (אם יש מידע)
 
 כללים קריטיים:
-- אל תשתמש בביטויים כמו: "משנה את כללי המשחק", "הרפתקה", "חלום שהתגשם", "קסם"
-- התמקד בערך האמיתי: מה המוצר עושה ולמה הוא שווה
-- הקישור מופיע פעם אחת בלבד בסוף
-- 5-7 שורות בסך הכל
-- אל תציין מחיר`;
+- אל תוסיף קישור או "לחץ כאן" או "לרכישה" - האפליקציה תוסיף את זה
+- אל תסיים עם קריאה לפעולה שכוללת קישור
+- התמקד רק בתיאור המוצר והיתרונות
+- 4-6 שורות בלבד
+- אל תציין מחיר
+- אל תשתמש בביטויים כמו: "משנה את כללי המשחק", "הרפתקה", "חלום"`;
 
-    const userPrompt = `מוצר: ${t}${socialProof ? "\n" + socialProof : ""}
+    const userPrompt = `מוצר: ${t}${socialProofText ? `\nהוכחה חברתית: ${socialProofText}` : ""}
 
-כתוב פוסט שיווקי קצר וממוקד. הקישור לרכישה: ${link}`;
+כתוב תיאור שיווקי קצר. בלי קישור בסוף.`;
 
-    console.log("[generate-hebrew-post] Generating with context:", { title: t, orders, rate });
+    console.log("[generate-hebrew-post] Generating description only, no link");
 
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -96,24 +100,15 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // Clean up - remove any links or CTAs the AI might have added anyway
     content = String(content).trim();
-
-    // Clean up the content - remove any existing links and duplicates
-    if (link) {
-      const escapedLink = link.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      // Remove all instances of the link
-      content = content.replace(new RegExp(escapedLink, 'g'), '');
-      // Remove placeholder patterns
-      content = content.replace(/\[לינק[^\]]*\]/g, '');
-      // Remove orphaned emojis before empty lines (like lone 🛒)
-      content = content.replace(/^[🛒🔗]\s*$/gm, '');
-      // Clean multiple line breaks
-      content = content.replace(/\n{3,}/g, '\n\n').trim();
-      // Remove trailing colons or "לרכישה:" without link
-      content = content.replace(/לרכישה:\s*$/gm, '').trim();
-      // Add the link once at the end
-      content += `\n\n👉 לרכישה: ${link}`;
-    }
+    content = content.replace(/https?:\/\/[^\s]+/g, '');
+    content = content.replace(/👉[^\n]*/g, '');
+    content = content.replace(/🛒[^\n]*/g, '');
+    content = content.replace(/🔗[^\n]*/g, '');
+    content = content.replace(/לרכישה[:\s]*/gi, '');
+    content = content.replace(/לחץ כאן[^\n]*/gi, '');
+    content = content.replace(/\n{3,}/g, '\n\n').trim();
 
     const payload: ApiOk = { success: true, hebrewDescription: content };
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
