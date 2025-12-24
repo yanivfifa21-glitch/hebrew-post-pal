@@ -1,36 +1,30 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { crypto } from "https://deno.land/std@0.168.0/crypto/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Generate HMAC-SHA256 signature for AliExpress API
+// Generate MD5 signature for AliExpress API (with secret wrapping)
 async function generateSignature(params: Record<string, string>, appSecret: string): Promise<string> {
-  // Sort parameters alphabetically
+  // Sort parameters alphabetically by key
   const sortedKeys = Object.keys(params).sort();
   
-  // Concatenate sorted key-value pairs (no secret prefix/suffix for HMAC)
-  let signStr = '';
+  // Build string: secret + key1value1key2value2... + secret
+  let signStr = appSecret;
   for (const key of sortedKeys) {
     signStr += key + params[key];
   }
+  signStr += appSecret;
   
-  // Create HMAC-SHA256 signature using Web Crypto API
+  console.log('Sign string (first 100 chars):', signStr.substring(0, 100));
+  
+  // Calculate MD5 hash
   const encoder = new TextEncoder();
-  const keyData = encoder.encode(appSecret);
-  const msgData = encoder.encode(signStr);
-  
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyData,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  
-  const signature = await crypto.subtle.sign('HMAC', cryptoKey, msgData);
-  const hashArray = Array.from(new Uint8Array(signature));
+  const data = encoder.encode(signStr);
+  const hashBuffer = await crypto.subtle.digest('MD5', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
 }
 
@@ -62,47 +56,48 @@ serve(async (req) => {
       );
     }
 
-    // Timestamp in milliseconds (as per AliExpress API docs)
+    // Timestamp in milliseconds
     const timestamp = Date.now().toString();
     
-    // API parameters for link generation
+    // API parameters for link generation (using MD5 sign method)
     const params: Record<string, string> = {
       app_key: appKey,
       method: 'aliexpress.affiliate.link.generate',
-      timestamp: timestamp,
-      v: '2.0',
-      tracking_id: trackingId,
       promotion_link_type: '0',
+      sign_method: 'md5',
       source_values: productUrl,
-      sign_method: 'sha256',
+      timestamp: timestamp,
+      tracking_id: trackingId,
+      v: '2.0',
     };
+
+    console.log('Params before signing:', JSON.stringify(params));
 
     // Generate signature
     const sign = await generateSignature(params, appSecret);
-    params.sign = sign;
+    
+    console.log('Generated signature:', sign);
 
-    // Build query string
-    const queryString = Object.entries(params)
+    // Build URL with all params including sign
+    const allParams = { ...params, sign };
+    const queryString = Object.entries(allParams)
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
       .join('&');
 
     const apiUrl = `https://api-sg.aliexpress.com/sync?${queryString}`;
     
     console.log('Calling AliExpress API for URL:', productUrl);
-    console.log('Request params:', JSON.stringify(params));
 
     const response = await fetch(apiUrl, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
     });
 
     const data = await response.json();
     console.log('AliExpress API response:', JSON.stringify(data));
 
-    // Parse response
-    const result = data.aliexpress_affiliate_link_generate_response?.resp_result;
+    // Parse response - check multiple possible structures
+    const result = data.aliexpress_affiliate_link_generate_response?.resp_result 
+                || data.aliexpress_affiliate_link_generate_response;
     
     if (result?.resp_code === 200 && result?.result?.promotion_links?.length > 0) {
       const affiliateLink = result.result.promotion_links[0].promotion_link;
@@ -130,13 +125,13 @@ serve(async (req) => {
       );
     }
 
-    // Fallback
-    console.warn('Could not parse affiliate link from response');
+    // Fallback - log full response for debugging
+    console.warn('Unexpected response structure:', JSON.stringify(data));
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: 'Could not generate affiliate link',
-        rawResponse: data
+        error: 'Unexpected API response format',
+        debug: data
       }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
