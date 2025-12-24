@@ -43,17 +43,28 @@ async function expandShortUrl(url: string): Promise<string> {
 }
 
 function parseProductId(url: string): string | undefined {
-  const m = url.match(/\/item\/(\d+)\.html/i) || url.match(/\/(\d+)\.html/i) || url.match(/productId[=:](\d+)/i);
-  return m?.[1];
+  // Multiple patterns to extract numeric product ID
+  const patterns = [
+    /\/item\/(\d+)\.html/i,
+    /\/(\d{10,})\.html/i,
+    /productId[=:](\d+)/i,
+    /product\/(\d+)/i,
+    /item\/(\d+)/i,
+    /\/(\d{10,})/,  // Just a long numeric ID in path
+  ];
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return undefined;
 }
 
-function cleanProductUrl(url: string, productId?: string): string {
-  if (productId) return `https://www.aliexpress.com/item/${productId}.html`;
-  return url;
+function cleanProductUrl(productId: string): string {
+  return `https://www.aliexpress.com/item/${productId}.html`;
 }
 
 function normalizeMetaFromApi(raw: any): ProductMeta {
-  // API shape tends to vary between accounts/regions; be defensive.
   const p = raw?.product || raw;
 
   const title = String(p?.product_title || p?.productTitle || p?.title || "AliExpress Product");
@@ -96,6 +107,8 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const productUrl = String(body?.productUrl || "").trim();
 
+    console.log("[fetch-ali-product] Input URL:", productUrl);
+
     if (!productUrl) {
       const payload: ApiErr = { success: false, error: "Product URL is required" };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -103,23 +116,32 @@ serve(async (req) => {
 
     const appKey = Deno.env.get("ALIEXPRESS_APP_KEY")?.trim();
     const appSecret = Deno.env.get("ALIEXPRESS_APP_SECRET")?.trim();
-    const trackingId = Deno.env.get("ALIEXPRESS_TRACKING_ID")?.trim();
+    // Use TELEGRAM as the default tracking ID
+    const trackingId = "TELEGRAM";
 
-    if (!appKey || !appSecret || !trackingId) {
-      const payload: ApiErr = { success: false, error: "AliExpress API is not configured" };
+    if (!appKey || !appSecret) {
+      const payload: ApiErr = { success: false, error: "AliExpress API is not configured (missing APP_KEY or APP_SECRET)" };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const expanded = await expandShortUrl(productUrl);
+    console.log("[fetch-ali-product] Expanded URL:", expanded);
+    
     const productId = parseProductId(expanded);
-    const cleanUrl = cleanProductUrl(expanded, productId);
+    console.log("[fetch-ali-product] Extracted productId:", productId);
 
     if (!productId) {
-      const payload: ApiErr = { success: false, error: "Could not detect product ID from URL", raw: { expanded, cleanUrl } };
+      const payload: ApiErr = { 
+        success: false, 
+        error: "Could not extract numeric product ID from URL", 
+        raw: { input: productUrl, expanded } 
+      };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // AliExpress affiliate API product detail
+    const cleanUrl = cleanProductUrl(productId);
+
+    // AliExpress affiliate API product detail - use product_ids with just the numeric ID
     const params: Record<string, string> = {
       app_key: appKey,
       method: "aliexpress.affiliate.productdetail.get",
@@ -127,10 +149,12 @@ serve(async (req) => {
       v: "2.0",
       sign_method: "md5",
       tracking_id: trackingId,
-      product_ids: productId,
+      product_ids: productId,  // Just the numeric ID, not the full URL
       target_language: "EN",
       target_currency: "USD",
     };
+
+    console.log("[fetch-ali-product] API params:", JSON.stringify(params));
 
     const sign = await generateMd5Signature(params, appSecret);
 
@@ -142,6 +166,8 @@ serve(async (req) => {
 
     const resp = await fetch(apiUrl, { method: "GET" });
     const data = await resp.json().catch(() => ({}));
+
+    console.log("[fetch-ali-product] API response:", JSON.stringify(data).substring(0, 500));
 
     const err = data?.error_response;
     if (err?.msg || err?.code) {
@@ -157,18 +183,24 @@ serve(async (req) => {
     }
 
     const rr = data?.aliexpress_affiliate_productdetail_get_response?.resp_result;
-    const product = rr?.result?.products?.[0] || rr?.result?.products?.product?.[0] || rr?.result?.products?.product || rr?.result?.products?.[0];
+    const products = rr?.result?.products;
+    const product = Array.isArray(products) ? products[0] : products?.product?.[0] || products?.product;
 
     if (!rr || rr?.resp_code !== 200 || !product) {
-      const payload: ApiErr = { success: false, error: "No product data returned", raw: data };
+      const payload: ApiErr = { 
+        success: false, 
+        error: `No product data returned (resp_code: ${rr?.resp_code})`, 
+        raw: data 
+      };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const meta = normalizeMetaFromApi(product);
-    const payload: ApiOk = { success: true, data: meta, cleanUrl, productId, raw: undefined };
+    const payload: ApiOk = { success: true, data: meta, cleanUrl, productId };
 
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: unknown) {
+    console.error("[fetch-ali-product] Error:", e);
     const payload: ApiErr = { success: false, error: e instanceof Error ? e.message : "Unknown error" };
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
