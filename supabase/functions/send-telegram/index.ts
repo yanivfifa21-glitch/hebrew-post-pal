@@ -32,12 +32,8 @@ serve(async (req) => {
       );
     }
 
-    // Format the caption with emojis
-    const caption = `${hebrewDescription}
-
-💰 מחיר: ₪${price}
-
-🔗 לרכישה: ${affiliateLink || "קישור לא זמין"}`;
+    // Use hebrewDescription as-is (it already contains the affiliate link)
+    const caption = hebrewDescription;
 
     console.log("[send-telegram] Sending to chat:", chatId);
     console.log("[send-telegram] Caption preview:", caption.substring(0, 100) + "...");
