@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.fetch-ali-product]
 verify_jwt = false
+
+[functions.generate-hebrew-post]
+verify_jwt = false

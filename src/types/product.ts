@@ -31,4 +31,5 @@ export interface FetchedProductData {
   orders_count: number;
   rating: number;
   affiliateLink?: string;
+  hebrewDescription?: string;
 }
