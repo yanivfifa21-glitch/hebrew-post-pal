@@ -108,7 +108,6 @@ const AddProduct = () => {
           title: meta.title, 
           ordersCount: meta.orders_count,
           rating: meta.rating,
-          affiliateLink 
         },
       });
 
@@ -117,7 +116,9 @@ const AddProduct = () => {
       if (hebErr) throw new Error(hebErr.message);
       if (!hebResp?.success) throw new Error(hebResp?.error || "Failed to generate Hebrew content");
 
-      const hebrewDescription = hebResp.hebrewDescription as string;
+      // AI generates description only, app appends the link
+      const aiDescription = hebResp.hebrewDescription as string;
+      const hebrewDescription = `${aiDescription}\n\n👉 לרכישה: ${affiliateLink}`;
 
       // Save as draft immediately (so it shows up and can be updated later)
       setFetchStatus("Saving draft...");
