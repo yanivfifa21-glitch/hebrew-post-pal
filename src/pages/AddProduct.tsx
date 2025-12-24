@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ProductEditor } from "@/components/products/ProductEditor";
+import { AnalyzeDebugPanel, AnalyzeDebugInfo } from "@/components/products/AnalyzeDebugPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +11,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 
+function formatAliError(payload: any): string {
+  const msg = String(payload?.error || payload?.msg || "Unknown error");
+  const parts = [msg];
+  if (payload?.code) parts.push(`code: ${payload.code}`);
+  if (payload?.request_id) parts.push(`request_id: ${payload.request_id}`);
+  if (payload?.trace_id) parts.push(`trace_id: ${payload.trace_id}`);
+  return parts.join(" | ");
+}
+
 const AddProduct = () => {
   const navigate = useNavigate();
   const [url, setUrl] = useState("");
@@ -18,9 +28,12 @@ const AddProduct = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [fetchedProduct, setFetchedProduct] = useState<FetchedProductData | null>(null);
   const [draftProductId, setDraftProductId] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<AnalyzeDebugInfo | null>(null);
 
   const handleFetch = async () => {
-    if (!url.trim()) {
+    const inputUrl = url.trim();
+
+    if (!inputUrl) {
       toast({
         title: "URL Required",
         description: "Please enter an AliExpress product URL.",
@@ -33,15 +46,28 @@ const AddProduct = () => {
     setFetchStatus("Fetching product metadata...");
     setFetchedProduct(null);
     setDraftProductId(null);
+    setDebugInfo({
+      startedAt: Date.now(),
+      step: "fetch-meta",
+      inputUrl,
+    });
 
     try {
       // 1) Fetch metadata (via backend)
       const { data: metaResp, error: metaErr } = await supabase.functions.invoke("fetch-ali-product", {
-        body: { productUrl: url },
+        body: { productUrl: inputUrl },
       });
 
+      setDebugInfo((d) => ({
+        ...(d ?? { startedAt: Date.now(), step: "fetch-meta", inputUrl }),
+        step: "fetch-meta:response",
+        cleanUrl: metaResp?.cleanUrl,
+        productId: metaResp?.productId,
+        meta: metaResp ?? null,
+      }));
+
       if (metaErr) throw new Error(metaErr.message);
-      if (!metaResp?.success) throw new Error(metaResp?.error || "Failed to fetch product metadata");
+      if (!metaResp?.success) throw new Error(formatAliError(metaResp));
 
       const meta = metaResp.data as {
         title: string;
@@ -54,26 +80,34 @@ const AddProduct = () => {
 
       // 2) Generate affiliate link
       setFetchStatus("Generating affiliate link...");
+      setDebugInfo((d) => (d ? { ...d, step: "affiliate" } : d));
+
       const { data: affResp, error: affErr } = await supabase.functions.invoke("generate-affiliate-link", {
-        body: { productUrl: cleanUrl || url },
+        body: { productUrl: cleanUrl || inputUrl },
       });
+
+      setDebugInfo((d) => (d ? { ...d, step: "affiliate:response", affiliate: affResp ?? null } : d));
 
       if (affErr) throw new Error(affErr.message);
 
-      const affiliateLink = affResp?.success ? (affResp.affiliateLink as string) : (cleanUrl || url);
+      const affiliateLink = affResp?.success ? (affResp.affiliateLink as string) : (cleanUrl || inputUrl);
       if (!affResp?.success) {
         toast({
           title: "Affiliate API Error",
-          description: `${affResp?.error || "Unknown error"}${affResp?.code ? ` (${affResp.code})` : ""}`,
+          description: formatAliError(affResp),
           variant: "destructive",
         });
       }
 
       // 3) Generate Hebrew post (AI)
       setFetchStatus("Writing Hebrew description...");
+      setDebugInfo((d) => (d ? { ...d, step: "hebrew" } : d));
+
       const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
         body: { title: meta.title, priceUsd: meta.price },
       });
+
+      setDebugInfo((d) => (d ? { ...d, step: "hebrew:response", hebrew: hebResp ?? null } : d));
 
       if (hebErr) throw new Error(hebErr.message);
       if (!hebResp?.success) throw new Error(hebResp?.error || "Failed to generate Hebrew content");
@@ -82,10 +116,12 @@ const AddProduct = () => {
 
       // Save as draft immediately (so it shows up and can be updated later)
       setFetchStatus("Saving draft...");
+      setDebugInfo((d) => (d ? { ...d, step: "save-draft" } : d));
+
       const { data: draftRow, error: draftErr } = await supabase
         .from("products")
         .insert({
-          original_url: cleanUrl || url,
+          original_url: cleanUrl || inputUrl,
           title: meta.title,
           price: meta.price,
           image_url: meta.image_url || null,
@@ -112,14 +148,19 @@ const AddProduct = () => {
         hebrewDescription,
       });
 
+      setDebugInfo((d) => (d ? { ...d, step: "done" } : d));
+
       toast({
         title: "Product Ready!",
         description: "Metadata, affiliate link and Hebrew post are ready.",
       });
     } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      setDebugInfo((d) => (d ? { ...d, step: "failed", lastError: msg } : d));
+
       toast({
         title: "Analyze Failed",
-        description: e instanceof Error ? e.message : "Unknown error",
+        description: msg,
         variant: "destructive",
       });
     } finally {
@@ -275,6 +316,8 @@ const AddProduct = () => {
             </Button>
           </div>
         </div>
+
+        {debugInfo && <AnalyzeDebugPanel debug={debugInfo} />}
 
         {fetchedProduct && (
           <ProductEditor
