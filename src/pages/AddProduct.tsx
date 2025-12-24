@@ -30,8 +30,37 @@ const AddProduct = () => {
 
     setIsFetching(true);
     try {
+      // Fetch mock product data (later can be replaced with real scraping)
       const data = await fetchAliExpressProduct(url);
-      setFetchedProduct(data);
+      
+      // Generate affiliate link via AliExpress API
+      let affiliateLink = url;
+      try {
+        const { data: linkData, error: linkError } = await supabase.functions.invoke('generate-affiliate-link', {
+          body: { productUrl: url }
+        });
+        
+        if (linkError) {
+          console.warn('Affiliate link error:', linkError);
+        } else if (linkData?.success && linkData?.affiliateLink) {
+          affiliateLink = linkData.affiliateLink;
+          toast({
+            title: "Affiliate Link Generated!",
+            description: "Your tracking link was created automatically.",
+          });
+        } else if (linkData?.error) {
+          console.warn('Affiliate API error:', linkData.error);
+          toast({
+            title: "Affiliate Link Warning",
+            description: "Using original URL - affiliate API returned an error.",
+            variant: "destructive",
+          });
+        }
+      } catch (affiliateError) {
+        console.warn('Failed to generate affiliate link:', affiliateError);
+      }
+      
+      setFetchedProduct({ ...data, affiliateLink });
       toast({
         title: "Product Fetched!",
         description: "Product data has been loaded successfully.",

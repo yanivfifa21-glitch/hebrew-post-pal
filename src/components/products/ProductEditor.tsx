@@ -26,7 +26,7 @@ export const ProductEditor = ({
   const [title, setTitle] = useState(productData.title);
   const [hebrewDescription, setHebrewDescription] = useState("");
   const [price, setPrice] = useState(productData.price.toString());
-  const [affiliateLink, setAffiliateLink] = useState("");
+  const [affiliateLink, setAffiliateLink] = useState(productData.affiliateLink || "");
   const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
