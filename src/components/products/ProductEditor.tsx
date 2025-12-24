@@ -27,7 +27,12 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
     setIsGenerating(true);
     try {
       const { data, error } = await supabase.functions.invoke("generate-hebrew-post", {
-        body: { title, priceUsd: parseFloat(price) },
+        body: { 
+          title, 
+          ordersCount: productData.orders_count,
+          rating: productData.rating,
+          affiliateLink 
+        },
       });
 
       if (error) throw error;
@@ -80,12 +85,22 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
           <div className="relative aspect-square rounded-xl overflow-hidden border border-border">
             <img src={productData.image_url} alt={`${title} product image`} className="w-full h-full object-cover" loading="lazy" />
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-background/90 to-transparent p-4">
-              <div className="flex items-center gap-2 text-sm">
+              <div className="flex items-center gap-2 text-sm flex-wrap">
                 <span className="text-primary font-mono font-bold">${price}</span>
-                <span className="text-muted-foreground">•</span>
-                <span className="text-muted-foreground">⭐ {productData.rating}</span>
-                <span className="text-muted-foreground">•</span>
-                <span className="text-muted-foreground">{productData.orders_count.toLocaleString()} orders</span>
+                {productData.rating > 0 && (
+                  <>
+                    <span className="text-muted-foreground">•</span>
+                    <span className="text-muted-foreground">⭐ {productData.rating > 5 ? (productData.rating / 20).toFixed(1) : productData.rating.toFixed(1)}</span>
+                  </>
+                )}
+                {productData.orders_count > 0 && (
+                  <>
+                    <span className="text-muted-foreground">•</span>
+                    <span className="text-muted-foreground">
+                      {productData.orders_count > 500 ? "500+" : productData.orders_count.toLocaleString()} orders
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           </div>
