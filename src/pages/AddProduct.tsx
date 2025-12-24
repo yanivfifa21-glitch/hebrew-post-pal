@@ -99,12 +99,12 @@ const AddProduct = () => {
         });
       }
 
-      // 3) Generate Hebrew post (AI)
+      // 3) Generate Hebrew post (AI) - pass affiliate link so it's included in the text
       setFetchStatus("Writing Hebrew description...");
       setDebugInfo((d) => (d ? { ...d, step: "hebrew" } : d));
 
       const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
-        body: { title: meta.title, priceUsd: meta.price },
+        body: { title: meta.title, priceUsd: meta.price, affiliateLink },
       });
 
       setDebugInfo((d) => (d ? { ...d, step: "hebrew:response", hebrew: hebResp ?? null } : d));

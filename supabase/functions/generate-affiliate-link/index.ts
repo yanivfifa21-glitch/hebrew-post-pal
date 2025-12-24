@@ -137,9 +137,29 @@ serve(async (req) => {
 
     console.log("[generate-affiliate-link] API response:", JSON.stringify(data).substring(0, 500));
 
-    // Success parse
+    // Success parse - handle multiple possible response structures
     const result = data?.aliexpress_affiliate_link_generate_response?.resp_result;
-    const promotionLink = result?.result?.promotion_links?.[0]?.promotion_link;
+    
+    // Try multiple paths to find the promotion link
+    const promotionLinks = result?.result?.promotion_links;
+    let promotionLink: string | undefined;
+    
+    if (promotionLinks) {
+      // Structure 1: promotion_links.promotion_link[0].promotion_link
+      if (promotionLinks?.promotion_link?.[0]?.promotion_link) {
+        promotionLink = promotionLinks.promotion_link[0].promotion_link;
+      }
+      // Structure 2: promotion_links[0].promotion_link
+      else if (Array.isArray(promotionLinks) && promotionLinks[0]?.promotion_link) {
+        promotionLink = promotionLinks[0].promotion_link;
+      }
+      // Structure 3: promotion_links.promotion_link (single object)
+      else if (promotionLinks?.promotion_link?.promotion_link) {
+        promotionLink = promotionLinks.promotion_link.promotion_link;
+      }
+    }
+
+    console.log("[generate-affiliate-link] resp_code:", result?.resp_code, "promotionLink:", promotionLink);
 
     if (result?.resp_code === 200 && promotionLink) {
       const payload: ApiOk = {
