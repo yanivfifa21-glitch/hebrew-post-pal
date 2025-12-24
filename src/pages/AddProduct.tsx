@@ -10,7 +10,6 @@ import { FetchedProductData, Product } from "@/types/product";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-import { sendToTelegram, sendToWhatsApp } from "@/lib/mockApi";
 
 const AddProduct = () => {
   const navigate = useNavigate();
@@ -87,20 +86,33 @@ const AddProduct = () => {
 
       const channels: string[] = [];
 
-      if (settings?.telegram_enabled) {
-        await sendToTelegram(product);
-        channels.push('telegram');
-      }
-
       if (settings?.whatsapp_enabled) {
-        await sendToWhatsApp(product);
+        // Call WhatsApp edge function
+        const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+          body: {
+            title: product.title,
+            hebrewDescription: product.hebrew_description,
+            price: product.price,
+            imageUrl: product.image_url,
+            affiliateLink: product.affiliate_link,
+          }
+        });
+
+        if (error) {
+          throw new Error(`WhatsApp: ${error.message}`);
+        }
+
+        if (!data?.success) {
+          throw new Error(`WhatsApp: ${data?.error || 'Failed to send'}`);
+        }
+
         channels.push('whatsapp');
       }
 
       if (channels.length === 0) {
         toast({
           title: "No Channels Enabled",
-          description: "Please enable Telegram or WhatsApp in Settings first.",
+          description: "Please enable WhatsApp in Settings first.",
           variant: "destructive",
         });
         setIsSaving(false);
@@ -124,7 +136,7 @@ const AddProduct = () => {
     } catch (error) {
       toast({
         title: "Post Failed",
-        description: "Could not post product.",
+        description: error instanceof Error ? error.message : "Could not post product.",
         variant: "destructive",
       });
     } finally {
