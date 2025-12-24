@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.generate-affiliate-link]
 verify_jwt = false
+
+[functions.fetch-ali-product]
+verify_jwt = false
