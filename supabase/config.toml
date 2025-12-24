@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.fetch-hot-products]
 verify_jwt = false
+
+[functions.scrape-ali-deals]
+verify_jwt = false
