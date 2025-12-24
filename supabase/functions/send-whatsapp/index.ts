@@ -54,12 +54,8 @@ serve(async (req) => {
     
     console.log("Formatted chatId:", chatId);
 
-    // Format the message with emojis and structure
-    const message = `${hebrewDescription}
-
-💰 מחיר: ₪${price}
-
-🔗 לרכישה: ${affiliateLink || "קישור לא זמין"}`;
+    // Use hebrewDescription as-is (it already contains the affiliate link)
+    const message = hebrewDescription;
 
     console.log("Sending WhatsApp message to:", chatId);
     console.log("Message preview:", message.substring(0, 100) + "...");
