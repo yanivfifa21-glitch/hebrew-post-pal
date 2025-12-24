@@ -99,12 +99,17 @@ const AddProduct = () => {
         });
       }
 
-      // 3) Generate Hebrew post (AI) - pass affiliate link so it's included in the text
+      // 3) Generate Hebrew post (AI) - pass social proof data
       setFetchStatus("Writing Hebrew description...");
       setDebugInfo((d) => (d ? { ...d, step: "hebrew" } : d));
 
       const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
-        body: { title: meta.title, priceUsd: meta.price, affiliateLink },
+        body: { 
+          title: meta.title, 
+          ordersCount: meta.orders_count,
+          rating: meta.rating,
+          affiliateLink 
+        },
       });
 
       setDebugInfo((d) => (d ? { ...d, step: "hebrew:response", hebrew: hebResp ?? null } : d));

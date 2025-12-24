@@ -12,17 +12,16 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { title, priceUsd, affiliateLink } = await req.json();
+    const { title, ordersCount, rating, affiliateLink } = await req.json();
     const t = String(title || "").trim();
-    const p = Number(priceUsd);
+    const orders = Number(ordersCount) || 0;
+    const rate = Number(rating) || 0;
     const link = String(affiliateLink || "").trim();
 
-    if (!t || !Number.isFinite(p)) {
-      const payload: ApiErr = { success: false, error: "title and priceUsd are required" };
+    if (!t) {
+      const payload: ApiErr = { success: false, error: "title is required" };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-
-    const ils = Math.round(p * 3.7);
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -30,19 +29,39 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const linkInstruction = link 
-      ? `\n- הוסף את הקישור לרכישה בסוף הפוסט: ${link}`
-      : "";
+    // Build social proof context
+    let socialProof = "";
+    if (orders > 0) {
+      socialProof += `\n- כמות הזמנות: ${orders > 500 ? "למעלה מ-500" : orders}`;
+    }
+    if (rate > 0) {
+      const displayRating = rate > 5 ? (rate / 20).toFixed(1) : rate.toFixed(1);
+      socialProof += `\n- דירוג: ${displayRating} מתוך 5`;
+    }
 
-    const systemPrompt = `אתה קופירייטר שמייצר פוסט קצר לשיווק מוצר בעברית לוואטסאפ.
+    const systemPrompt = `אתה משווק שותפים ישראלי מוביל. צור פוסט קצר, קליט ואנושי בעברית.
+
 כללים:
-- כתוב בעברית בלבד
-- שמור על 6-10 שורות
-- תכלול מחיר בשקלים
-- תכלול 3-5 נקודות מכירה קצרות
-- סיים בקריאה לפעולה עם הקישור${linkInstruction}`;
+- טון ידידותי ואישי, לא מכירתי או אגרסיבי
+- אל תציין מחיר בכלל
+- מבנה הפוסט:
+  1. משפט פתיחה קליט וסקרני
+  2. שתי נקודות קצרות למה המוצר מעולה
+  3. הוכחה חברתית (הזמנות/דירוג אם יש)
+  4. קריאה לפעולה עם הקישור בסוף בלבד
 
-    const userPrompt = `מוצר: ${t}\nמחיר משוער: ₪${ils}\nצור פוסט שיווקי.`;
+חשוב מאוד:
+- הקישור לרכישה מופיע פעם אחת בלבד בסוף הפוסט
+- השתמש באימוג'י 🛒 או 🔗 לפני הקישור
+- שמור על 5-8 שורות בסך הכל`;
+
+    const userPrompt = `מוצר: ${t}${socialProof}
+
+קישור לרכישה: ${link || "[לינק]"}
+
+צור פוסט שיווקי קצר וקליט.`;
+
+    console.log("[generate-hebrew-post] Generating with social proof:", socialProof);
 
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -78,15 +97,26 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Ensure the affiliate link is in the content if provided
     content = String(content).trim();
-    if (link && !content.includes(link)) {
-      content += `\n\n🔗 לרכישה: ${link}`;
+
+    // Ensure affiliate link appears exactly once at the end
+    if (link) {
+      // Remove any existing instances of the link
+      content = content.replace(new RegExp(link.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '');
+      // Remove placeholder text
+      content = content.replace(/\[לינק\]/g, '').replace(/\[לינק לרכישה\]/g, '');
+      // Clean up any double line breaks
+      content = content.replace(/\n{3,}/g, '\n\n').trim();
+      // Add link at the end if not present
+      if (!content.includes(link)) {
+        content += `\n\n🛒 לרכישה: ${link}`;
+      }
     }
 
     const payload: ApiOk = { success: true, hebrewDescription: content };
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: unknown) {
+    console.error("[generate-hebrew-post] Error:", e);
     const payload: ApiErr = { success: false, error: e instanceof Error ? e.message : "Unknown error" };
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
