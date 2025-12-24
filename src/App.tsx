@@ -9,6 +9,7 @@ import AddProduct from "./pages/AddProduct";
 import Queue from "./pages/Queue";
 import History from "./pages/History";
 import Settings from "./pages/Settings";
+import Discovery from "./pages/Discovery";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -27,6 +28,7 @@ const App = () => (
           <Route path="/queue" element={<AuthGuard><Queue /></AuthGuard>} />
           <Route path="/history" element={<AuthGuard><History /></AuthGuard>} />
           <Route path="/settings" element={<AuthGuard><Settings /></AuthGuard>} />
+          <Route path="/discovery" element={<AuthGuard><Discovery /></AuthGuard>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

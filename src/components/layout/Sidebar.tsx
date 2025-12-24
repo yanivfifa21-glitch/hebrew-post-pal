@@ -8,7 +8,8 @@ import {
   Zap,
   ChevronLeft,
   ChevronRight,
-  LogOut
+  LogOut,
+  TrendingUp
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ import { toast } from "@/hooks/use-toast";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
+  { icon: TrendingUp, label: "Discovery", path: "/discovery" },
   { icon: Plus, label: "Add Product", path: "/add-product" },
   { icon: List, label: "Queue", path: "/queue" },
   { icon: History, label: "History", path: "/history" },

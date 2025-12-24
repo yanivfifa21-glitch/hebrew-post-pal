@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.send-telegram]
 verify_jwt = false
+
+[functions.fetch-hot-products]
+verify_jwt = false
