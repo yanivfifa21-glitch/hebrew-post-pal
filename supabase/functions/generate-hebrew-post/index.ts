@@ -32,36 +32,35 @@ serve(async (req) => {
     // Build social proof context
     let socialProof = "";
     if (orders > 0) {
-      socialProof += `\n- כמות הזמנות: ${orders > 500 ? "למעלה מ-500" : orders}`;
+      socialProof += `\nכמות הזמנות: ${orders > 500 ? "מעל 500" : orders}`;
     }
     if (rate > 0) {
       const displayRating = rate > 5 ? (rate / 20).toFixed(1) : rate.toFixed(1);
-      socialProof += `\n- דירוג: ${displayRating} מתוך 5`;
+      socialProof += `\nדירוג: ${displayRating}/5`;
     }
 
-    const systemPrompt = `אתה משווק שותפים ישראלי מוביל. צור פוסט קצר, קליט ואנושי בעברית.
+    const systemPrompt = `אתה משווק שותפים ישראלי מקצועי. כתוב פוסט שיווקי קצר וממוקד בעברית.
 
-כללים:
-- טון ידידותי ואישי, לא מכירתי או אגרסיבי
-- אל תציין מחיר בכלל
-- מבנה הפוסט:
-  1. משפט פתיחה קליט וסקרני
-  2. שתי נקודות קצרות למה המוצר מעולה
-  3. הוכחה חברתית (הזמנות/דירוג אם יש)
-  4. קריאה לפעולה עם הקישור בסוף בלבד
+סגנון: פרקטי, נלהב, ישיר לעניין. לא פואטי, לא מתחכם.
 
-חשוב מאוד:
-- הקישור לרכישה מופיע פעם אחת בלבד בסוף הפוסט
-- השתמש באימוג'י 🛒 או 🔗 לפני הקישור
-- שמור על 5-8 שורות בסך הכל`;
+מבנה הפוסט:
+1. פתיחה חזקה - שאלה או טענה שקשורה ישירות לקטגוריית המוצר (לא "הרפתקה" או "חלום")
+2. 2-3 יתרונות טכניים/פרקטיים של המוצר (סוללה, תכונות, איכות)
+3. הוכחה חברתית - הזמנות ודירוג אם יש
+4. קריאה לפעולה עם הקישור
 
-    const userPrompt = `מוצר: ${t}${socialProof}
+כללים קריטיים:
+- אל תשתמש בביטויים כמו: "משנה את כללי המשחק", "הרפתקה", "חלום שהתגשם", "קסם"
+- התמקד בערך האמיתי: מה המוצר עושה ולמה הוא שווה
+- הקישור מופיע פעם אחת בלבד בסוף
+- 5-7 שורות בסך הכל
+- אל תציין מחיר`;
 
-קישור לרכישה: ${link || "[לינק]"}
+    const userPrompt = `מוצר: ${t}${socialProof ? "\n" + socialProof : ""}
 
-צור פוסט שיווקי קצר וקליט.`;
+כתוב פוסט שיווקי קצר וממוקד. הקישור לרכישה: ${link}`;
 
-    console.log("[generate-hebrew-post] Generating with social proof:", socialProof);
+    console.log("[generate-hebrew-post] Generating with context:", { title: t, orders, rate });
 
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -99,18 +98,21 @@ serve(async (req) => {
 
     content = String(content).trim();
 
-    // Ensure affiliate link appears exactly once at the end
+    // Clean up the content - remove any existing links and duplicates
     if (link) {
-      // Remove any existing instances of the link
-      content = content.replace(new RegExp(link.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '');
-      // Remove placeholder text
-      content = content.replace(/\[לינק\]/g, '').replace(/\[לינק לרכישה\]/g, '');
-      // Clean up any double line breaks
+      const escapedLink = link.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // Remove all instances of the link
+      content = content.replace(new RegExp(escapedLink, 'g'), '');
+      // Remove placeholder patterns
+      content = content.replace(/\[לינק[^\]]*\]/g, '');
+      // Remove orphaned emojis before empty lines (like lone 🛒)
+      content = content.replace(/^[🛒🔗]\s*$/gm, '');
+      // Clean multiple line breaks
       content = content.replace(/\n{3,}/g, '\n\n').trim();
-      // Add link at the end if not present
-      if (!content.includes(link)) {
-        content += `\n\n🛒 לרכישה: ${link}`;
-      }
+      // Remove trailing colons or "לרכישה:" without link
+      content = content.replace(/לרכישה:\s*$/gm, '').trim();
+      // Add the link once at the end
+      content += `\n\n👉 לרכישה: ${link}`;
     }
 
     const payload: ApiOk = { success: true, hebrewDescription: content };
