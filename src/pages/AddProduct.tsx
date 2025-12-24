@@ -239,10 +239,27 @@ const AddProduct = () => {
         channels.push("whatsapp");
       }
 
+      if (settings?.telegram_enabled) {
+        const { data, error } = await supabase.functions.invoke("send-telegram", {
+          body: {
+            title: product.title,
+            hebrewDescription: product.hebrew_description,
+            price: product.price,
+            imageUrl: product.image_url,
+            affiliateLink: product.affiliate_link,
+          },
+        });
+
+        if (error) throw new Error(`Telegram: ${error.message}`);
+        if (!data?.success) throw new Error(`Telegram: ${data?.error || "Failed to send"}`);
+
+        channels.push("telegram");
+      }
+
       if (channels.length === 0) {
         toast({
           title: "No Channels Enabled",
-          description: "Please enable WhatsApp in Settings first.",
+          description: "Please enable WhatsApp or Telegram in Settings first.",
           variant: "destructive",
         });
         return;
