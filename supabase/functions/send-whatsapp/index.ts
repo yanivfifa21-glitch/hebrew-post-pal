@@ -35,17 +35,22 @@ serve(async (req) => {
     }
 
     // Format chat ID correctly for GreenAPI
-    // Strip + and spaces
-    chatId = chatId.replace(/[\s+]/g, '');
+    // Strip +, spaces, and any whitespace
+    chatId = chatId.replace(/[\s+\-]/g, '').trim();
     
-    // If it looks like a group ID (contains hyphen or is long numeric) and doesn't have suffix, add @g.us
+    // If already has suffix, use as-is
     if (!chatId.includes('@')) {
-      if (chatId.includes('-') || chatId.length > 15) {
+      // Group IDs from GreenAPI typically have format like 120363...@g.us
+      // Personal chats use phone number + @c.us
+      // If it's a long number (>12 digits) or starts with 120, it's likely a group
+      if (chatId.length > 15 || chatId.startsWith('120')) {
         chatId = chatId + '@g.us';
       } else {
         chatId = chatId + '@c.us';
       }
     }
+    
+    console.log("[send-whatsapp] Original chatId from env, formatted to:", chatId);
     
     console.log("Formatted chatId:", chatId);
 

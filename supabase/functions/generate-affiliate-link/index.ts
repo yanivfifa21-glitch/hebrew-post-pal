@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-type ApiOk = { success: true; affiliateLink: string; originalUrl: string; cleanUrl: string };
+type ApiOk = { success: true; affiliateLink: string; originalUrl: string; cleanUrl: string; productId: string };
 type ApiErr = {
   success: false;
   error: string;
@@ -47,16 +47,26 @@ async function expandShortUrl(url: string): Promise<string> {
   }
 }
 
-function toCleanProductUrl(url: string): { cleanUrl: string; productId?: string } {
-  const productIdMatch =
-    url.match(/\/item\/(\d+)\.html/i) || url.match(/\/(\d+)\.html/i) || url.match(/productId[=:](\d+)/i);
-
-  if (productIdMatch?.[1]) {
-    const productId = productIdMatch[1];
-    return { cleanUrl: `https://www.aliexpress.com/item/${productId}.html`, productId };
+function parseProductId(url: string): string | undefined {
+  // Multiple patterns to extract numeric product ID
+  const patterns = [
+    /\/item\/(\d+)\.html/i,
+    /\/(\d{10,})\.html/i,
+    /productId[=:](\d+)/i,
+    /product\/(\d+)/i,
+    /item\/(\d+)/i,
+    /\/(\d{10,})/,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match?.[1]) return match[1];
   }
+  return undefined;
+}
 
-  return { cleanUrl: url };
+function cleanProductUrl(productId: string): string {
+  return `https://www.aliexpress.com/item/${productId}.html`;
 }
 
 serve(async (req) => {
@@ -66,6 +76,8 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const productUrl = String(body?.productUrl || "").trim();
 
+    console.log("[generate-affiliate-link] Input URL:", productUrl);
+
     if (!productUrl) {
       const payload: ApiErr = { success: false, error: "Product URL is required" };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -73,16 +85,32 @@ serve(async (req) => {
 
     const appKey = Deno.env.get("ALIEXPRESS_APP_KEY")?.trim();
     const appSecret = Deno.env.get("ALIEXPRESS_APP_SECRET")?.trim();
-    const trackingId = Deno.env.get("ALIEXPRESS_TRACKING_ID")?.trim();
+    // Use TELEGRAM as the default tracking ID
+    const trackingId = "TELEGRAM";
 
-    if (!appKey || !appSecret || !trackingId) {
+    if (!appKey || !appSecret) {
       const payload: ApiErr = { success: false, error: "AliExpress API is not configured" };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const expanded = await expandShortUrl(productUrl);
-    const { cleanUrl } = toCleanProductUrl(expanded);
+    console.log("[generate-affiliate-link] Expanded URL:", expanded);
+    
+    const productId = parseProductId(expanded);
+    console.log("[generate-affiliate-link] Extracted productId:", productId);
 
+    if (!productId) {
+      const payload: ApiErr = { 
+        success: false, 
+        error: "Could not extract numeric product ID from URL", 
+        raw: { input: productUrl, expanded } 
+      };
+      return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const cleanUrl = cleanProductUrl(productId);
+
+    // Use the clean URL for affiliate link generation
     const params: Record<string, string> = {
       app_key: appKey,
       method: "aliexpress.affiliate.link.generate",
@@ -93,6 +121,8 @@ serve(async (req) => {
       promotion_link_type: "0",
       source_values: cleanUrl,
     };
+
+    console.log("[generate-affiliate-link] API params:", JSON.stringify(params));
 
     const sign = await generateMd5Signature(params, appSecret);
 
@@ -105,6 +135,8 @@ serve(async (req) => {
     const resp = await fetch(apiUrl, { method: "GET" });
     const data = await resp.json().catch(() => ({}));
 
+    console.log("[generate-affiliate-link] API response:", JSON.stringify(data).substring(0, 500));
+
     // Success parse
     const result = data?.aliexpress_affiliate_link_generate_response?.resp_result;
     const promotionLink = result?.result?.promotion_links?.[0]?.promotion_link;
@@ -115,6 +147,7 @@ serve(async (req) => {
         affiliateLink: promotionLink,
         originalUrl: productUrl,
         cleanUrl,
+        productId,
       };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -133,9 +166,14 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const payload: ApiErr = { success: false, error: "Unexpected AliExpress response", raw: data };
+    const payload: ApiErr = { 
+      success: false, 
+      error: `Unexpected AliExpress response (resp_code: ${result?.resp_code})`, 
+      raw: data 
+    };
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: unknown) {
+    console.error("[generate-affiliate-link] Error:", e);
     const payload: ApiErr = { success: false, error: e instanceof Error ? e.message : "Unknown error" };
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
