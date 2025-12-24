@@ -24,7 +24,7 @@ serve(async (req) => {
 
     const instanceId = Deno.env.get("GREENAPI_INSTANCE_ID");
     const apiToken = Deno.env.get("GREENAPI_API_TOKEN");
-    const chatId = Deno.env.get("GREENAPI_CHAT_ID");
+    let chatId = Deno.env.get("GREENAPI_CHAT_ID");
 
     if (!instanceId || !apiToken || !chatId) {
       console.error("Missing GreenAPI credentials");
@@ -33,6 +33,21 @@ serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Format chat ID correctly for GreenAPI
+    // Strip + and spaces
+    chatId = chatId.replace(/[\s+]/g, '');
+    
+    // If it looks like a group ID (contains hyphen or is long numeric) and doesn't have suffix, add @g.us
+    if (!chatId.includes('@')) {
+      if (chatId.includes('-') || chatId.length > 15) {
+        chatId = chatId + '@g.us';
+      } else {
+        chatId = chatId + '@c.us';
+      }
+    }
+    
+    console.log("Formatted chatId:", chatId);
 
     // Format the message with emojis and structure
     const message = `${hebrewDescription}
