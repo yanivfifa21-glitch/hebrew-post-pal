@@ -55,19 +55,28 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
     }
   };
 
-  const createProduct = (): Omit<Product, "id" | "created_at" | "updated_at"> => ({
-    original_url: originalUrl,
-    affiliate_link: affiliateLink || null,
-    image_url: productData.image_url || null,
-    title,
-    hebrew_description: hebrewDescription || null,
-    price: parseFloat(price),
-    orders_count: productData.orders_count,
-    rating: productData.rating,
-    status: "draft",
-    scheduled_time: null,
-    channels: [],
-  });
+  const createProduct = (): Omit<Product, "id" | "created_at" | "updated_at"> => {
+    // Normalize rating to 0-5 scale if needed (API might return 0-100)
+    let normalizedRating = productData.rating ?? 0;
+    if (normalizedRating > 5) {
+      normalizedRating = normalizedRating / 20;
+    }
+    normalizedRating = Math.min(normalizedRating, 5);
+
+    return {
+      original_url: originalUrl,
+      affiliate_link: affiliateLink || null,
+      image_url: productData.image_url || null,
+      title,
+      hebrew_description: hebrewDescription || null,
+      price: parseFloat(price),
+      orders_count: productData.orders_count ?? 0,
+      rating: normalizedRating,
+      status: "draft",
+      scheduled_time: null,
+      channels: [],
+    };
+  };
 
   return (
     <section className="glass-card neon-border p-6 space-y-6" aria-label="Product editor">
