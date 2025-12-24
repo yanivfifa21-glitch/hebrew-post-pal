@@ -61,10 +61,13 @@ const Settings = () => {
           .eq('id', settingsId);
         if (error) throw error;
       } else {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('app_settings')
-          .insert(updateData);
+          .insert(updateData)
+          .select('id')
+          .single();
         if (error) throw error;
+        setSettingsId(data.id);
       }
 
       toast({
@@ -91,6 +94,55 @@ const Settings = () => {
 
   const removePostingTime = (time: string) => {
     setPostingTimes(postingTimes.filter(t => t !== time));
+  };
+
+  const persistChannelPatch = async (patch: { telegram_enabled?: boolean; whatsapp_enabled?: boolean }) => {
+    try {
+      if (settingsId) {
+        const { error } = await supabase
+          .from('app_settings')
+          .update(patch)
+          .eq('id', settingsId);
+        if (error) throw error;
+        return true;
+      }
+
+      // First-time setup (should be rare)
+      const { data, error } = await supabase
+        .from('app_settings')
+        .insert({
+          telegram_enabled: patch.telegram_enabled ?? telegramEnabled,
+          whatsapp_enabled: patch.whatsapp_enabled ?? whatsappEnabled,
+          posting_times: postingTimes,
+        })
+        .select('id')
+        .single();
+
+      if (error) throw error;
+      setSettingsId(data.id);
+      return true;
+    } catch (error) {
+      toast({
+        title: "Save Failed",
+        description: error instanceof Error ? error.message : "Could not save settings.",
+        variant: "destructive",
+      });
+      return false;
+    }
+  };
+
+  const handleTelegramToggle = async (checked: boolean) => {
+    const prev = telegramEnabled;
+    setTelegramEnabled(checked);
+    const ok = await persistChannelPatch({ telegram_enabled: checked });
+    if (!ok) setTelegramEnabled(prev);
+  };
+
+  const handleWhatsAppToggle = async (checked: boolean) => {
+    const prev = whatsappEnabled;
+    setWhatsappEnabled(checked);
+    const ok = await persistChannelPatch({ whatsapp_enabled: checked });
+    if (!ok) setWhatsappEnabled(prev);
   };
 
   if (isLoading) {
@@ -144,7 +196,7 @@ const Settings = () => {
               </div>
               <Switch
                 checked={telegramEnabled}
-                onCheckedChange={setTelegramEnabled}
+                onCheckedChange={handleTelegramToggle}
               />
             </div>
 
@@ -163,7 +215,7 @@ const Settings = () => {
               </div>
               <Switch
                 checked={whatsappEnabled}
-                onCheckedChange={setWhatsappEnabled}
+                onCheckedChange={handleWhatsAppToggle}
               />
             </div>
           </div>
