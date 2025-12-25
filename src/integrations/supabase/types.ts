@@ -19,6 +19,7 @@ export type Database = {
           aliexpress_app_key: string | null
           aliexpress_app_secret: string | null
           aliexpress_tracking_id: string | null
+          automation_enabled: boolean | null
           created_at: string
           custom_ai_prompt: string | null
           greenapi_api_token: string | null
@@ -37,6 +38,7 @@ export type Database = {
           aliexpress_app_key?: string | null
           aliexpress_app_secret?: string | null
           aliexpress_tracking_id?: string | null
+          automation_enabled?: boolean | null
           created_at?: string
           custom_ai_prompt?: string | null
           greenapi_api_token?: string | null
@@ -55,6 +57,7 @@ export type Database = {
           aliexpress_app_key?: string | null
           aliexpress_app_secret?: string | null
           aliexpress_tracking_id?: string | null
+          automation_enabled?: boolean | null
           created_at?: string
           custom_ai_prompt?: string | null
           greenapi_api_token?: string | null

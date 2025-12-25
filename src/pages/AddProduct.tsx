@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ProductEditor, Coupon } from "@/components/products/ProductEditor";
-import { AnalyzeDebugPanel, AnalyzeDebugInfo } from "@/components/products/AnalyzeDebugPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,7 +38,6 @@ const AddProduct = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [fetchedProduct, setFetchedProduct] = useState<FetchedProductData | null>(null);
   const [draftProductId, setDraftProductId] = useState<string | null>(null);
-  const [debugInfo, setDebugInfo] = useState<AnalyzeDebugInfo | null>(null);
   const [showDuplicateConfirm, setShowDuplicateConfirm] = useState(false);
   const [pendingProduct, setPendingProduct] = useState<Omit<Product, "id" | "created_at" | "updated_at"> | null>(null);
   const [pendingAction, setPendingAction] = useState<"queue" | "post" | null>(null);
@@ -99,11 +97,6 @@ const AddProduct = () => {
     setFetchStatus("Fetching product metadata...");
     setFetchedProduct(null);
     setDraftProductId(null);
-    setDebugInfo({
-      startedAt: Date.now(),
-      step: "fetch-meta",
-      inputUrl,
-    });
 
     try {
       // 1) Fetch metadata (via backend)
@@ -111,19 +104,10 @@ const AddProduct = () => {
         body: { productUrl: inputUrl },
       });
 
-      setDebugInfo((d) => ({
-        ...(d ?? { startedAt: Date.now(), step: "fetch-meta", inputUrl }),
-        step: "fetch-meta:response",
-        cleanUrl: metaResp?.cleanUrl,
-        productId: metaResp?.productId,
-        meta: metaResp ?? null,
-      }));
-
       if (metaErr) {
         throw new Error("Could not connect to AliExpress API. Please try again.");
       }
       if (!metaResp?.success) {
-        // Provide specific error messages based on error type
         const errMsg = metaResp?.error || metaResp?.msg || "";
         if (errMsg.toLowerCase().includes("invalid") || errMsg.toLowerCase().includes("not found")) {
           throw new Error("Invalid AliExpress link. Please check the URL and try again.");
@@ -149,13 +133,10 @@ const AddProduct = () => {
 
       // 2) Generate affiliate link
       setFetchStatus("Generating affiliate link...");
-      setDebugInfo((d) => (d ? { ...d, step: "affiliate" } : d));
 
       const { data: affResp, error: affErr } = await supabase.functions.invoke("generate-affiliate-link", {
         body: { productUrl: cleanUrl || inputUrl, userId: user.id },
       });
-
-      setDebugInfo((d) => (d ? { ...d, step: "affiliate:response", affiliate: affResp ?? null } : d));
 
       if (affErr) throw new Error(affErr.message);
 
@@ -170,7 +151,6 @@ const AddProduct = () => {
 
       // 3) Generate Hebrew post (AI) - pass social proof data and userId
       setFetchStatus("Writing Hebrew description...");
-      setDebugInfo((d) => (d ? { ...d, step: "hebrew" } : d));
 
       const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
         body: { 
@@ -180,8 +160,6 @@ const AddProduct = () => {
           userId: user.id,
         },
       });
-
-      setDebugInfo((d) => (d ? { ...d, step: "hebrew:response", hebrew: hebResp ?? null } : d));
 
       if (hebErr) {
         throw new Error("AI service connection failed. Please try again.");
@@ -198,14 +176,13 @@ const AddProduct = () => {
       const aiDescription = hebResp.hebrewDescription as string;
       const hebrewDescription = `${aiDescription}\n\n👉 לרכישה: ${affiliateLink}`;
 
-      // Save as draft immediately (so it shows up and can be updated later)
+      // Save as draft immediately
       setFetchStatus("Saving draft...");
-      setDebugInfo((d) => (d ? { ...d, step: "save-draft" } : d));
 
       // Normalize rating to 0-5 scale if needed (API might return 0-100)
       let normalizedRating = meta.rating ?? 0;
       if (normalizedRating > 5) {
-        normalizedRating = normalizedRating / 20; // Convert 0-100 to 0-5
+        normalizedRating = normalizedRating / 20;
       }
 
       const { data: draftRow, error: draftErr } = await supabase
@@ -216,7 +193,7 @@ const AddProduct = () => {
           price: meta.price ?? 0,
           image_url: meta.image_url || null,
           orders_count: meta.orders_count ?? 0,
-          rating: Math.min(normalizedRating, 5), // Cap at 5
+          rating: Math.min(normalizedRating, 5),
           affiliate_link: affiliateLink || null,
           hebrew_description: hebrewDescription || null,
           status: "draft",
@@ -242,16 +219,12 @@ const AddProduct = () => {
         hebrewDescription,
       });
 
-      setDebugInfo((d) => (d ? { ...d, step: "done" } : d));
-
       toast({
         title: "Product Ready!",
         description: "Metadata, affiliate link and Hebrew post are ready.",
       });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Unknown error";
-      setDebugInfo((d) => (d ? { ...d, step: "failed", lastError: msg } : d));
-
       toast({
         title: "Analyze Failed",
         description: msg,
@@ -476,8 +449,6 @@ const AddProduct = () => {
             </Button>
           </div>
         </div>
-
-        {debugInfo && <AnalyzeDebugPanel debug={debugInfo} />}
 
         {fetchedProduct && (
           <ProductEditor
