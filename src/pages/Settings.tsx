@@ -7,6 +7,8 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { 
   Settings as SettingsIcon, 
   Clock, 
@@ -74,6 +76,14 @@ interface MessagingAccount {
   greenapi_chat_id?: string | null;
 }
 
+interface AutomationLogRow {
+  id: string;
+  created_at: string;
+  level: string;
+  message: string;
+  context: any;
+}
+
 const Settings = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -105,9 +115,37 @@ const Settings = () => {
   const [newGreenApiToken, setNewGreenApiToken] = useState('');
   const [newGreenApiChatId, setNewGreenApiChatId] = useState('');
 
+  // System logs
+  const [systemLogs, setSystemLogs] = useState<AutomationLogRow[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+
   useEffect(() => {
     fetchSettings();
   }, []);
+
+  const fetchSystemLogs = async (uid: string) => {
+    setLogsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('automation_logs')
+        .select('id, created_at, level, message, context')
+        .eq('user_id', uid)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+      setSystemLogs((data as any) || []);
+    } catch (error) {
+      console.error('Error fetching system logs:', error);
+      toast({
+        title: 'Failed to load logs',
+        description: 'Could not load server logs.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLogsLoading(false);
+    }
+  };
 
   const fetchSettings = async () => {
     try {
@@ -143,6 +181,9 @@ const Settings = () => {
 
       if (accountsErr) throw accountsErr;
       setMessagingAccounts(accounts || []);
+
+      // Fetch system logs
+      await fetchSystemLogs(user.id);
 
     } catch (error) {
       console.error('Error fetching settings:', error);
@@ -410,6 +451,90 @@ const Settings = () => {
                 </Button>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* System Logs */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-4">
+            <div className="space-y-1">
+              <CardTitle>System Logs</CardTitle>
+              <CardDescription>
+                Server-side automation attempts (timestamps shown in Israel time)
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!userId || logsLoading}
+              onClick={() => userId && fetchSystemLogs(userId)}
+            >
+              {logsLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Zap className="h-4 w-4" />
+              )}
+              <span className="ml-2">Refresh</span>
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[340px] rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[170px]">Timestamp</TableHead>
+                    <TableHead>Action</TableHead>
+                    <TableHead className="w-[110px]">Status</TableHead>
+                    <TableHead>Error Message</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {systemLogs.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-muted-foreground">
+                        No logs yet. Once the server runs a check, entries will appear here.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    systemLogs.map((log) => {
+                      const ts = new Date(log.created_at).toLocaleString('en-GB', {
+                        timeZone: 'Asia/Jerusalem',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        day: '2-digit',
+                        month: '2-digit',
+                      });
+
+                      const ctx = log.context || {};
+                      const errorMsg =
+                        log.level === 'error'
+                          ? (ctx.errorMessage as string) ||
+                            (Array.isArray(ctx.errors) ? ctx.errors.join(' | ') : '') ||
+                            ''
+                          : '';
+
+                      return (
+                        <TableRow key={log.id}>
+                          <TableCell className="font-mono text-xs">{ts}</TableCell>
+                          <TableCell className="text-sm">{log.message}</TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={log.level === 'error' ? 'destructive' : log.level === 'warn' ? 'secondary' : 'outline'}
+                            >
+                              {log.level.toUpperCase()}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {errorMsg || '-'}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </ScrollArea>
           </CardContent>
         </Card>
 
