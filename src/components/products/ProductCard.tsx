@@ -111,7 +111,7 @@ export const ProductCard = ({ product, onPostNow, onSchedule, onEdit, onDelete }
             <div className="flex items-center gap-2 mt-3">
               <Button 
                 size="sm" 
-                variant="neon"
+                variant="gradient"
                 onClick={() => onPostNow?.(product)}
                 className="flex-1"
               >
