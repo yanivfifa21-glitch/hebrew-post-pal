@@ -21,6 +21,7 @@ export type Database = {
           posting_times: string[] | null
           telegram_enabled: boolean | null
           updated_at: string
+          user_id: string | null
           whatsapp_enabled: boolean | null
         }
         Insert: {
@@ -29,6 +30,7 @@ export type Database = {
           posting_times?: string[] | null
           telegram_enabled?: boolean | null
           updated_at?: string
+          user_id?: string | null
           whatsapp_enabled?: boolean | null
         }
         Update: {
@@ -37,6 +39,7 @@ export type Database = {
           posting_times?: string[] | null
           telegram_enabled?: boolean | null
           updated_at?: string
+          user_id?: string | null
           whatsapp_enabled?: boolean | null
         }
         Relationships: []
@@ -57,6 +60,7 @@ export type Database = {
           status: string
           title: string
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           affiliate_link?: string | null
@@ -73,6 +77,7 @@ export type Database = {
           status?: string
           title: string
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           affiliate_link?: string | null
@@ -89,6 +94,7 @@ export type Database = {
           status?: string
           title?: string
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }

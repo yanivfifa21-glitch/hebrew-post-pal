@@ -61,9 +61,11 @@ const Settings = () => {
           .eq('id', settingsId);
         if (error) throw error;
       } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Not authenticated");
         const { data, error } = await supabase
           .from('app_settings')
-          .insert(updateData)
+          .insert({ ...updateData, user_id: user.id })
           .select('id')
           .single();
         if (error) throw error;
@@ -108,12 +110,16 @@ const Settings = () => {
       }
 
       // First-time setup (should be rare)
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+      
       const { data, error } = await supabase
         .from('app_settings')
         .insert({
           telegram_enabled: patch.telegram_enabled ?? telegramEnabled,
           whatsapp_enabled: patch.whatsapp_enabled ?? whatsappEnabled,
           posting_times: postingTimes,
+          user_id: user.id,
         })
         .select('id')
         .single();
