@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
 import { Sidebar } from "./Sidebar";
+import { MobileNav } from "./MobileNav";
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -14,10 +15,15 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
         <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-secondary/5 rounded-full blur-3xl" />
       </div>
       
+      {/* Desktop Sidebar */}
       <Sidebar />
       
-      <main className="ml-16 lg:ml-64 transition-all duration-300 relative z-10">
-        <div className="p-6 lg:p-8">
+      {/* Mobile Bottom Navigation */}
+      <MobileNav />
+      
+      {/* Main Content - responsive margins */}
+      <main className="md:ml-16 lg:ml-64 transition-all duration-300 relative z-10 pb-20 md:pb-0">
+        <div className="p-4 md:p-6 lg:p-8">
           {children}
         </div>
       </main>

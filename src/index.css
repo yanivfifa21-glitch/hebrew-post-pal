@@ -197,3 +197,37 @@
 .animate-slide-in {
   animation: slideIn 0.3s ease-out forwards;
 }
+
+/* Mobile safe areas for notched phones */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0);
+}
+
+/* Hide scrollbar for horizontal scroll containers */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Touch-friendly tap targets */
+@media (hover: none) and (pointer: coarse) {
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Extra small breakpoint for very small phones */
+@media (min-width: 360px) {
+  .xs\:inline {
+    display: inline;
+  }
+}
