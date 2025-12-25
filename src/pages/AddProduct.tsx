@@ -5,11 +5,21 @@ import { AnalyzeDebugPanel, AnalyzeDebugInfo } from "@/components/products/Analy
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Search, Loader2, Link as LinkIcon } from "lucide-react";
+import { Search, Loader2, Link as LinkIcon, AlertTriangle } from "lucide-react";
 import { FetchedProductData, Product } from "@/types/product";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 function formatAliError(payload: any): string {
   const msg = String(payload?.error || payload?.msg || "Unknown error");
@@ -29,6 +39,9 @@ const AddProduct = () => {
   const [fetchedProduct, setFetchedProduct] = useState<FetchedProductData | null>(null);
   const [draftProductId, setDraftProductId] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<AnalyzeDebugInfo | null>(null);
+  const [showDuplicateConfirm, setShowDuplicateConfirm] = useState(false);
+  const [pendingProduct, setPendingProduct] = useState<Omit<Product, "id" | "created_at" | "updated_at"> | null>(null);
+  const [pendingAction, setPendingAction] = useState<"queue" | "post" | null>(null);
 
   const handleFetch = async () => {
     const inputUrl = url.trim();
@@ -66,8 +79,20 @@ const AddProduct = () => {
         meta: metaResp ?? null,
       }));
 
-      if (metaErr) throw new Error(metaErr.message);
-      if (!metaResp?.success) throw new Error(formatAliError(metaResp));
+      if (metaErr) {
+        throw new Error("Could not connect to AliExpress API. Please try again.");
+      }
+      if (!metaResp?.success) {
+        // Provide specific error messages based on error type
+        const errMsg = metaResp?.error || metaResp?.msg || "";
+        if (errMsg.toLowerCase().includes("invalid") || errMsg.toLowerCase().includes("not found")) {
+          throw new Error("Invalid AliExpress link. Please check the URL and try again.");
+        }
+        if (errMsg.toLowerCase().includes("timeout")) {
+          throw new Error("AliExpress API timeout. Please try again in a moment.");
+        }
+        throw new Error(formatAliError(metaResp));
+      }
 
       const meta = metaResp.data as {
         title: string;
@@ -113,8 +138,16 @@ const AddProduct = () => {
 
       setDebugInfo((d) => (d ? { ...d, step: "hebrew:response", hebrew: hebResp ?? null } : d));
 
-      if (hebErr) throw new Error(hebErr.message);
-      if (!hebResp?.success) throw new Error(hebResp?.error || "Failed to generate Hebrew content");
+      if (hebErr) {
+        throw new Error("AI service connection failed. Please try again.");
+      }
+      if (!hebResp?.success) {
+        const errMsg = hebResp?.error || "";
+        if (errMsg.toLowerCase().includes("timeout") || errMsg.toLowerCase().includes("rate")) {
+          throw new Error("AI service is busy. Please wait a moment and try again.");
+        }
+        throw new Error(hebResp?.error || "Failed to generate Hebrew content");
+      }
 
       // AI generates description only, app appends the link
       const aiDescription = hebResp.hebrewDescription as string;
@@ -189,7 +222,31 @@ const AddProduct = () => {
     }
   };
 
+  // Check for duplicate products by URL
+  const checkDuplicate = async (productUrl: string): Promise<boolean> => {
+    const { data } = await supabase
+      .from("products")
+      .select("id")
+      .eq("original_url", productUrl)
+      .neq("id", draftProductId || "")
+      .limit(1);
+    return (data?.length ?? 0) > 0;
+  };
+
   const handleSaveToQueue = async (product: Omit<Product, "id" | "created_at" | "updated_at">) => {
+    // Check for duplicates first
+    const isDuplicate = await checkDuplicate(product.original_url);
+    if (isDuplicate && !showDuplicateConfirm) {
+      setPendingProduct(product);
+      setPendingAction("queue");
+      setShowDuplicateConfirm(true);
+      return;
+    }
+    
+    setShowDuplicateConfirm(false);
+    setPendingProduct(null);
+    setPendingAction(null);
+    
     setIsSaving(true);
     try {
       if (draftProductId) {
@@ -220,6 +277,22 @@ const AddProduct = () => {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const confirmDuplicateAction = () => {
+    if (pendingProduct && pendingAction === "queue") {
+      setShowDuplicateConfirm(false);
+      handleSaveToQueue(pendingProduct);
+    } else if (pendingProduct && pendingAction === "post") {
+      setShowDuplicateConfirm(false);
+      handlePostNow(pendingProduct);
+    }
+  };
+
+  const cancelDuplicateAction = () => {
+    setShowDuplicateConfirm(false);
+    setPendingProduct(null);
+    setPendingAction(null);
   };
 
   const handlePostNow = async (product: Omit<Product, "id" | "created_at" | "updated_at">) => {
@@ -369,6 +442,27 @@ const AddProduct = () => {
             isLoading={isSaving}
           />
         )}
+
+        {/* Duplicate Confirmation Dialog */}
+        <AlertDialog open={showDuplicateConfirm} onOpenChange={setShowDuplicateConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-warning" />
+                Duplicate Product
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                This product is already in your queue. Do you want to add it anyway?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={cancelDuplicateAction}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDuplicateAction}>
+                Add Anyway
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </MainLayout>
   );

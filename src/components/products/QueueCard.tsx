@@ -3,7 +3,7 @@ import { Product } from "@/types/product";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Rocket, Trash2, Loader2, ExternalLink, Star, ShoppingCart } from "lucide-react";
+import { Rocket, Trash2, Loader2, ExternalLink, Star, ShoppingCart, Copy, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
@@ -17,6 +17,18 @@ export const QueueCard = ({ product, onSent, onDeleted }: QueueCardProps) => {
   const [hebrewDescription, setHebrewDescription] = useState(product.hebrew_description || "");
   const [isSending, setIsSending] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
+
+  const handleCopyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(hebrewDescription);
+      setIsCopied(true);
+      toast({ title: "Copied!", description: "Text copied to clipboard" });
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch {
+      toast({ title: "Copy failed", variant: "destructive" });
+    }
+  };
 
   const handleSendNow = async () => {
     setIsSending(true);
@@ -190,13 +202,28 @@ export const QueueCard = ({ product, onSent, onDeleted }: QueueCardProps) => {
           </div>
 
           {/* Editable Hebrew Description */}
-          <Textarea
-            value={hebrewDescription}
-            onChange={(e) => setHebrewDescription(e.target.value)}
-            className="min-h-[120px] text-sm text-right font-hebrew bg-muted/30 border-border/50 focus:border-primary/50 resize-none"
-            dir="rtl"
-            placeholder="תיאור בעברית..."
-          />
+          <div className="relative">
+            <Textarea
+              value={hebrewDescription}
+              onChange={(e) => setHebrewDescription(e.target.value)}
+              className="min-h-[120px] text-sm text-right font-hebrew bg-muted/30 border-border/50 focus:border-primary/50 resize-none pr-10"
+              dir="rtl"
+              placeholder="תיאור בעברית..."
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleCopyToClipboard}
+              className="absolute top-2 left-2 h-8 w-8 text-muted-foreground hover:text-foreground"
+              title="Copy to clipboard"
+            >
+              {isCopied ? (
+                <Check className="h-4 w-4 text-success" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
 
           {/* Action Buttons */}
           <div className="flex gap-3 mt-auto">
