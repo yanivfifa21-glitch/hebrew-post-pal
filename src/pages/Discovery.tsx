@@ -257,38 +257,38 @@ const Discovery = () => {
     <MainLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-              <Flame className="h-8 w-8 text-primary" />
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground flex items-center gap-2">
+              <Flame className="h-6 w-6 md:h-8 md:w-8 text-primary" />
               <span className="gradient-text">🔥 Super Deals</span>
             </h1>
-            <p className="text-muted-foreground mt-1">גלה מבצעים חמים ומוצרים טרנדיים</p>
+            {dataSource && (
+              <Badge variant="outline" className="text-xs">
+                {dataSource}
+              </Badge>
+            )}
           </div>
-          {dataSource && (
-            <Badge variant="outline" className="text-xs">
-              מקור: {dataSource}
-            </Badge>
-          )}
+          <p className="text-muted-foreground text-sm md:text-base">גלה מבצעים חמים ומוצרים טרנדיים</p>
         </div>
 
         {/* Mode Tabs */}
         <Tabs value={activeMode} onValueChange={handleModeChange} className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
-            <TabsTrigger value="api" className="gap-2">
-              <TrendingUp className="h-4 w-4" />
-              Hot Products API
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="api" className="gap-1 md:gap-2 text-xs md:text-sm px-2 md:px-4">
+              <TrendingUp className="h-3.5 w-3.5 md:h-4 md:w-4" />
+              <span className="hidden xs:inline">Hot</span> API
             </TabsTrigger>
-            <TabsTrigger value="scrape" className="gap-2">
-              <Zap className="h-4 w-4" />
+            <TabsTrigger value="scrape" className="gap-1 md:gap-2 text-xs md:text-sm px-2 md:px-4">
+              <Zap className="h-3.5 w-3.5 md:h-4 md:w-4" />
               Super Deals
             </TabsTrigger>
           </TabsList>
 
           {/* API Mode Content */}
-          <TabsContent value="api" className="space-y-4 mt-4">
-            <div className="glass-card neon-border p-4 space-y-4">
-              <div className="flex gap-3">
+          <TabsContent value="api" className="space-y-3 mt-3">
+            <div className="glass-card neon-border p-3 md:p-4 space-y-3">
+              <div className="flex gap-2">
                 <div className="flex-1 relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -296,25 +296,32 @@ const Discovery = () => {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                     placeholder="חפש מוצרים..."
-                    className="pl-10 text-right"
+                    className="pl-10 text-right h-10 md:h-11"
                     dir="rtl"
                   />
                 </div>
-                <Button onClick={handleSearch} disabled={isLoading} variant="gradient">
+                <Button onClick={handleSearch} disabled={isLoading} variant="gradient" size="icon" className="h-10 w-10 md:h-11 md:w-11 md:w-auto md:px-4">
                   {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
                 </Button>
               </div>
 
-              <Tabs value={selectedCategory} onValueChange={handleCategoryChange}>
-                <TabsList className="bg-muted/50 flex-wrap h-auto gap-1 p-1">
+              {/* Categories - horizontal scroll on mobile */}
+              <div className="overflow-x-auto -mx-3 px-3 scrollbar-hide">
+                <div className="flex gap-2 min-w-max pb-1">
                   {CATEGORIES.map((cat) => (
-                    <TabsTrigger key={cat.id} value={cat.id} className="gap-1.5">
+                    <Button
+                      key={cat.id}
+                      variant={selectedCategory === cat.id ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => handleCategoryChange(cat.id)}
+                      className="gap-1.5 text-xs whitespace-nowrap flex-shrink-0"
+                    >
                       {cat.icon && <cat.icon className="h-3.5 w-3.5" />}
                       {cat.label}
-                    </TabsTrigger>
+                    </Button>
                   ))}
-                </TabsList>
-              </Tabs>
+                </div>
+              </div>
             </div>
           </TabsContent>
 
@@ -412,12 +419,12 @@ const Discovery = () => {
               <p className="text-lg font-medium text-foreground">מחפש את הדילים הכי טובים...</p>
               <p className="text-sm text-muted-foreground mt-2">זה עשוי לקחת מספר שניות</p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {[...Array(8)].map((_, i) => (
-                <div key={i} className="glass-card p-4 animate-pulse">
-                  <div className="aspect-square bg-muted rounded-lg mb-3" />
-                  <div className="h-4 bg-muted rounded w-3/4 mb-2" />
-                  <div className="h-4 bg-muted rounded w-1/2" />
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="glass-card p-3 md:p-4 animate-pulse">
+                  <div className="aspect-square bg-muted rounded-lg mb-2 md:mb-3" />
+                  <div className="h-3 md:h-4 bg-muted rounded w-3/4 mb-2" />
+                  <div className="h-3 md:h-4 bg-muted rounded w-1/2" />
                 </div>
               ))}
             </div>
@@ -432,9 +439,9 @@ const Discovery = () => {
                 <p className="text-muted-foreground">לא נמצאו מוצרים</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-4">
                 {filteredProducts.map((product) => (
-                  <div key={product.product_id} className="glass-card neon-border overflow-hidden group hover:scale-[1.02] transition-all duration-300">
+                  <div key={product.product_id} className="glass-card neon-border overflow-hidden group active:scale-[0.98] md:hover:scale-[1.02] transition-all duration-300">
                     {/* Image */}
                     <div className="relative aspect-square overflow-hidden">
                       <img
@@ -447,43 +454,43 @@ const Discovery = () => {
                         }}
                       />
                       {product.discount_percent && product.discount_percent > 30 && (
-                        <Badge className="absolute top-2 left-2 bg-destructive/90">
+                        <Badge className="absolute top-1 left-1 md:top-2 md:left-2 bg-destructive/90 text-[10px] md:text-xs px-1.5 md:px-2">
                           -{product.discount_percent}%
                         </Badge>
                       )}
-                      {(product.sales_count || 0) > 100 && (
-                        <Badge className="absolute top-2 left-2 bg-destructive/90">
-                          <Flame className="h-3 w-3 mr-1" />
-                          חם!
+                      {(product.sales_count || 0) > 100 && !product.discount_percent && (
+                        <Badge className="absolute top-1 left-1 md:top-2 md:left-2 bg-destructive/90 text-[10px] md:text-xs px-1.5 md:px-2">
+                          <Flame className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5" />
+                          חם
                         </Badge>
                       )}
                       {(product.rating || 0) > 4.5 && (
-                        <Badge className="absolute top-2 right-2 bg-primary/90">
-                          <Star className="h-3 w-3 mr-1" />
+                        <Badge className="absolute top-1 right-1 md:top-2 md:right-2 bg-primary/90 text-[10px] md:text-xs px-1.5 md:px-2">
+                          <Star className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5" />
                           {(product.rating || 0).toFixed(1)}
                         </Badge>
                       )}
                     </div>
 
                     {/* Content */}
-                    <div className="p-4 space-y-3">
-                      <h3 className="font-medium text-foreground line-clamp-2 text-sm leading-snug">
+                    <div className="p-2 md:p-4 space-y-2 md:space-y-3">
+                      <h3 className="font-medium text-foreground line-clamp-2 text-xs md:text-sm leading-snug min-h-[2.5em]">
                         {product.title}
                       </h3>
 
                       <div className="flex items-center justify-between">
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-lg font-bold text-primary">
+                        <div className="flex flex-col md:flex-row md:items-baseline gap-0.5 md:gap-2">
+                          <span className="text-sm md:text-lg font-bold text-primary">
                             ${product.price.toFixed(2)}
                           </span>
                           {product.original_price > product.price && (
-                            <span className="text-xs text-muted-foreground line-through">
+                            <span className="text-[10px] md:text-xs text-muted-foreground line-through">
                               ${product.original_price.toFixed(2)}
                             </span>
                           )}
                         </div>
                         {(product.sales_count || 0) > 0 && (
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <div className="hidden md:flex items-center gap-1 text-xs text-muted-foreground">
                             <ShoppingBag className="h-3 w-3" />
                             {(product.sales_count || 0).toLocaleString()}
                           </div>
@@ -493,19 +500,21 @@ const Discovery = () => {
                       <Button
                         variant="gradient"
                         size="sm"
-                        className="w-full"
+                        className="w-full h-8 md:h-9 text-xs md:text-sm"
                         onClick={() => handleCreatePost(product)}
                         disabled={creatingPostId === product.product_id}
                       >
                         {creatingPostId === product.product_id ? (
                           <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            יוצר פוסט...
+                            <Loader2 className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2 animate-spin" />
+                            <span className="hidden md:inline">יוצר פוסט...</span>
+                            <span className="md:hidden">מעבד...</span>
                           </>
                         ) : (
                           <>
-                            <Sparkles className="h-4 w-4 mr-2" />
-                            הוסף מהיר
+                            <Sparkles className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
+                            <span className="hidden md:inline">הוסף מהיר</span>
+                            <span className="md:hidden">הוסף</span>
                           </>
                         )}
                       </Button>

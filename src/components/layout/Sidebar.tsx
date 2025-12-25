@@ -62,13 +62,13 @@ export const Sidebar = () => {
   return (
     <aside 
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300 flex flex-col",
+        "fixed left-0 top-0 z-40 h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300 flex-col hidden md:flex",
         collapsed ? "w-16" : "w-64"
       )}
     >
       {/* Logo */}
       <div className="flex items-center gap-3 p-4 border-b border-sidebar-border">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary flex-shrink-0">
           <Zap className="h-5 w-5 text-primary-foreground" />
         </div>
         {!collapsed && (
@@ -80,7 +80,7 @@ export const Sidebar = () => {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-1">
+      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
           const isActive = location.pathname === item.path;
           return (
@@ -95,7 +95,7 @@ export const Sidebar = () => {
               )}
             >
               <item.icon className={cn(
-                "h-5 w-5 transition-colors",
+                "h-5 w-5 transition-colors flex-shrink-0",
                 isActive ? "text-sidebar-primary" : "text-sidebar-foreground group-hover:text-foreground"
               )} />
               {!collapsed && (
@@ -116,7 +116,7 @@ export const Sidebar = () => {
             "flex items-center gap-3 px-3 py-2 rounded-lg bg-sidebar-accent/50",
             collapsed && "justify-center px-0"
           )}>
-            <Avatar className="h-8 w-8">
+            <Avatar className="h-8 w-8 flex-shrink-0">
               <AvatarImage src={userAvatar} alt="User" />
               <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                 {userInitials}
