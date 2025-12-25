@@ -10,7 +10,8 @@ import {
   ChevronRight,
   LogOut,
   TrendingUp,
-  Sparkles
+  Sparkles,
+  Shield
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,8 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { toast } from "@/hooks/use-toast";
+
+const ADMIN_EMAIL = "yanivfifa21@gmail.com";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
@@ -129,6 +132,30 @@ export const Sidebar = () => {
               </Link>
             );
           })}
+          
+          {/* Admin Link - only visible to admin */}
+          {user?.email === ADMIN_EMAIL && (
+            <Link
+              to="/admin"
+              className={cn(
+                "flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-200 group relative overflow-hidden",
+                location.pathname === "/admin"
+                  ? "bg-amber-500/15 text-amber-500 shadow-glow-sm" 
+                  : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground"
+              )}
+            >
+              {location.pathname === "/admin" && (
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-amber-500 shadow-glow-sm" />
+              )}
+              <Shield className={cn(
+                "h-5 w-5 transition-all duration-200 flex-shrink-0",
+                location.pathname === "/admin" ? "text-amber-500" : "text-sidebar-foreground group-hover:text-foreground group-hover:scale-110"
+              )} />
+              {!collapsed && (
+                <span className="font-medium text-sm">Admin</span>
+              )}
+            </Link>
+          )}
         </nav>
 
         {/* User Section */}

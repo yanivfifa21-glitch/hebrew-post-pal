@@ -33,10 +33,13 @@ export const QueueCard = ({ product, onSent, onDeleted }: QueueCardProps) => {
   const handleSendNow = async () => {
     setIsSending(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
       const { data: settings } = await supabase
         .from("app_settings")
         .select("telegram_enabled, whatsapp_enabled")
-        .limit(1)
+        .eq("user_id", user.id)
         .maybeSingle();
 
       const channels: string[] = [];
@@ -49,6 +52,7 @@ export const QueueCard = ({ product, onSent, onDeleted }: QueueCardProps) => {
             price: product.price,
             imageUrl: product.image_url,
             affiliateLink: product.affiliate_link,
+            userId: user.id,
           },
         });
         if (error) throw new Error(`WhatsApp: ${error.message}`);
@@ -64,6 +68,7 @@ export const QueueCard = ({ product, onSent, onDeleted }: QueueCardProps) => {
             price: product.price,
             imageUrl: product.image_url,
             affiliateLink: product.affiliate_link,
+            userId: user.id,
           },
         });
         if (error) throw new Error(`Telegram: ${error.message}`);

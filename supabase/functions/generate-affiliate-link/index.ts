@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
 import { crypto } from "https://deno.land/std@0.168.0/crypto/mod.ts";
 
 const corsHeaders = {
@@ -20,7 +21,6 @@ async function generateMd5Signature(params: Record<string, string>, appSecretRaw
   const appSecret = appSecretRaw.trim();
   const sortedKeys = Object.keys(params).sort();
 
-  // AliExpress Open Platform style: secret + (k1v1k2v2...) + secret
   let signStr = appSecret;
   for (const key of sortedKeys) {
     signStr += key + params[key];
@@ -48,7 +48,6 @@ async function expandShortUrl(url: string): Promise<string> {
 }
 
 function parseProductId(url: string): string | undefined {
-  // Multiple patterns to extract numeric product ID
   const patterns = [
     /\/item\/(\d+)\.html/i,
     /\/(\d{10,})\.html/i,
@@ -75,21 +74,44 @@ serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const productUrl = String(body?.productUrl || "").trim();
+    const userId = String(body?.userId || "").trim();
 
-    console.log("[generate-affiliate-link] Input URL:", productUrl);
+    console.log("[generate-affiliate-link] Input URL:", productUrl, "userId:", userId);
 
     if (!productUrl) {
       const payload: ApiErr = { success: false, error: "Product URL is required" };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const appKey = Deno.env.get("ALIEXPRESS_APP_KEY")?.trim();
-    const appSecret = Deno.env.get("ALIEXPRESS_APP_SECRET")?.trim();
-    // Use TELEGRAM as the default tracking ID
-    const trackingId = "TELEGRAM";
+    if (!userId) {
+      const payload: ApiErr = { success: false, error: "User ID is required" };
+      return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Create Supabase client with service role to fetch user credentials
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Fetch user's credentials from app_settings
+    const { data: settings, error: settingsError } = await supabase
+      .from("app_settings")
+      .select("aliexpress_app_key, aliexpress_app_secret, aliexpress_tracking_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (settingsError) {
+      console.error("[generate-affiliate-link] Error fetching settings:", settingsError);
+      const payload: ApiErr = { success: false, error: "Failed to fetch user settings" };
+      return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const appKey = settings?.aliexpress_app_key?.trim();
+    const appSecret = settings?.aliexpress_app_secret?.trim();
+    const trackingId = settings?.aliexpress_tracking_id?.trim() || "TELEGRAM";
 
     if (!appKey || !appSecret) {
-      const payload: ApiErr = { success: false, error: "AliExpress API is not configured" };
+      const payload: ApiErr = { success: false, error: "Please configure your AliExpress API credentials in Settings" };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
@@ -110,7 +132,6 @@ serve(async (req) => {
 
     const cleanUrl = cleanProductUrl(productId);
 
-    // Use the clean URL for affiliate link generation
     const params: Record<string, string> = {
       app_key: appKey,
       method: "aliexpress.affiliate.link.generate",
@@ -137,23 +158,18 @@ serve(async (req) => {
 
     console.log("[generate-affiliate-link] API response:", JSON.stringify(data).substring(0, 500));
 
-    // Success parse - handle multiple possible response structures
     const result = data?.aliexpress_affiliate_link_generate_response?.resp_result;
     
-    // Try multiple paths to find the promotion link
     const promotionLinks = result?.result?.promotion_links;
     let promotionLink: string | undefined;
     
     if (promotionLinks) {
-      // Structure 1: promotion_links.promotion_link[0].promotion_link
       if (promotionLinks?.promotion_link?.[0]?.promotion_link) {
         promotionLink = promotionLinks.promotion_link[0].promotion_link;
       }
-      // Structure 2: promotion_links[0].promotion_link
       else if (Array.isArray(promotionLinks) && promotionLinks[0]?.promotion_link) {
         promotionLink = promotionLinks[0].promotion_link;
       }
-      // Structure 3: promotion_links.promotion_link (single object)
       else if (promotionLinks?.promotion_link?.promotion_link) {
         promotionLink = promotionLinks.promotion_link.promotion_link;
       }
@@ -172,7 +188,6 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Error parse
     const err = data?.error_response;
     if (err?.msg || err?.code) {
       const payload: ApiErr = {
