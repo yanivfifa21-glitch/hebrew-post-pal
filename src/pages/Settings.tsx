@@ -9,7 +9,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
   Settings as SettingsIcon, 
-  MessageCircle, 
   Clock, 
   Save, 
   Loader2, 
@@ -17,12 +16,11 @@ import {
   X, 
   Eye, 
   EyeOff,
-  Key,
-  Bot,
   Sparkles,
   ShoppingBag,
   Zap,
-  Power
+  Power,
+  Trash2
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -64,6 +62,18 @@ const MaskedInput = ({ label, value, onChange, placeholder, description }: Maske
   );
 };
 
+interface MessagingAccount {
+  id: string;
+  account_type: string;
+  account_name: string;
+  is_active: boolean;
+  telegram_bot_token?: string | null;
+  telegram_chat_id?: string | null;
+  greenapi_instance_id?: string | null;
+  greenapi_api_token?: string | null;
+  greenapi_chat_id?: string | null;
+}
+
 const Settings = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -73,9 +83,7 @@ const Settings = () => {
   // Master automation toggle
   const [automationEnabled, setAutomationEnabled] = useState(false);
   
-  // Channel toggles
-  const [telegramEnabled, setTelegramEnabled] = useState(false);
-  const [whatsappEnabled, setWhatsappEnabled] = useState(false);
+  // Posting times
   const [postingTimes, setPostingTimes] = useState<string[]>(['10:00', '14:00', '20:00']);
   const [newTime, setNewTime] = useState('');
 
@@ -84,17 +92,18 @@ const Settings = () => {
   const [aliexpressAppSecret, setAliexpressAppSecret] = useState('');
   const [aliexpressTrackingId, setAliexpressTrackingId] = useState('');
 
-  // Telegram credentials
-  const [telegramBotToken, setTelegramBotToken] = useState('');
-  const [telegramChatId, setTelegramChatId] = useState('');
-
-  // WhatsApp/GreenAPI credentials
-  const [greenApiInstanceId, setGreenApiInstanceId] = useState('');
-  const [greenApiToken, setGreenApiToken] = useState('');
-  const [greenApiChatId, setGreenApiChatId] = useState('');
-
   // Custom AI prompt
   const [customAiPrompt, setCustomAiPrompt] = useState('');
+
+  // Multi-account management
+  const [messagingAccounts, setMessagingAccounts] = useState<MessagingAccount[]>([]);
+  const [showAddAccount, setShowAddAccount] = useState<'telegram' | 'whatsapp' | null>(null);
+  const [newAccountName, setNewAccountName] = useState('');
+  const [newTelegramToken, setNewTelegramToken] = useState('');
+  const [newTelegramChatId, setNewTelegramChatId] = useState('');
+  const [newGreenApiInstanceId, setNewGreenApiInstanceId] = useState('');
+  const [newGreenApiToken, setNewGreenApiToken] = useState('');
+  const [newGreenApiChatId, setNewGreenApiChatId] = useState('');
 
   useEffect(() => {
     fetchSettings();
@@ -106,6 +115,7 @@ const Settings = () => {
       if (!user) throw new Error("Not authenticated");
       setUserId(user.id);
 
+      // Fetch app settings
       const { data, error } = await supabase
         .from('app_settings')
         .select('*')
@@ -116,22 +126,24 @@ const Settings = () => {
 
       if (data) {
         setSettingsId(data.id);
-        setAutomationEnabled((data as any).automation_enabled || false);
-        setTelegramEnabled(data.telegram_enabled || false);
-        setWhatsappEnabled(data.whatsapp_enabled || false);
+        setAutomationEnabled(data.automation_enabled || false);
         setPostingTimes(data.posting_times || ['10:00', '14:00', '20:00']);
-        
-        // API credentials - empty defaults for privacy
         setAliexpressAppKey(data.aliexpress_app_key || '');
         setAliexpressAppSecret(data.aliexpress_app_secret || '');
         setAliexpressTrackingId(data.aliexpress_tracking_id || '');
-        setTelegramBotToken(data.telegram_bot_token || '');
-        setTelegramChatId(data.telegram_chat_id || '');
-        setGreenApiInstanceId(data.greenapi_instance_id || '');
-        setGreenApiToken(data.greenapi_api_token || '');
-        setGreenApiChatId(data.greenapi_chat_id || '');
         setCustomAiPrompt(data.custom_ai_prompt || '');
       }
+
+      // Fetch messaging accounts
+      const { data: accounts, error: accountsErr } = await supabase
+        .from('messaging_accounts')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true });
+
+      if (accountsErr) throw accountsErr;
+      setMessagingAccounts(accounts || []);
+
     } catch (error) {
       console.error('Error fetching settings:', error);
       toast({
@@ -149,17 +161,10 @@ const Settings = () => {
     try {
       const updateData = {
         automation_enabled: automationEnabled,
-        telegram_enabled: telegramEnabled,
-        whatsapp_enabled: whatsappEnabled,
         posting_times: postingTimes,
         aliexpress_app_key: aliexpressAppKey || null,
         aliexpress_app_secret: aliexpressAppSecret || null,
         aliexpress_tracking_id: aliexpressTrackingId || null,
-        telegram_bot_token: telegramBotToken || null,
-        telegram_chat_id: telegramChatId || null,
-        greenapi_instance_id: greenApiInstanceId || null,
-        greenapi_api_token: greenApiToken || null,
-        greenapi_chat_id: greenApiChatId || null,
         custom_ai_prompt: customAiPrompt || null,
       };
 
@@ -207,6 +212,85 @@ const Settings = () => {
     setPostingTimes(postingTimes.filter(t => t !== time));
   };
 
+  const handleAddAccount = async () => {
+    if (!userId || !newAccountName) return;
+
+    try {
+      const accountData: any = {
+        user_id: userId,
+        account_type: showAddAccount,
+        account_name: newAccountName,
+        is_active: true,
+      };
+
+      if (showAddAccount === 'telegram') {
+        accountData.telegram_bot_token = newTelegramToken;
+        accountData.telegram_chat_id = newTelegramChatId;
+      } else {
+        accountData.greenapi_instance_id = newGreenApiInstanceId;
+        accountData.greenapi_api_token = newGreenApiToken;
+        accountData.greenapi_chat_id = newGreenApiChatId;
+      }
+
+      const { data, error } = await supabase
+        .from('messaging_accounts')
+        .insert(accountData)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setMessagingAccounts([...messagingAccounts, data]);
+      setShowAddAccount(null);
+      setNewAccountName('');
+      setNewTelegramToken('');
+      setNewTelegramChatId('');
+      setNewGreenApiInstanceId('');
+      setNewGreenApiToken('');
+      setNewGreenApiChatId('');
+
+      toast({ title: "Account Added", description: `${newAccountName} has been added.` });
+    } catch (error) {
+      console.error('Add account error:', error);
+      toast({ title: "Failed to add account", variant: "destructive" });
+    }
+  };
+
+  const handleToggleAccount = async (accountId: string, isActive: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('messaging_accounts')
+        .update({ is_active: isActive })
+        .eq('id', accountId);
+
+      if (error) throw error;
+
+      setMessagingAccounts(accounts =>
+        accounts.map(acc => acc.id === accountId ? { ...acc, is_active: isActive } : acc)
+      );
+
+      toast({ title: isActive ? "Account Activated" : "Account Deactivated" });
+    } catch (error) {
+      toast({ title: "Failed to update account", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteAccount = async (accountId: string) => {
+    try {
+      const { error } = await supabase
+        .from('messaging_accounts')
+        .delete()
+        .eq('id', accountId);
+
+      if (error) throw error;
+
+      setMessagingAccounts(accounts => accounts.filter(acc => acc.id !== accountId));
+      toast({ title: "Account Deleted" });
+    } catch (error) {
+      toast({ title: "Failed to delete account", variant: "destructive" });
+    }
+  };
+
   if (isLoading) {
     return (
       <MainLayout>
@@ -216,6 +300,9 @@ const Settings = () => {
       </MainLayout>
     );
   }
+
+  const telegramAccounts = messagingAccounts.filter(a => a.account_type === 'telegram');
+  const whatsappAccounts = messagingAccounts.filter(a => a.account_type === 'whatsapp');
 
   return (
     <MainLayout>
@@ -235,161 +322,7 @@ const Settings = () => {
           </div>
         </div>
 
-        {/* AliExpress API */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ShoppingBag className="h-5 w-5 text-orange-500" />
-              AliExpress Affiliate API
-            </CardTitle>
-            <CardDescription>
-              Configure your AliExpress API credentials for generating affiliate links
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <MaskedInput
-              label="App Key"
-              value={aliexpressAppKey}
-              onChange={setAliexpressAppKey}
-              placeholder="Enter your AliExpress App Key"
-            />
-            <MaskedInput
-              label="App Secret"
-              value={aliexpressAppSecret}
-              onChange={setAliexpressAppSecret}
-              placeholder="Enter your AliExpress App Secret"
-            />
-            <MaskedInput
-              label="Tracking ID"
-              value={aliexpressTrackingId}
-              onChange={setAliexpressTrackingId}
-              placeholder="Enter your Tracking ID"
-            />
-          </CardContent>
-        </Card>
-
-        {/* Telegram */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-[#229ED9]/20 flex items-center justify-center">
-                <svg viewBox="0 0 24 24" className="h-4 w-4 text-[#229ED9]" fill="currentColor">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
-                </svg>
-              </div>
-              Telegram Bot
-            </CardTitle>
-            <CardDescription>
-              Configure your Telegram bot for posting deals
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border">
-              <div>
-                <p className="font-medium text-foreground">Enable Telegram</p>
-                <p className="text-sm text-muted-foreground">Send posts to your Telegram channel</p>
-              </div>
-              <Switch
-                checked={telegramEnabled}
-                onCheckedChange={setTelegramEnabled}
-              />
-            </div>
-            <MaskedInput
-              label="Bot Token"
-              value={telegramBotToken}
-              onChange={setTelegramBotToken}
-              placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
-              description="Get this from @BotFather on Telegram"
-            />
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Chat ID</Label>
-              <p className="text-xs text-muted-foreground">Your channel or group ID (e.g., -1001234567890)</p>
-              <Input
-                value={telegramChatId}
-                onChange={(e) => setTelegramChatId(e.target.value)}
-                placeholder="-1001234567890"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* WhatsApp/GreenAPI */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-[#25D366]/20 flex items-center justify-center">
-                <svg viewBox="0 0 24 24" className="h-4 w-4 text-[#25D366]" fill="currentColor">
-                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                </svg>
-              </div>
-              WhatsApp (GreenAPI)
-            </CardTitle>
-            <CardDescription>
-              Configure GreenAPI for WhatsApp messaging
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border">
-              <div>
-                <p className="font-medium text-foreground">Enable WhatsApp</p>
-                <p className="text-sm text-muted-foreground">Send posts via WhatsApp</p>
-              </div>
-              <Switch
-                checked={whatsappEnabled}
-                onCheckedChange={setWhatsappEnabled}
-              />
-            </div>
-            <MaskedInput
-              label="Instance ID"
-              value={greenApiInstanceId}
-              onChange={setGreenApiInstanceId}
-              placeholder="1234567890"
-            />
-            <MaskedInput
-              label="API Token"
-              value={greenApiToken}
-              onChange={setGreenApiToken}
-              placeholder="your-api-token-here"
-            />
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Chat ID</Label>
-              <p className="text-xs text-muted-foreground">Phone number or group ID</p>
-              <Input
-                value={greenApiChatId}
-                onChange={(e) => setGreenApiChatId(e.target.value)}
-                placeholder="972501234567 or 120363..."
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Custom AI Prompt */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-purple-500" />
-              Custom AI Prompt
-            </CardTitle>
-            <CardDescription>
-              Define your own system prompt for generating Hebrew product descriptions
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Textarea
-              value={customAiPrompt}
-              onChange={(e) => setCustomAiPrompt(e.target.value)}
-              placeholder="Leave empty to use the default prompt. Enter your custom instructions for the AI here..."
-              className="min-h-[200px] font-mono text-sm"
-              dir="rtl"
-            />
-            <p className="text-xs text-muted-foreground">
-              This prompt will be used as the system message when generating Hebrew descriptions. 
-              Leave empty to use the default professional affiliate marketing prompt.
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Posting Schedule with Master Switch */}
+        {/* Master Automation & Schedule */}
         <Card className="relative overflow-hidden">
           {automationEnabled && (
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-secondary to-primary animate-pulse" />
@@ -399,7 +332,7 @@ const Settings = () => {
               <div className={`p-2 rounded-lg transition-all duration-300 ${automationEnabled ? 'bg-primary/30 shadow-[0_0_20px_rgba(var(--primary),0.5)]' : 'bg-muted'}`}>
                 <Power className={`h-5 w-5 transition-colors ${automationEnabled ? 'text-primary' : 'text-muted-foreground'}`} />
               </div>
-              Posting Schedule
+              Automation Engine
               {automationEnabled && (
                 <Badge className="bg-primary/20 text-primary border border-primary/30 animate-pulse">
                   <Zap className="h-3 w-3 mr-1" />
@@ -408,11 +341,11 @@ const Settings = () => {
               )}
             </CardTitle>
             <CardDescription>
-              Define your daily posting windows and enable automation
+              Master control for automated posting
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Master Automation Switch */}
+            {/* Master Switch */}
             <div className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all duration-300 ${
               automationEnabled 
                 ? 'bg-primary/10 border-primary/50 shadow-[0_0_30px_rgba(var(--primary),0.2)]' 
@@ -463,7 +396,6 @@ const Settings = () => {
                   </Badge>
                 ))}
               </div>
-
               <div className="flex gap-2">
                 <div className="flex-1">
                   <Input
@@ -478,6 +410,251 @@ const Settings = () => {
                 </Button>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Telegram Accounts */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-lg bg-[#229ED9]/20 flex items-center justify-center">
+                <svg viewBox="0 0 24 24" className="h-4 w-4 text-[#229ED9]" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
+                </svg>
+              </div>
+              Telegram Accounts
+              <Badge variant="secondary">{telegramAccounts.length}</Badge>
+            </CardTitle>
+            <CardDescription>
+              Manage your Telegram bot destinations
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {telegramAccounts.map((account) => (
+              <div key={account.id} className={`p-4 rounded-lg border transition-all ${
+                account.is_active ? 'bg-[#229ED9]/10 border-[#229ED9]/30' : 'bg-muted/30 border-border'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${account.is_active ? 'bg-[#229ED9]/20' : 'bg-muted'}`}>
+                      <svg viewBox="0 0 24 24" className={`h-4 w-4 ${account.is_active ? 'text-[#229ED9]' : 'text-muted-foreground'}`} fill="currentColor">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="font-medium text-foreground">{account.account_name}</p>
+                      <p className="text-xs text-muted-foreground">Chat: {account.telegram_chat_id}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={account.is_active}
+                      onCheckedChange={(checked) => handleToggleAccount(account.id, checked)}
+                      className={account.is_active ? 'data-[state=checked]:bg-[#229ED9]' : ''}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDeleteAccount(account.id)}
+                      className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {showAddAccount === 'telegram' ? (
+              <div className="p-4 rounded-lg border border-dashed border-[#229ED9]/50 bg-[#229ED9]/5 space-y-3">
+                <Input
+                  placeholder="Account Name (e.g., Main Channel)"
+                  value={newAccountName}
+                  onChange={(e) => setNewAccountName(e.target.value)}
+                />
+                <MaskedInput
+                  label="Bot Token"
+                  value={newTelegramToken}
+                  onChange={setNewTelegramToken}
+                  placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+                />
+                <Input
+                  placeholder="Chat ID (e.g., -1001234567890)"
+                  value={newTelegramChatId}
+                  onChange={(e) => setNewTelegramChatId(e.target.value)}
+                />
+                <div className="flex gap-2">
+                  <Button onClick={handleAddAccount} className="flex-1">
+                    <Plus className="h-4 w-4 mr-1" /> Add Account
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowAddAccount(null)}>Cancel</Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                className="w-full border-dashed border-[#229ED9]/50 text-[#229ED9] hover:bg-[#229ED9]/10"
+                onClick={() => setShowAddAccount('telegram')}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Telegram Account
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* WhatsApp Accounts */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-lg bg-[#25D366]/20 flex items-center justify-center">
+                <svg viewBox="0 0 24 24" className="h-4 w-4 text-[#25D366]" fill="currentColor">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                </svg>
+              </div>
+              WhatsApp Accounts (GreenAPI)
+              <Badge variant="secondary">{whatsappAccounts.length}</Badge>
+            </CardTitle>
+            <CardDescription>
+              Manage your WhatsApp destinations via GreenAPI
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {whatsappAccounts.map((account) => (
+              <div key={account.id} className={`p-4 rounded-lg border transition-all ${
+                account.is_active ? 'bg-[#25D366]/10 border-[#25D366]/30' : 'bg-muted/30 border-border'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${account.is_active ? 'bg-[#25D366]/20' : 'bg-muted'}`}>
+                      <svg viewBox="0 0 24 24" className={`h-4 w-4 ${account.is_active ? 'text-[#25D366]' : 'text-muted-foreground'}`} fill="currentColor">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="font-medium text-foreground">{account.account_name}</p>
+                      <p className="text-xs text-muted-foreground">Instance: {account.greenapi_instance_id}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={account.is_active}
+                      onCheckedChange={(checked) => handleToggleAccount(account.id, checked)}
+                      className={account.is_active ? 'data-[state=checked]:bg-[#25D366]' : ''}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDeleteAccount(account.id)}
+                      className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {showAddAccount === 'whatsapp' ? (
+              <div className="p-4 rounded-lg border border-dashed border-[#25D366]/50 bg-[#25D366]/5 space-y-3">
+                <Input
+                  placeholder="Account Name (e.g., Group 1)"
+                  value={newAccountName}
+                  onChange={(e) => setNewAccountName(e.target.value)}
+                />
+                <MaskedInput
+                  label="Instance ID"
+                  value={newGreenApiInstanceId}
+                  onChange={setNewGreenApiInstanceId}
+                  placeholder="1234567890"
+                />
+                <MaskedInput
+                  label="API Token"
+                  value={newGreenApiToken}
+                  onChange={setNewGreenApiToken}
+                  placeholder="your-api-token-here"
+                />
+                <Input
+                  placeholder="Chat ID (e.g., 972501234567)"
+                  value={newGreenApiChatId}
+                  onChange={(e) => setNewGreenApiChatId(e.target.value)}
+                />
+                <div className="flex gap-2">
+                  <Button onClick={handleAddAccount} className="flex-1 bg-[#25D366] hover:bg-[#25D366]/90">
+                    <Plus className="h-4 w-4 mr-1" /> Add Account
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowAddAccount(null)}>Cancel</Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                className="w-full border-dashed border-[#25D366]/50 text-[#25D366] hover:bg-[#25D366]/10"
+                onClick={() => setShowAddAccount('whatsapp')}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add WhatsApp Account
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* AliExpress API */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShoppingBag className="h-5 w-5 text-orange-500" />
+              AliExpress Affiliate API
+            </CardTitle>
+            <CardDescription>
+              Configure your AliExpress API credentials for generating affiliate links
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <MaskedInput
+              label="App Key"
+              value={aliexpressAppKey}
+              onChange={setAliexpressAppKey}
+              placeholder="Enter your AliExpress App Key"
+            />
+            <MaskedInput
+              label="App Secret"
+              value={aliexpressAppSecret}
+              onChange={setAliexpressAppSecret}
+              placeholder="Enter your AliExpress App Secret"
+            />
+            <MaskedInput
+              label="Tracking ID"
+              value={aliexpressTrackingId}
+              onChange={setAliexpressTrackingId}
+              placeholder="Enter your Tracking ID"
+            />
+          </CardContent>
+        </Card>
+
+        {/* Custom AI Prompt */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-purple-500" />
+              Custom AI Prompt
+            </CardTitle>
+            <CardDescription>
+              Define your own system prompt for generating Hebrew product descriptions
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Textarea
+              value={customAiPrompt}
+              onChange={(e) => setCustomAiPrompt(e.target.value)}
+              placeholder="Leave empty to use the default prompt. Enter your custom instructions for the AI here..."
+              className="min-h-[200px] font-mono text-sm"
+              dir="rtl"
+            />
+            <p className="text-xs text-muted-foreground">
+              This prompt will be used as the system message when generating Hebrew descriptions. 
+              Leave empty to use the default professional affiliate marketing prompt.
+            </p>
           </CardContent>
         </Card>
 
