@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { ProductEditor } from "@/components/products/ProductEditor";
+import { ProductEditor, Coupon } from "@/components/products/ProductEditor";
 import { AnalyzeDebugPanel, AnalyzeDebugInfo } from "@/components/products/AnalyzeDebugPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Search, Loader2, Link as LinkIcon, AlertTriangle } from "lucide-react";
 import { FetchedProductData, Product } from "@/types/product";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,6 +32,7 @@ function formatAliError(payload: any): string {
 
 const AddProduct = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [url, setUrl] = useState("");
   const [isFetching, setIsFetching] = useState(false);
   const [fetchStatus, setFetchStatus] = useState("");
@@ -42,6 +43,45 @@ const AddProduct = () => {
   const [showDuplicateConfirm, setShowDuplicateConfirm] = useState(false);
   const [pendingProduct, setPendingProduct] = useState<Omit<Product, "id" | "created_at" | "updated_at"> | null>(null);
   const [pendingAction, setPendingAction] = useState<"queue" | "post" | null>(null);
+  const [initialCoupons, setInitialCoupons] = useState<Coupon[] | undefined>(undefined);
+
+  // Handle pre-filled data from Excel import
+  useEffect(() => {
+    const urlParam = searchParams.get("url");
+    const title = searchParams.get("title");
+    const price = searchParams.get("price");
+    const originalPrice = searchParams.get("originalPrice");
+    const imageUrl = searchParams.get("imageUrl");
+    const couponCode = searchParams.get("couponCode");
+    const couponValue = searchParams.get("couponValue");
+
+    if (urlParam) {
+      setUrl(urlParam);
+      
+      // If we have all the data from Excel, pre-populate the product
+      if (title && price) {
+        setFetchedProduct({
+          title: title,
+          price: parseFloat(price),
+          image_url: imageUrl || "",
+          orders_count: 0,
+          rating: 0,
+          affiliateLink: urlParam,
+          hebrewDescription: "",
+        });
+
+        // Set initial coupons if provided
+        if (couponCode) {
+          setInitialCoupons([{ code: couponCode, amount: couponValue || "" }]);
+        }
+
+        toast({
+          title: "Product Loaded",
+          description: "Edit the details and generate Hebrew content",
+        });
+      }
+    }
+  }, [searchParams]);
 
   const handleFetch = async () => {
     const inputUrl = url.trim();
@@ -446,6 +486,7 @@ const AddProduct = () => {
             onSaveToQueue={handleSaveToQueue}
             onPostNow={handlePostNow}
             isLoading={isSaving}
+            initialCoupons={initialCoupons}
           />
         )}
 

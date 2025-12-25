@@ -115,10 +115,10 @@ const Settings = () => {
         setWhatsappEnabled(data.whatsapp_enabled || false);
         setPostingTimes(data.posting_times || ['10:00', '14:00', '20:00']);
         
-        // API credentials
+        // API credentials - empty defaults for privacy
         setAliexpressAppKey(data.aliexpress_app_key || '');
         setAliexpressAppSecret(data.aliexpress_app_secret || '');
-        setAliexpressTrackingId(data.aliexpress_tracking_id || 'TELEGRAM');
+        setAliexpressTrackingId(data.aliexpress_tracking_id || '');
         setTelegramBotToken(data.telegram_bot_token || '');
         setTelegramChatId(data.telegram_chat_id || '');
         setGreenApiInstanceId(data.greenapi_instance_id || '');
@@ -147,7 +147,7 @@ const Settings = () => {
         posting_times: postingTimes,
         aliexpress_app_key: aliexpressAppKey || null,
         aliexpress_app_secret: aliexpressAppSecret || null,
-        aliexpress_tracking_id: aliexpressTrackingId || 'TELEGRAM',
+        aliexpress_tracking_id: aliexpressTrackingId || null,
         telegram_bot_token: telegramBotToken || null,
         telegram_chat_id: telegramChatId || null,
         greenapi_instance_id: greenApiInstanceId || null,
@@ -244,22 +244,20 @@ const Settings = () => {
               label="App Key"
               value={aliexpressAppKey}
               onChange={setAliexpressAppKey}
-              placeholder="Enter your App Key"
+              placeholder="Enter your AliExpress App Key"
             />
             <MaskedInput
               label="App Secret"
               value={aliexpressAppSecret}
               onChange={setAliexpressAppSecret}
-              placeholder="Enter your App Secret"
+              placeholder="Enter your AliExpress App Secret"
             />
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Tracking ID</Label>
-              <Input
-                value={aliexpressTrackingId}
-                onChange={(e) => setAliexpressTrackingId(e.target.value)}
-                placeholder="TELEGRAM"
-              />
-            </div>
+            <MaskedInput
+              label="Tracking ID"
+              value={aliexpressTrackingId}
+              onChange={setAliexpressTrackingId}
+              placeholder="Enter your Tracking ID"
+            />
           </CardContent>
         </Card>
 

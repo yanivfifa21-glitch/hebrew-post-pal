@@ -8,7 +8,7 @@ import { Sparkles, Save, Send, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
-interface Coupon {
+export interface Coupon {
   code: string;
   amount: string;
 }
@@ -19,15 +19,16 @@ interface ProductEditorProps {
   onSaveToQueue: (product: Omit<Product, "id" | "created_at" | "updated_at">) => void;
   onPostNow: (product: Omit<Product, "id" | "created_at" | "updated_at">) => void;
   isLoading?: boolean;
+  initialCoupons?: Coupon[];
 }
 
-export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostNow, isLoading }: ProductEditorProps) => {
+export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostNow, isLoading, initialCoupons }: ProductEditorProps) => {
   const [title, setTitle] = useState(productData.title);
   const [price, setPrice] = useState(productData.price.toString());
   const [affiliateLink, setAffiliateLink] = useState(productData.affiliateLink || "");
   const [hebrewDescription, setHebrewDescription] = useState(productData.hebrewDescription || "");
   const [isGenerating, setIsGenerating] = useState(false);
-  const [coupons, setCoupons] = useState<Coupon[]>([{ code: "", amount: "" }]);
+  const [coupons, setCoupons] = useState<Coupon[]>(initialCoupons || [{ code: "", amount: "" }]);
 
   const addCoupon = () => {
     setCoupons([...coupons, { code: "", amount: "" }]);
@@ -46,17 +47,29 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
   };
 
   const buildCouponText = (): string => {
-    const validCoupons = coupons.filter(c => c.code.trim() && c.amount.trim());
-    if (validCoupons.length === 0) return "";
+    // Filter coupons that have at least a code
+    const couponsWithCode = coupons.filter(c => c.code.trim());
+    if (couponsWithCode.length === 0) return "";
     
-    const couponLines = validCoupons.map(c => 
-      `🎟️ קופון *${c.code}* נותן הנחה של *${c.amount}* דולר`
-    );
-    
-    if (validCoupons.length > 1) {
-      return `🔥 *כפל קופונים!*\n${couponLines.join("\n")}`;
+    // Case B: Multiple coupons
+    if (couponsWithCode.length > 1) {
+      const couponTexts = couponsWithCode.map(c => {
+        if (c.amount.trim()) {
+          return `🎟️ קופון *${c.code}* נותן הנחה של *${c.amount}* דולר`;
+        }
+        return `יש להזין קופון: *${c.code}*`;
+      });
+      return `🔥 *יש להזין קופון + קופון!*\n${couponTexts.join("\n")}`;
     }
-    return couponLines[0];
+    
+    // Single coupon
+    const coupon = couponsWithCode[0];
+    // Case A: Code without value
+    if (!coupon.amount.trim()) {
+      return `🎟️ יש להזין קופון: *${coupon.code}*`;
+    }
+    // Code with value
+    return `🎟️ קופון *${coupon.code}* נותן הנחה של *${coupon.amount}* דולר`;
   };
 
   const handleGenerateHebrew = async () => {
