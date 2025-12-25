@@ -70,26 +70,30 @@ export const Sidebar = () => {
         collapsed ? "w-[72px]" : "w-[260px]"
       )}
     >
-      {/* Glassmorphism Background */}
-      <div className="absolute inset-0 bg-sidebar/80 backdrop-blur-2xl border-r border-sidebar-border" />
+      {/* Glassmorphism Background with Cyberpunk gradient */}
+      <div className="absolute inset-0 bg-sidebar/90 backdrop-blur-2xl border-r border-primary/10" />
       
-      {/* Subtle gradient overlay */}
+      {/* Animated gradient overlay */}
       <div className="absolute inset-0 bg-gradient-to-b from-primary/5 via-transparent to-secondary/5 pointer-events-none" />
+      
+      {/* Subtle scan line effect */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-10">
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-primary/20 to-transparent h-[200%] animate-float" style={{ animationDuration: '8s' }} />
+      </div>
       
       <div className="relative flex flex-col h-full">
         {/* Logo */}
         <div className={cn(
-          "flex items-center gap-3 p-5 border-b border-sidebar-border/50",
+          "flex items-center gap-3 p-5 border-b border-primary/10",
           collapsed && "justify-center px-3"
         )}>
-          <div className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary via-secondary to-accent flex-shrink-0 shadow-glow-sm">
+          <div className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary via-secondary to-accent flex-shrink-0 shadow-glow-md animate-neon-pulse">
             <Zap className="h-5 w-5 text-primary-foreground" />
-            <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary/20 to-transparent animate-pulse-soft" />
           </div>
           {!collapsed && (
             <div className="flex flex-col animate-fade-in">
               <span className="font-bold text-lg text-foreground tracking-tight">AliAffilio</span>
-              <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <span className="text-xs text-primary flex items-center gap-1">
                 <Sparkles className="h-3 w-3" />
                 Automation Pro
               </span>
@@ -109,19 +113,19 @@ export const Sidebar = () => {
                   "flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-200 group relative overflow-hidden",
                   "animate-fade-in-up opacity-0",
                   isActive 
-                    ? "bg-primary/15 text-primary shadow-glow-sm" 
-                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground"
+                    ? "bg-primary/15 text-primary shadow-glow-sm border border-primary/20" 
+                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground hover:border-primary/10 border border-transparent"
                 )}
                 style={{ animationDelay: `${index * 0.05}s`, animationFillMode: 'forwards' }}
               >
-                {/* Active indicator */}
+                {/* Active indicator - neon glow */}
                 {isActive && (
                   <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-primary shadow-glow-sm" />
                 )}
                 
                 <item.icon className={cn(
                   "h-5 w-5 transition-all duration-200 flex-shrink-0",
-                  isActive ? "text-primary" : "text-sidebar-foreground group-hover:text-foreground group-hover:scale-110"
+                  isActive ? "text-primary drop-shadow-[0_0_8px_hsl(var(--primary))]" : "text-sidebar-foreground group-hover:text-foreground group-hover:scale-110"
                 )} />
                 {!collapsed && (
                   <span className="font-medium text-sm">{item.label}</span>
@@ -138,18 +142,18 @@ export const Sidebar = () => {
             <Link
               to="/admin"
               className={cn(
-                "flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-200 group relative overflow-hidden",
+                "flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-200 group relative overflow-hidden border",
                 location.pathname === "/admin"
-                  ? "bg-amber-500/15 text-amber-500 shadow-glow-sm" 
-                  : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground"
+                  ? "bg-warning/15 text-warning shadow-[0_0_15px_hsl(var(--warning)/0.3)] border-warning/30" 
+                  : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground border-transparent hover:border-warning/20"
               )}
             >
               {location.pathname === "/admin" && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-amber-500 shadow-glow-sm" />
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-warning shadow-[0_0_10px_hsl(var(--warning)/0.5)]" />
               )}
               <Shield className={cn(
                 "h-5 w-5 transition-all duration-200 flex-shrink-0",
-                location.pathname === "/admin" ? "text-amber-500" : "text-sidebar-foreground group-hover:text-foreground group-hover:scale-110"
+                location.pathname === "/admin" ? "text-warning drop-shadow-[0_0_8px_hsl(var(--warning))]" : "text-sidebar-foreground group-hover:text-foreground group-hover:scale-110"
               )} />
               {!collapsed && (
                 <span className="font-medium text-sm">Admin</span>
@@ -159,13 +163,13 @@ export const Sidebar = () => {
         </nav>
 
         {/* User Section */}
-        <div className="p-3 border-t border-sidebar-border/50 space-y-3">
+        <div className="p-3 border-t border-primary/10 space-y-3">
           {user && (
             <div className={cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-xl bg-sidebar-accent/30 backdrop-blur-sm",
+              "flex items-center gap-3 px-3 py-2.5 rounded-xl bg-card/30 backdrop-blur-sm border border-primary/10",
               collapsed && "justify-center px-0"
             )}>
-              <Avatar className="h-9 w-9 flex-shrink-0 ring-2 ring-primary/20 ring-offset-2 ring-offset-sidebar">
+              <Avatar className="h-9 w-9 flex-shrink-0 ring-2 ring-primary/30 ring-offset-2 ring-offset-sidebar">
                 <AvatarImage src={userAvatar} alt="User" />
                 <AvatarFallback className="bg-gradient-to-br from-primary to-secondary text-primary-foreground text-xs font-bold">
                   {userInitials}
@@ -184,7 +188,7 @@ export const Sidebar = () => {
 
           <div className="flex gap-2">
             <Button
-              variant="ghost"
+              variant="glass"
               size="sm"
               onClick={() => setCollapsed(!collapsed)}
               className={cn("flex-1 h-10", collapsed && "w-full")}

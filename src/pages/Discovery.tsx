@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,8 @@ const CATEGORIES = [
   { id: "1501", label: "אופנה נשים", icon: null },
 ];
 
+const STORAGE_KEY = "aliaffilio_imported_products";
+
 const Discovery = () => {
   const navigate = useNavigate();
   const [products, setProducts] = useState<HotProduct[]>([]);
@@ -53,9 +55,39 @@ const Discovery = () => {
   const [manualUrl, setManualUrl] = useState("");
   const [dataSource, setDataSource] = useState<string>("");
   
-  // Excel import state
-  const [importedProducts, setImportedProducts] = useState<ImportedProduct[]>([]);
+  // Excel import state - with localStorage persistence
+  const [importedProducts, setImportedProducts] = useState<ImportedProduct[]>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
   const [addingProductId, setAddingProductId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Get current user ID on mount
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUserId(session?.user?.id ?? null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setUserId(session?.user?.id ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Persist imported products to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(importedProducts));
+    } catch (e) {
+      console.warn("Failed to save to localStorage:", e);
+    }
+  }, [importedProducts]);
 
   // Pull to refresh handler
   const handlePullRefresh = useCallback(async () => {
@@ -199,18 +231,36 @@ const Discovery = () => {
     setDataSource("Excel");
   };
 
+  const handleClearAll = () => {
+    setImportedProducts([]);
+    localStorage.removeItem(STORAGE_KEY);
+    toast({
+      title: "נמחקו",
+      description: "כל המוצרים המיובאים נמחקו",
+    });
+  };
+
   const handleQuickAddFromExcel = async (product: ImportedProduct) => {
+    if (!userId) {
+      toast({
+        title: "Not Authenticated",
+        description: "Please log in to add products",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setAddingProductId(product.id);
     try {
       // Generate affiliate link from promotion link
       const { data: affResp, error: affErr } = await supabase.functions.invoke("generate-affiliate-link", {
-        body: { productUrl: product.promotionLink },
+        body: { productUrl: product.promotionLink, userId },
       });
 
       if (affErr) throw new Error(affErr.message);
       const affiliateLink = affResp?.success ? affResp.affiliateLink : product.promotionLink;
 
-      // Generate Hebrew description
+      // Generate Hebrew description - PASS userId to fetch custom prompt
       const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
         body: { 
           title: product.title,
@@ -221,6 +271,7 @@ const Discovery = () => {
           discountPercent: product.discountPercent,
           couponCode: product.codeName,
           couponValue: product.codeValue,
+          userId, // Critical: pass userId to fetch custom prompt
         },
       });
 
@@ -241,6 +292,7 @@ const Discovery = () => {
         hebrew_description: hebrewDescription,
         status: "queued",
         channels: [],
+        user_id: userId,
       });
 
       if (saveErr) throw new Error(saveErr.message);
@@ -315,22 +367,32 @@ const Discovery = () => {
   };
 
   const handleCreatePost = async (product: HotProduct) => {
+    if (!userId) {
+      toast({
+        title: "Not Authenticated",
+        description: "Please log in to add products",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setCreatingPostId(product.product_id);
     try {
       // 1. Generate affiliate link
       const { data: affResp, error: affErr } = await supabase.functions.invoke("generate-affiliate-link", {
-        body: { productUrl: product.product_url },
+        body: { productUrl: product.product_url, userId },
       });
 
       if (affErr) throw new Error(affErr.message);
       const affiliateLink = affResp?.success ? affResp.affiliateLink : product.product_url;
 
-      // 2. Generate Hebrew description
+      // 2. Generate Hebrew description - PASS userId to fetch custom prompt
       const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
         body: { 
           title: product.title,
           ordersCount: product.sales_count || 0,
           rating: product.rating || 0,
+          userId, // Critical: pass userId to fetch custom prompt
         },
       });
 
@@ -358,6 +420,7 @@ const Discovery = () => {
         hebrew_description: hebrewDescription,
         status: "queued",
         channels: [],
+        user_id: userId,
       });
 
       if (saveErr) throw new Error(saveErr.message);
@@ -395,11 +458,11 @@ const Discovery = () => {
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <h1 className="text-2xl md:text-3xl font-bold text-foreground flex items-center gap-2">
-              <Flame className="h-6 w-6 md:h-8 md:w-8 text-primary" />
+              <Flame className="h-6 w-6 md:h-8 md:w-8 text-primary animate-pulse-soft" />
               <span className="gradient-text">🔥 Super Deals</span>
             </h1>
             {dataSource && (
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className="text-xs border-primary/30 text-primary">
                 {dataSource}
               </Badge>
             )}
@@ -409,16 +472,16 @@ const Discovery = () => {
 
         {/* Mode Tabs */}
         <Tabs value={activeMode} onValueChange={handleModeChange} className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="api" className="gap-1 md:gap-2 text-xs md:text-sm px-2 md:px-4">
+          <TabsList className="grid w-full grid-cols-3 bg-card/50 backdrop-blur-sm border border-border/50">
+            <TabsTrigger value="api" className="gap-1 md:gap-2 text-xs md:text-sm px-2 md:px-4 data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
               <TrendingUp className="h-3.5 w-3.5 md:h-4 md:w-4" />
               <span className="hidden xs:inline">Hot</span> API
             </TabsTrigger>
-            <TabsTrigger value="scrape" className="gap-1 md:gap-2 text-xs md:text-sm px-2 md:px-4">
+            <TabsTrigger value="scrape" className="gap-1 md:gap-2 text-xs md:text-sm px-2 md:px-4 data-[state=active]:bg-secondary/20 data-[state=active]:text-secondary">
               <Zap className="h-3.5 w-3.5 md:h-4 md:w-4" />
               Super Deals
             </TabsTrigger>
-            <TabsTrigger value="excel" className="gap-1 md:gap-2 text-xs md:text-sm px-2 md:px-4">
+            <TabsTrigger value="excel" className="gap-1 md:gap-2 text-xs md:text-sm px-2 md:px-4 data-[state=active]:bg-success/20 data-[state=active]:text-success">
               <FileSpreadsheet className="h-3.5 w-3.5 md:h-4 md:w-4" />
               Excel
             </TabsTrigger>
@@ -428,14 +491,14 @@ const Discovery = () => {
           <TabsContent value="api" className="space-y-3 mt-3">
             <div className="glass-card neon-border p-3 md:p-4 space-y-3">
               <div className="flex gap-2">
-                <div className="flex-1 relative">
+                <div className="flex-1 relative neon-input rounded-xl">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                     placeholder="חפש מוצרים..."
-                    className="pl-10 text-right h-10 md:h-11"
+                    className="pl-10 text-right h-10 md:h-11 bg-input/50 border-border/50"
                     dir="rtl"
                   />
                 </div>
@@ -490,9 +553,9 @@ const Discovery = () => {
 
               {/* Manual Input Fallback */}
               {showManualInput && (
-                <div className="border border-dashed border-primary/50 rounded-lg p-4 space-y-3">
+                <div className="border border-dashed border-primary/50 rounded-lg p-4 space-y-3 bg-primary/5">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <AlertCircle className="h-4 w-4" />
+                    <AlertCircle className="h-4 w-4 text-warning" />
                     <span>הגרידה נחסמה - הזן קישור מוצר ידנית</span>
                   </div>
                   <div className="flex gap-2">
@@ -500,7 +563,7 @@ const Discovery = () => {
                       value={manualUrl}
                       onChange={(e) => setManualUrl(e.target.value)}
                       placeholder="https://www.aliexpress.com/item/..."
-                      className="flex-1"
+                      className="flex-1 bg-input/50"
                       dir="ltr"
                     />
                     <Button 
@@ -524,7 +587,7 @@ const Discovery = () => {
           <TabsContent value="excel" className="space-y-4 mt-4">
             <div className="glass-card neon-border p-4 space-y-4">
               <div className="flex items-center gap-2 mb-2">
-                <FileSpreadsheet className="h-5 w-5 text-green-500" />
+                <FileSpreadsheet className="h-5 w-5 text-success" />
                 <h3 className="font-semibold text-foreground">ייבוא מקובץ Excel</h3>
               </div>
               <p className="text-sm text-muted-foreground">
@@ -532,7 +595,7 @@ const Discovery = () => {
               </p>
               <ExcelImporter 
                 onProductsLoaded={handleExcelProductsLoaded} 
-                onClearAll={() => setImportedProducts([])}
+                onClearAll={handleClearAll}
                 hasProducts={importedProducts.length > 0}
               />
             </div>
@@ -541,9 +604,13 @@ const Discovery = () => {
             {importedProducts.length > 0 && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-foreground">
+                  <h3 className="font-semibold text-foreground flex items-center gap-2">
+                    <span className="text-success">●</span>
                     מוצרים מיובאים ({importedProducts.length})
                   </h3>
+                  <Badge variant="outline" className="border-success/30 text-success">
+                    שמורים מקומית
+                  </Badge>
                 </div>
                 <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                   {importedProducts.map((product) => (
@@ -564,7 +631,10 @@ const Discovery = () => {
         {/* Initial State - only for API/Scrape modes */}
         {activeMode !== "excel" && !hasFetched && !isLoading && !showManualInput && (
           <div className="glass-card neon-border p-12 text-center">
-            <Flame className="h-16 w-16 text-primary/50 mx-auto mb-4" />
+            <div className="relative inline-block">
+              <Flame className="h-16 w-16 text-primary/50 mx-auto mb-4" />
+              <div className="absolute inset-0 h-16 w-16 mx-auto bg-primary/20 blur-xl rounded-full" />
+            </div>
             <h3 className="text-xl font-semibold text-foreground mb-2">
               {activeMode === "api" ? "גלה מוצרים חמים" : "גלה סופר דילים"}
             </h3>
@@ -574,7 +644,7 @@ const Discovery = () => {
                 : "לחץ על 'רענן מבצעים' כדי לגלות דילים חמים"
               }
             </p>
-            <Button onClick={activeMode === "api" ? () => fetchHotProducts() : fetchScrapedDeals} variant="gradient" size="lg">
+            <Button onClick={activeMode === "api" ? () => fetchHotProducts() : fetchScrapedDeals} variant="gradient" size="lg" className="animate-glow-pulse">
               {activeMode === "api" ? (
                 <>
                   <TrendingUp className="h-5 w-5 mr-2" />
@@ -601,9 +671,9 @@ const Discovery = () => {
             <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
               {[...Array(6)].map((_, i) => (
                 <div key={i} className="glass-card p-3 md:p-4 animate-pulse">
-                  <div className="aspect-square bg-muted rounded-lg mb-2 md:mb-3" />
-                  <div className="h-3 md:h-4 bg-muted rounded w-3/4 mb-2" />
-                  <div className="h-3 md:h-4 bg-muted rounded w-1/2" />
+                  <div className="aspect-square bg-muted/30 rounded-lg mb-2 md:mb-3" />
+                  <div className="h-3 md:h-4 bg-muted/30 rounded w-3/4 mb-2" />
+                  <div className="h-3 md:h-4 bg-muted/30 rounded w-1/2" />
                 </div>
               ))}
             </div>
@@ -620,7 +690,7 @@ const Discovery = () => {
             ) : (
               <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-4">
                 {filteredProducts.map((product) => (
-                  <div key={product.product_id} className="glass-card neon-border overflow-hidden group active:scale-[0.98] md:hover:scale-[1.02] transition-all duration-300">
+                  <div key={product.product_id} className="glass-card neon-border overflow-hidden group card-interactive">
                     {/* Image */}
                     <div className="relative aspect-square overflow-hidden">
                       <img
@@ -633,7 +703,7 @@ const Discovery = () => {
                         }}
                       />
                       {product.discount_percent && product.discount_percent > 30 && (
-                        <Badge className="absolute top-1 left-1 md:top-2 md:left-2 bg-destructive/90 text-[10px] md:text-xs px-1.5 md:px-2">
+                        <Badge className="absolute top-1 left-1 md:top-2 md:left-2 bg-destructive/90 text-[10px] md:text-xs px-1.5 md:px-2 shadow-glow-sm">
                           -{product.discount_percent}%
                         </Badge>
                       )}
@@ -644,7 +714,7 @@ const Discovery = () => {
                         </Badge>
                       )}
                       {(product.rating || 0) > 4.5 && (
-                        <Badge className="absolute top-1 right-1 md:top-2 md:right-2 bg-primary/90 text-[10px] md:text-xs px-1.5 md:px-2">
+                        <Badge className="absolute top-1 right-1 md:top-2 md:right-2 bg-primary/90 text-[10px] md:text-xs px-1.5 md:px-2 shadow-glow-sm">
                           <Star className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5" />
                           {(product.rating || 0).toFixed(1)}
                         </Badge>
