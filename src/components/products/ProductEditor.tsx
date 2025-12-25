@@ -4,9 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Sparkles, Save, Send, Loader2 } from "lucide-react";
+import { Sparkles, Save, Send, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+
+interface Coupon {
+  code: string;
+  amount: string;
+}
 
 interface ProductEditorProps {
   productData: FetchedProductData;
@@ -22,6 +27,37 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
   const [affiliateLink, setAffiliateLink] = useState(productData.affiliateLink || "");
   const [hebrewDescription, setHebrewDescription] = useState(productData.hebrewDescription || "");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [coupons, setCoupons] = useState<Coupon[]>([{ code: "", amount: "" }]);
+
+  const addCoupon = () => {
+    setCoupons([...coupons, { code: "", amount: "" }]);
+  };
+
+  const removeCoupon = (index: number) => {
+    if (coupons.length > 1) {
+      setCoupons(coupons.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateCoupon = (index: number, field: keyof Coupon, value: string) => {
+    const updated = [...coupons];
+    updated[index][field] = value;
+    setCoupons(updated);
+  };
+
+  const buildCouponText = (): string => {
+    const validCoupons = coupons.filter(c => c.code.trim() && c.amount.trim());
+    if (validCoupons.length === 0) return "";
+    
+    const couponLines = validCoupons.map(c => 
+      `🎟️ קופון *${c.code}* נותן הנחה של *${c.amount}* דולר`
+    );
+    
+    if (validCoupons.length > 1) {
+      return `🔥 *כפל קופונים!*\n${couponLines.join("\n")}`;
+    }
+    return couponLines[0];
+  };
 
   const handleGenerateHebrew = async () => {
     setIsGenerating(true);
@@ -37,9 +73,13 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || "Failed to generate Hebrew post");
 
-      // AI generates description only, app appends the link
-      const finalDescription = `${data.hebrewDescription}\n\n👉 לרכישה: ${affiliateLink}`;
-      setHebrewDescription(finalDescription);
+      // Build final description with coupons and link
+      const couponText = buildCouponText();
+      const parts = [data.hebrewDescription];
+      if (couponText) parts.push(couponText);
+      parts.push(`👉 לרכישה: ${affiliateLink}`);
+      
+      setHebrewDescription(parts.join("\n\n"));
       toast({
         title: "Content Generated!",
         description: "AI has created your Hebrew marketing post.",
@@ -142,9 +182,53 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
                   placeholder="Your affiliate link..."
                   className="mt-1.5"
                 />
+            </div>
+
+            {/* Coupons Section */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>קופונים</Label>
+                <Button type="button" variant="ghost" size="sm" onClick={addCoupon} className="h-7 text-xs">
+                  <Plus className="h-3 w-3 mr-1" />
+                  הוסף קופון
+                </Button>
               </div>
+              {coupons.map((coupon, index) => (
+                <div key={index} className="flex gap-2 items-center">
+                  <Input
+                    placeholder="קוד קופון"
+                    value={coupon.code}
+                    onChange={(e) => updateCoupon(index, "code", e.target.value)}
+                    className="flex-1"
+                    dir="ltr"
+                  />
+                  <Input
+                    type="number"
+                    placeholder="סכום ($)"
+                    value={coupon.amount}
+                    onChange={(e) => updateCoupon(index, "amount", e.target.value)}
+                    className="w-24"
+                    dir="ltr"
+                  />
+                  {coupons.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeCoupon(index)}
+                      className="h-9 w-9 text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              {coupons.filter(c => c.code && c.amount).length > 1 && (
+                <p className="text-xs text-primary font-medium">🔥 כפל קופונים יופיע בפוסט!</p>
+              )}
             </div>
           </div>
+        </div>
         </div>
 
         <div className="space-y-4">
