@@ -6,19 +6,19 @@
 
 @layer base {
   :root {
-    /* Cyberpunk / Modern SaaS Dark Theme */
-    --background: 222 84% 5%;
+    /* Deep Charcoal / Midnight Cyberpunk Theme */
+    --background: 222 47% 4%;
     --foreground: 0 0% 98%;
 
-    --card: 224 71% 6%;
+    --card: 222 40% 6%;
     --card-foreground: 0 0% 98%;
 
-    --popover: 224 71% 5%;
+    --popover: 222 47% 5%;
     --popover-foreground: 0 0% 98%;
 
     /* Neon Cyan Primary */
-    --primary: 190 100% 50%;
-    --primary-foreground: 222 84% 5%;
+    --primary: 188 100% 50%;
+    --primary-foreground: 222 47% 4%;
 
     /* Electric Purple/Magenta Secondary */
     --secondary: 280 100% 60%;

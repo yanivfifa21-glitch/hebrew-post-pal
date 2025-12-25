@@ -20,7 +20,9 @@ import {
   Key,
   Bot,
   Sparkles,
-  ShoppingBag
+  ShoppingBag,
+  Zap,
+  Power
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -68,6 +70,9 @@ const Settings = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   
+  // Master automation toggle
+  const [automationEnabled, setAutomationEnabled] = useState(false);
+  
   // Channel toggles
   const [telegramEnabled, setTelegramEnabled] = useState(false);
   const [whatsappEnabled, setWhatsappEnabled] = useState(false);
@@ -111,6 +116,7 @@ const Settings = () => {
 
       if (data) {
         setSettingsId(data.id);
+        setAutomationEnabled((data as any).automation_enabled || false);
         setTelegramEnabled(data.telegram_enabled || false);
         setWhatsappEnabled(data.whatsapp_enabled || false);
         setPostingTimes(data.posting_times || ['10:00', '14:00', '20:00']);
@@ -142,6 +148,7 @@ const Settings = () => {
     setIsSaving(true);
     try {
       const updateData = {
+        automation_enabled: automationEnabled,
         telegram_enabled: telegramEnabled,
         whatsapp_enabled: whatsappEnabled,
         posting_times: postingTimes,
@@ -382,48 +389,94 @@ const Settings = () => {
           </CardContent>
         </Card>
 
-        {/* Posting Schedule */}
-        <Card>
+        {/* Posting Schedule with Master Switch */}
+        <Card className="relative overflow-hidden">
+          {automationEnabled && (
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-secondary to-primary animate-pulse" />
+          )}
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5 text-primary" />
+              <div className={`p-2 rounded-lg transition-all duration-300 ${automationEnabled ? 'bg-primary/30 shadow-[0_0_20px_rgba(var(--primary),0.5)]' : 'bg-muted'}`}>
+                <Power className={`h-5 w-5 transition-colors ${automationEnabled ? 'text-primary' : 'text-muted-foreground'}`} />
+              </div>
               Posting Schedule
+              {automationEnabled && (
+                <Badge className="bg-primary/20 text-primary border border-primary/30 animate-pulse">
+                  <Zap className="h-3 w-3 mr-1" />
+                  ACTIVE
+                </Badge>
+              )}
             </CardTitle>
             <CardDescription>
-              Define your daily posting windows
+              Define your daily posting windows and enable automation
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              {postingTimes.map((time) => (
-                <Badge
-                  key={time}
-                  variant="outline"
-                  className="px-3 py-1.5 text-sm border-primary/30 text-primary"
-                >
-                  {time}
-                  <button
-                    onClick={() => removePostingTime(time)}
-                    className="ml-2 hover:text-destructive transition-colors"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              ))}
+          <CardContent className="space-y-6">
+            {/* Master Automation Switch */}
+            <div className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all duration-300 ${
+              automationEnabled 
+                ? 'bg-primary/10 border-primary/50 shadow-[0_0_30px_rgba(var(--primary),0.2)]' 
+                : 'bg-muted/30 border-border'
+            }`}>
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${automationEnabled ? 'bg-primary/20' : 'bg-muted'}`}>
+                  <Zap className={`h-5 w-5 ${automationEnabled ? 'text-primary animate-pulse' : 'text-muted-foreground'}`} />
+                </div>
+                <div>
+                  <p className="font-semibold text-foreground">Master Automation</p>
+                  <p className="text-sm text-muted-foreground">
+                    {automationEnabled 
+                      ? "Auto-posting is ON - posts will be sent at scheduled times" 
+                      : "Turn ON to automatically post from queue"}
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={automationEnabled}
+                onCheckedChange={setAutomationEnabled}
+                className={automationEnabled ? 'data-[state=checked]:bg-primary shadow-[0_0_10px_rgba(var(--primary),0.5)]' : ''}
+              />
             </div>
 
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <Input
-                  type="time"
-                  value={newTime}
-                  onChange={(e) => setNewTime(e.target.value)}
-                />
+            {/* Posting Times */}
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">Posting Times</Label>
+              <div className="flex flex-wrap gap-2">
+                {postingTimes.map((time) => (
+                  <Badge
+                    key={time}
+                    variant="outline"
+                    className={`px-3 py-1.5 text-sm transition-all ${
+                      automationEnabled 
+                        ? 'border-primary/50 text-primary bg-primary/10' 
+                        : 'border-border text-muted-foreground'
+                    }`}
+                  >
+                    <Clock className="h-3 w-3 mr-1" />
+                    {time}
+                    <button
+                      onClick={() => removePostingTime(time)}
+                      className="ml-2 hover:text-destructive transition-colors"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
               </div>
-              <Button onClick={addPostingTime} variant="outline">
-                <Plus className="h-4 w-4 mr-1" />
-                Add
-              </Button>
+
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <Input
+                    type="time"
+                    value={newTime}
+                    onChange={(e) => setNewTime(e.target.value)}
+                  />
+                </div>
+                <Button onClick={addPostingTime} variant="outline">
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
