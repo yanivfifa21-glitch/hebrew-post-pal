@@ -6,15 +6,63 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Israel timezone offset (IST = UTC+2, IDT = UTC+3)
+function getIsraelTime(): Date {
+  const now = new Date();
+  // Israel is UTC+2 in winter, UTC+3 in summer (DST)
+  // Check if DST is active (roughly March-October)
+  const month = now.getUTCMonth();
+  const isDST = month >= 2 && month <= 9; // March (2) to October (9)
+  const offsetHours = isDST ? 3 : 2;
+  
+  return new Date(now.getTime() + offsetHours * 60 * 60 * 1000);
+}
+
+function formatTime(date: Date): string {
+  return `${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}`;
+}
+
+interface LogEntry {
+  user_id: string;
+  run_id: string;
+  level: 'info' | 'warn' | 'error';
+  message: string;
+  context?: Record<string, unknown>;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  const runId = crypto.randomUUID();
+  const logs: LogEntry[] = [];
+  
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    console.log("[auto-post] Starting automation check...");
+  const addLog = (userId: string, level: LogEntry['level'], message: string, context?: Record<string, unknown>) => {
+    const logEntry: LogEntry = { user_id: userId, run_id: runId, level, message, context };
+    logs.push(logEntry);
+    console.log(`[auto-post][${level}] ${message}`, context ? JSON.stringify(context) : '');
+  };
+
+  const saveLogs = async () => {
+    if (logs.length === 0) return;
+    try {
+      await supabase.from("automation_logs").insert(logs);
+    } catch (e) {
+      console.error("[auto-post] Failed to save logs:", e);
+    }
+  };
+
+  try {
+    const israelTime = getIsraelTime();
+    const currentTimeStr = formatTime(israelTime);
+    const currentHour = israelTime.getUTCHours();
+    const currentMinute = israelTime.getUTCMinutes();
+    const currentTotalMinutes = currentHour * 60 + currentMinute;
+
+    console.log(`[auto-post] Starting automation check at Israel time: ${currentTimeStr}`);
 
     // Get all users with automation enabled
     const { data: settings, error: settingsErr } = await supabase
@@ -31,36 +79,39 @@ serve(async (req) => {
 
     if (!settings || settings.length === 0) {
       console.log("[auto-post] No users with automation enabled");
-      return new Response(JSON.stringify({ success: true, message: "No automation enabled" }), {
+      return new Response(JSON.stringify({ success: true, message: "No automation enabled", israelTime: currentTimeStr }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const results: any[] = [];
-    const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const results: unknown[] = [];
 
     for (const userSettings of settings) {
       const userId = userSettings.user_id;
-      const postingTimes = userSettings.posting_times || [];
+      const postingTimes: string[] = userSettings.posting_times || [];
 
-      console.log(`[auto-post] Checking user ${userId}, posting times:`, postingTimes);
+      addLog(userId, 'info', `Checking automation`, { postingTimes, currentTime: currentTimeStr });
 
-      // Check if current time matches any posting window (with 2 min tolerance)
-      const shouldPost = postingTimes.some((time: string) => {
+      // Check if current time matches any posting window (within 1 minute tolerance)
+      let matchedTime: string | null = null;
+      for (const time of postingTimes) {
         const [h, m] = time.split(':').map(Number);
-        const targetMinutes = h * 60 + m;
-        const diff = Math.abs(currentMinutes - targetMinutes);
-        return diff <= 2 || diff >= (24 * 60 - 2); // Handle midnight edge case
-      });
+        const targetTotalMinutes = h * 60 + m;
+        const diff = Math.abs(currentTotalMinutes - targetTotalMinutes);
+        // Match if within 1 minute (handles cron running at :00 or :01)
+        if (diff <= 1 || diff >= (24 * 60 - 1)) {
+          matchedTime = time;
+          break;
+        }
+      }
 
-      if (!shouldPost) {
-        console.log(`[auto-post] User ${userId}: Not posting time (current: ${now.getHours()}:${now.getMinutes()})`);
-        results.push({ userId, status: "skipped", reason: "Not posting time" });
+      if (!matchedTime) {
+        addLog(userId, 'info', `Not posting time`, { currentTime: currentTimeStr, nextTimes: postingTimes });
+        results.push({ userId, status: "skipped", reason: "Not posting time", currentTime: currentTimeStr });
         continue;
       }
 
-      console.log(`[auto-post] User ${userId}: It's posting time! Looking for queued products...`);
+      addLog(userId, 'info', `Matched posting time: ${matchedTime}`, { currentTime: currentTimeStr });
 
       // Get next queued product for this user (FIFO - oldest first)
       const { data: product, error: productErr } = await supabase
@@ -73,18 +124,18 @@ serve(async (req) => {
         .maybeSingle();
 
       if (productErr) {
-        console.error(`[auto-post] Product fetch error for user ${userId}:`, productErr);
+        addLog(userId, 'error', `Product fetch error`, { error: productErr.message });
         results.push({ userId, status: "error", error: productErr.message });
         continue;
       }
 
       if (!product) {
-        console.log(`[auto-post] User ${userId}: No queued/scheduled products found`);
+        addLog(userId, 'info', `No queued products found`);
         results.push({ userId, status: "skipped", reason: "No queued products" });
         continue;
       }
 
-      console.log(`[auto-post] User ${userId}: Found product ${product.id} - "${product.title}"`);
+      addLog(userId, 'info', `Found product to send`, { productId: product.id, title: product.title });
 
       // Get ALL active messaging accounts for this user
       const { data: accounts, error: accountsErr } = await supabase
@@ -94,192 +145,254 @@ serve(async (req) => {
         .eq("is_active", true);
 
       if (accountsErr) {
-        console.error(`[auto-post] Accounts fetch error for user ${userId}:`, accountsErr);
+        addLog(userId, 'error', `Accounts fetch error`, { error: accountsErr.message });
       }
 
-      const channels: string[] = [];
-      const errors: string[] = [];
+      // Build message content with full product data
+      const message = buildMessage(product);
+      const successChannels: string[] = [];
+      const failedChannels: string[] = [];
 
-      // Build message content
-      const message = product.hebrew_description || product.title || "New deal!";
+      // Prepare all send operations
+      const sendOperations: Promise<{ channel: string; success: boolean; error?: string }>[] = [];
 
-      // Send to all active accounts
+      // Multi-account sending
       if (accounts && accounts.length > 0) {
         for (const account of accounts) {
           if (account.account_type === "telegram" && account.telegram_bot_token && account.telegram_chat_id) {
-            try {
-              console.log(`[auto-post] Sending to Telegram account: ${account.account_name}`);
-              const telegramUrl = `https://api.telegram.org/bot${account.telegram_bot_token}/sendPhoto`;
-              
-              const telegramResp = await fetch(telegramUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  chat_id: account.telegram_chat_id,
-                  photo: product.image_url || "https://via.placeholder.com/400",
-                  caption: message.substring(0, 1024),
-                  parse_mode: "Markdown",
-                }),
-              });
-
-              if (telegramResp.ok) {
-                channels.push(`telegram:${account.account_name}`);
-                console.log(`[auto-post] Telegram sent successfully to ${account.account_name}`);
-              } else {
-                const errText = await telegramResp.text();
-                console.error(`[auto-post] Telegram error for ${account.account_name}:`, errText);
-                errors.push(`Telegram(${account.account_name}): ${errText}`);
-              }
-            } catch (e) {
-              console.error(`[auto-post] Telegram exception for ${account.account_name}:`, e);
-              errors.push(`Telegram(${account.account_name}): ${e}`);
-            }
+            sendOperations.push(
+              sendToTelegram(account.telegram_bot_token, account.telegram_chat_id, product, message)
+                .then(() => ({ channel: `telegram:${account.account_name}`, success: true }))
+                .catch((e) => ({ channel: `telegram:${account.account_name}`, success: false, error: String(e) }))
+            );
           }
 
-          if (account.account_type === "whatsapp" && account.greenapi_instance_id && account.greenapi_api_token) {
-            try {
-              console.log(`[auto-post] Sending to WhatsApp account: ${account.account_name}`);
-              
-              // Format chat ID for GreenAPI
-              let chatId = account.greenapi_chat_id || "";
-              if (chatId && !chatId.includes("@")) {
-                chatId = chatId.includes("-") ? `${chatId}@g.us` : `${chatId}@c.us`;
-              }
-
-              // Send image with caption if we have an image
-              if (product.image_url) {
-                const sendFileUrl = `https://api.green-api.com/waInstance${account.greenapi_instance_id}/sendFileByUrl/${account.greenapi_api_token}`;
-                const whatsappResp = await fetch(sendFileUrl, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    chatId: chatId,
-                    urlFile: product.image_url,
-                    fileName: "deal.jpg",
-                    caption: message,
-                  }),
-                });
-
-                if (whatsappResp.ok) {
-                  channels.push(`whatsapp:${account.account_name}`);
-                  console.log(`[auto-post] WhatsApp sent successfully to ${account.account_name}`);
-                } else {
-                  const errText = await whatsappResp.text();
-                  console.error(`[auto-post] WhatsApp error for ${account.account_name}:`, errText);
-                  errors.push(`WhatsApp(${account.account_name}): ${errText}`);
-                }
-              } else {
-                // Send text only
-                const sendMessageUrl = `https://api.green-api.com/waInstance${account.greenapi_instance_id}/sendMessage/${account.greenapi_api_token}`;
-                const whatsappResp = await fetch(sendMessageUrl, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    chatId: chatId,
-                    message: message,
-                  }),
-                });
-
-                if (whatsappResp.ok) {
-                  channels.push(`whatsapp:${account.account_name}`);
-                  console.log(`[auto-post] WhatsApp text sent successfully to ${account.account_name}`);
-                } else {
-                  const errText = await whatsappResp.text();
-                  console.error(`[auto-post] WhatsApp error for ${account.account_name}:`, errText);
-                  errors.push(`WhatsApp(${account.account_name}): ${errText}`);
-                }
-              }
-            } catch (e) {
-              console.error(`[auto-post] WhatsApp exception for ${account.account_name}:`, e);
-              errors.push(`WhatsApp(${account.account_name}): ${e}`);
-            }
-          }
-        }
-      } else {
-        console.log(`[auto-post] User ${userId}: No active messaging accounts found`);
-        
-        // Fallback to legacy single-account settings
-        if (userSettings.telegram_enabled && userSettings.telegram_bot_token && userSettings.telegram_chat_id) {
-          try {
-            const telegramUrl = `https://api.telegram.org/bot${userSettings.telegram_bot_token}/sendPhoto`;
-            const telegramResp = await fetch(telegramUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                chat_id: userSettings.telegram_chat_id,
-                photo: product.image_url || "https://via.placeholder.com/400",
-                caption: message.substring(0, 1024),
-                parse_mode: "Markdown",
-              }),
-            });
-
-            if (telegramResp.ok) {
-              channels.push("telegram");
-            } else {
-              const errText = await telegramResp.text();
-              errors.push(`Telegram: ${errText}`);
-            }
-          } catch (e) {
-            errors.push(`Telegram: ${e}`);
-          }
-        }
-
-        if (userSettings.whatsapp_enabled && userSettings.greenapi_instance_id && userSettings.greenapi_api_token) {
-          try {
-            let chatId = userSettings.greenapi_chat_id || "";
-            if (chatId && !chatId.includes("@")) {
-              chatId = chatId.includes("-") ? `${chatId}@g.us` : `${chatId}@c.us`;
-            }
-
-            const sendMessageUrl = `https://api.green-api.com/waInstance${userSettings.greenapi_instance_id}/sendMessage/${userSettings.greenapi_api_token}`;
-            const whatsappResp = await fetch(sendMessageUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                chatId: chatId,
-                message: message,
-              }),
-            });
-
-            if (whatsappResp.ok) {
-              channels.push("whatsapp");
-            } else {
-              const errText = await whatsappResp.text();
-              errors.push(`WhatsApp: ${errText}`);
-            }
-          } catch (e) {
-            errors.push(`WhatsApp: ${e}`);
+          if (account.account_type === "whatsapp" && account.greenapi_instance_id && account.greenapi_api_token && account.greenapi_chat_id) {
+            sendOperations.push(
+              sendToWhatsApp(account.greenapi_instance_id, account.greenapi_api_token, account.greenapi_chat_id, product, message)
+                .then(() => ({ channel: `whatsapp:${account.account_name}`, success: true }))
+                .catch((e) => ({ channel: `whatsapp:${account.account_name}`, success: false, error: String(e) }))
+            );
           }
         }
       }
 
-      // Update product status
-      if (channels.length > 0) {
-        console.log(`[auto-post] Updating product ${product.id} status to 'sent'`);
+      // Fallback to legacy single-account settings if no multi-accounts
+      if (sendOperations.length === 0) {
+        if (userSettings.telegram_enabled && userSettings.telegram_bot_token && userSettings.telegram_chat_id) {
+          sendOperations.push(
+            sendToTelegram(userSettings.telegram_bot_token, userSettings.telegram_chat_id, product, message)
+              .then(() => ({ channel: "telegram:legacy", success: true }))
+              .catch((e) => ({ channel: "telegram:legacy", success: false, error: String(e) }))
+          );
+        }
+
+        if (userSettings.whatsapp_enabled && userSettings.greenapi_instance_id && userSettings.greenapi_api_token && userSettings.greenapi_chat_id) {
+          sendOperations.push(
+            sendToWhatsApp(userSettings.greenapi_instance_id, userSettings.greenapi_api_token, userSettings.greenapi_chat_id, product, message)
+              .then(() => ({ channel: "whatsapp:legacy", success: true }))
+              .catch((e) => ({ channel: "whatsapp:legacy", success: false, error: String(e) }))
+          );
+        }
+      }
+
+      if (sendOperations.length === 0) {
+        addLog(userId, 'warn', `No active messaging accounts configured`);
+        results.push({ userId, status: "skipped", reason: "No active accounts" });
+        continue;
+      }
+
+      // Execute all sends in parallel using Promise.allSettled
+      const sendResults = await Promise.allSettled(sendOperations);
+
+      for (const result of sendResults) {
+        if (result.status === "fulfilled") {
+          const { channel, success, error } = result.value;
+          if (success) {
+            successChannels.push(channel);
+          } else {
+            failedChannels.push(`${channel}: ${error}`);
+          }
+        } else {
+          failedChannels.push(`Unknown: ${result.reason}`);
+        }
+      }
+
+      addLog(userId, 'info', `Send results`, { 
+        productId: product.id, 
+        successChannels, 
+        failedChannels,
+        totalAttempted: sendOperations.length 
+      });
+
+      // Update product status based on results
+      if (successChannels.length > 0) {
         await supabase
           .from("products")
-          .update({ status: "sent", channels })
+          .update({ status: "sent", channels: successChannels })
           .eq("id", product.id);
 
-        results.push({ userId, productId: product.id, status: "sent", channels });
-      } else if (errors.length > 0) {
-        console.log(`[auto-post] Product ${product.id} had send errors:`, errors);
-        results.push({ userId, productId: product.id, status: "error", errors });
+        addLog(userId, 'info', `Product marked as sent`, { productId: product.id, channels: successChannels });
+        results.push({ 
+          userId, 
+          productId: product.id, 
+          status: "sent", 
+          successChannels, 
+          failedChannels: failedChannels.length > 0 ? failedChannels : undefined 
+        });
       } else {
-        console.log(`[auto-post] User ${userId}: No channels configured`);
-        results.push({ userId, status: "skipped", reason: "No channels enabled" });
+        addLog(userId, 'error', `All channels failed`, { productId: product.id, errors: failedChannels });
+        results.push({ userId, productId: product.id, status: "all_failed", errors: failedChannels });
       }
     }
 
+    // Save all logs to database
+    await saveLogs();
+
     console.log("[auto-post] Final results:", JSON.stringify(results, null, 2));
-    return new Response(JSON.stringify({ success: true, results, timestamp: now.toISOString() }), {
+    return new Response(JSON.stringify({ 
+      success: true, 
+      results, 
+      israelTime: currentTimeStr,
+      runId 
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
     console.error("[auto-post] Error:", e);
+    await saveLogs();
     return new Response(JSON.stringify({ success: false, error: e instanceof Error ? e.message : "Unknown error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
+
+// Build a rich message from product data
+function buildMessage(product: Record<string, unknown>): string {
+  const parts: string[] = [];
+  
+  // Title
+  if (product.title) {
+    parts.push(`🔥 *${product.title}*`);
+  }
+  
+  // Hebrew description (main content)
+  if (product.hebrew_description) {
+    parts.push(String(product.hebrew_description));
+  }
+  
+  // Price
+  if (product.price) {
+    parts.push(`💰 מחיר: $${product.price}`);
+  }
+  
+  // Rating
+  if (product.rating && Number(product.rating) > 0) {
+    parts.push(`⭐ דירוג: ${product.rating}`);
+  }
+  
+  // Orders count
+  if (product.orders_count && Number(product.orders_count) > 0) {
+    parts.push(`📦 הזמנות: ${product.orders_count}`);
+  }
+  
+  // Affiliate link
+  if (product.affiliate_link) {
+    parts.push(`\n🔗 ${product.affiliate_link}`);
+  } else if (product.original_url) {
+    parts.push(`\n🔗 ${product.original_url}`);
+  }
+  
+  return parts.join('\n\n');
+}
+
+// Send to Telegram
+async function sendToTelegram(
+  botToken: string, 
+  chatId: string, 
+  product: Record<string, unknown>,
+  message: string
+): Promise<void> {
+  const baseUrl = `https://api.telegram.org/bot${botToken}`;
+  
+  let response: Response;
+  
+  if (product.image_url) {
+    // Send photo with caption
+    response = await fetch(`${baseUrl}/sendPhoto`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        photo: product.image_url,
+        caption: message.substring(0, 1024),
+        parse_mode: "Markdown",
+      }),
+    });
+  } else {
+    // Send text only
+    response = await fetch(`${baseUrl}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        parse_mode: "Markdown",
+      }),
+    });
+  }
+  
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Telegram API error: ${errText}`);
+  }
+}
+
+// Send to WhatsApp via GreenAPI
+async function sendToWhatsApp(
+  instanceId: string,
+  apiToken: string,
+  chatId: string,
+  product: Record<string, unknown>,
+  message: string
+): Promise<void> {
+  // Format chat ID for GreenAPI
+  let formattedChatId = chatId;
+  if (chatId && !chatId.includes("@")) {
+    formattedChatId = chatId.includes("-") ? `${chatId}@g.us` : `${chatId}@c.us`;
+  }
+  
+  const baseUrl = `https://api.green-api.com/waInstance${instanceId}`;
+  
+  let response: Response;
+  
+  if (product.image_url) {
+    // Send file with caption
+    response = await fetch(`${baseUrl}/sendFileByUrl/${apiToken}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chatId: formattedChatId,
+        urlFile: product.image_url,
+        fileName: "deal.jpg",
+        caption: message,
+      }),
+    });
+  } else {
+    // Send text only
+    response = await fetch(`${baseUrl}/sendMessage/${apiToken}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chatId: formattedChatId,
+        message: message,
+      }),
+    });
+  }
+  
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`WhatsApp API error: ${errText}`);
+  }
+}
