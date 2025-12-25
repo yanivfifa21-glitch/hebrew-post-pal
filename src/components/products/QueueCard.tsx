@@ -3,7 +3,7 @@ import { Product } from "@/types/product";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Rocket, Trash2, Loader2, ExternalLink, Star, ShoppingCart, Copy, Check } from "lucide-react";
+import { Rocket, Trash2, Loader2, ExternalLink, Star, ShoppingCart, Copy, Check, ArrowRightLeft } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
@@ -11,13 +11,15 @@ interface QueueCardProps {
   product: Product;
   onSent: (productId: string) => void;
   onDeleted: (productId: string) => void;
+  onStatusChanged?: (productId: string, newStatus: string) => void;
 }
 
-export const QueueCard = ({ product, onSent, onDeleted }: QueueCardProps) => {
+export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged }: QueueCardProps) => {
   const [hebrewDescription, setHebrewDescription] = useState(product.hebrew_description || "");
   const [isSending, setIsSending] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+  const [isChangingStatus, setIsChangingStatus] = useState(false);
 
   const handleCopyToClipboard = async () => {
     try {
@@ -123,6 +125,28 @@ export const QueueCard = ({ product, onSent, onDeleted }: QueueCardProps) => {
       toast({ title: "Failed to delete", variant: "destructive" });
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleToggleStatus = async () => {
+    setIsChangingStatus(true);
+    const newStatus = product.status === 'queued' ? 'scheduled' : 'queued';
+    try {
+      const { error } = await supabase
+        .from("products")
+        .update({ status: newStatus })
+        .eq("id", product.id);
+      if (error) throw error;
+
+      toast({ 
+        title: "Status Changed", 
+        description: `Moved to ${newStatus === 'scheduled' ? 'Scheduled' : 'Queued'}` 
+      });
+      onStatusChanged?.(product.id, newStatus);
+    } catch {
+      toast({ title: "Failed to change status", variant: "destructive" });
+    } finally {
+      setIsChangingStatus(false);
     }
   };
 
@@ -236,7 +260,7 @@ export const QueueCard = ({ product, onSent, onDeleted }: QueueCardProps) => {
               variant="success"
               className="flex-1 btn-glow-success"
               onClick={handleSendNow}
-              disabled={isSending || isDeleting}
+              disabled={isSending || isDeleting || isChangingStatus}
             >
               {isSending ? (
                 <>
@@ -250,11 +274,27 @@ export const QueueCard = ({ product, onSent, onDeleted }: QueueCardProps) => {
                 </>
               )}
             </Button>
+            {(product.status === 'queued' || product.status === 'scheduled') && (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleToggleStatus}
+                disabled={isSending || isDeleting || isChangingStatus}
+                className="flex-shrink-0 border-primary/50 hover:bg-primary/10"
+                title={product.status === 'queued' ? 'Move to Scheduled' : 'Move to Queued'}
+              >
+                {isChangingStatus ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ArrowRightLeft className="h-4 w-4" />
+                )}
+              </Button>
+            )}
             <Button
               variant="ghost-destructive"
               size="icon"
               onClick={handleDelete}
-              disabled={isSending || isDeleting}
+              disabled={isSending || isDeleting || isChangingStatus}
               className="flex-shrink-0"
             >
               {isDeleting ? (

@@ -43,6 +43,12 @@ const Queue = () => {
     setProducts((prev) => prev.filter((p) => p.id !== productId));
   };
 
+  const handleStatusChanged = (productId: string, newStatus: string) => {
+    setProducts((prev) => 
+      prev.map((p) => p.id === productId ? { ...p, status: newStatus as Product['status'] } : p)
+    );
+  };
+
   const queuedProducts = products.filter((p) => p.status === "queued");
   const scheduledProducts = products.filter((p) => p.status === "scheduled");
   const draftProducts = products.filter((p) => p.status === "draft");
@@ -69,6 +75,7 @@ const Queue = () => {
               product={product}
               onSent={handleProductSent}
               onDeleted={handleProductDeleted}
+              onStatusChanged={handleStatusChanged}
             />
           </div>
         ))}
