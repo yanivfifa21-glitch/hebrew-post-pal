@@ -6,81 +6,84 @@
 
 @layer base {
   :root {
-    /* Enterprise Dark Theme - Linear/Vercel inspired */
-    --background: 222 47% 5%;
-    --foreground: 210 40% 98%;
+    /* Cyberpunk / Modern SaaS Dark Theme */
+    --background: 222 84% 5%;
+    --foreground: 0 0% 98%;
 
-    --card: 222 47% 7%;
-    --card-foreground: 210 40% 98%;
+    --card: 224 71% 6%;
+    --card-foreground: 0 0% 98%;
 
-    --popover: 222 47% 6%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 224 71% 5%;
+    --popover-foreground: 0 0% 98%;
 
-    /* Electric Blue Primary */
-    --primary: 217 91% 60%;
-    --primary-foreground: 222 47% 5%;
+    /* Neon Cyan Primary */
+    --primary: 190 100% 50%;
+    --primary-foreground: 222 84% 5%;
 
-    /* Vibrant Purple Secondary */
-    --secondary: 262 83% 58%;
-    --secondary-foreground: 210 40% 98%;
+    /* Electric Purple/Magenta Secondary */
+    --secondary: 280 100% 60%;
+    --secondary-foreground: 0 0% 98%;
 
-    --muted: 222 47% 11%;
-    --muted-foreground: 215 20% 55%;
+    --muted: 220 50% 12%;
+    --muted-foreground: 220 20% 55%;
 
-    --accent: 262 83% 58%;
-    --accent-foreground: 210 40% 98%;
+    /* Hot Pink Accent */
+    --accent: 320 100% 60%;
+    --accent-foreground: 0 0% 98%;
 
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 85% 60%;
+    --destructive-foreground: 0 0% 98%;
 
-    /* Emerald Green Success */
-    --success: 160 84% 39%;
-    --success-foreground: 222 47% 5%;
+    /* Neon Green Success */
+    --success: 150 100% 45%;
+    --success-foreground: 222 84% 5%;
 
-    --warning: 38 92% 50%;
-    --warning-foreground: 222 47% 5%;
+    --warning: 45 100% 55%;
+    --warning-foreground: 222 84% 5%;
 
-    --border: 222 47% 14%;
-    --input: 222 47% 11%;
-    --ring: 217 91% 60%;
+    --border: 220 50% 15%;
+    --input: 220 50% 10%;
+    --ring: 190 100% 50%;
 
     --radius: 0.875rem;
 
     /* Sidebar */
-    --sidebar-background: 222 47% 6%;
-    --sidebar-foreground: 215 20% 65%;
-    --sidebar-primary: 217 91% 60%;
-    --sidebar-primary-foreground: 222 47% 5%;
-    --sidebar-accent: 222 47% 11%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 222 47% 12%;
-    --sidebar-ring: 217 91% 60%;
+    --sidebar-background: 224 71% 4%;
+    --sidebar-foreground: 220 20% 65%;
+    --sidebar-primary: 190 100% 50%;
+    --sidebar-primary-foreground: 222 84% 5%;
+    --sidebar-accent: 220 50% 12%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 220 50% 12%;
+    --sidebar-ring: 190 100% 50%;
 
-    /* Enhanced Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(217 91% 60%) 0%, hsl(262 83% 58%) 100%);
-    --gradient-success: linear-gradient(135deg, hsl(160 84% 39%) 0%, hsl(160 70% 50%) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(217 91% 60%) 0%, hsl(262 83% 58%) 50%, hsl(320 80% 55%) 100%);
-    --gradient-card: linear-gradient(145deg, hsl(222 47% 9%) 0%, hsl(222 47% 6%) 100%);
-    --gradient-glow: radial-gradient(circle at center, hsl(217 91% 60% / 0.12) 0%, transparent 70%);
+    /* Cyberpunk Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(190 100% 50%) 0%, hsl(280 100% 60%) 100%);
+    --gradient-success: linear-gradient(135deg, hsl(150 100% 45%) 0%, hsl(180 100% 50%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(190 100% 50%) 0%, hsl(280 100% 60%) 50%, hsl(320 100% 60%) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(224 71% 8%) 0%, hsl(224 71% 4%) 100%);
+    --gradient-glow: radial-gradient(circle at center, hsl(190 100% 50% / 0.15) 0%, transparent 70%);
     --gradient-mesh: 
-      radial-gradient(at 40% 20%, hsl(217 91% 60% / 0.08) 0px, transparent 50%),
-      radial-gradient(at 80% 80%, hsl(262 83% 58% / 0.06) 0px, transparent 50%),
-      radial-gradient(at 10% 80%, hsl(160 84% 39% / 0.04) 0px, transparent 50%);
+      radial-gradient(at 0% 0%, hsl(190 100% 50% / 0.08) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, hsl(280 100% 60% / 0.06) 0px, transparent 50%),
+      radial-gradient(at 80% 100%, hsl(320 100% 60% / 0.05) 0px, transparent 50%),
+      radial-gradient(at 0% 100%, hsl(150 100% 45% / 0.04) 0px, transparent 50%);
 
-    /* Glass Effects */
-    --glass-background: hsl(222 47% 7% / 0.7);
-    --glass-border: hsl(222 47% 20% / 0.3);
+    /* Glass Effects - Enhanced */
+    --glass-background: hsl(224 71% 6% / 0.75);
+    --glass-border: hsl(190 100% 50% / 0.15);
     --glass-highlight: hsl(0 0% 100% / 0.05);
 
-    /* Subtle Glows */
-    --glow-primary: 0 0 30px hsl(217 91% 60% / 0.25), 0 0 60px hsl(217 91% 60% / 0.15);
-    --glow-success: 0 0 30px hsl(160 84% 39% / 0.25), 0 0 60px hsl(160 84% 39% / 0.15);
-    --glow-secondary: 0 0 30px hsl(262 83% 58% / 0.25), 0 0 60px hsl(262 83% 58% / 0.15);
+    /* Neon Glows */
+    --glow-primary: 0 0 20px hsl(190 100% 50% / 0.4), 0 0 40px hsl(190 100% 50% / 0.2), 0 0 60px hsl(190 100% 50% / 0.1);
+    --glow-success: 0 0 20px hsl(150 100% 45% / 0.4), 0 0 40px hsl(150 100% 45% / 0.2);
+    --glow-secondary: 0 0 20px hsl(280 100% 60% / 0.4), 0 0 40px hsl(280 100% 60% / 0.2);
+    --glow-accent: 0 0 20px hsl(320 100% 60% / 0.4), 0 0 40px hsl(320 100% 60% / 0.2);
   }
 
   .dark {
-    --background: 222 47% 5%;
-    --foreground: 210 40% 98%;
+    --background: 222 84% 5%;
+    --foreground: 0 0% 98%;
   }
 }
 
@@ -101,7 +104,7 @@
     font-family: 'Heebo', sans-serif;
   }
 
-  /* Custom scrollbar - Sleeker */
+  /* Custom scrollbar - Cyberpunk style */
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -112,44 +115,48 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-muted-foreground/20 rounded-full;
+    @apply bg-primary/30 rounded-full;
+    border: 1px solid hsl(190 100% 50% / 0.2);
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-muted-foreground/30;
+    @apply bg-primary/50;
   }
 }
 
 @layer components {
-  /* Premium Glass Card */
+  /* Premium Glass Card - Cyberpunk */
   .glass-card {
     @apply relative overflow-hidden rounded-2xl;
     background: var(--glass-background);
-    backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(24px) saturate(180%);
     border: 1px solid var(--glass-border);
     box-shadow: 
-      0 4px 6px -1px hsl(0 0% 0% / 0.15),
-      0 10px 15px -3px hsl(0 0% 0% / 0.1),
-      inset 0 1px 0 0 var(--glass-highlight);
+      0 4px 6px -1px hsl(0 0% 0% / 0.2),
+      0 10px 20px -5px hsl(0 0% 0% / 0.15),
+      inset 0 1px 0 0 var(--glass-highlight),
+      inset 0 0 60px hsl(190 100% 50% / 0.02);
   }
 
   .glass-card::before {
     content: '';
-    @apply absolute inset-0 pointer-events-none opacity-50;
+    @apply absolute inset-0 pointer-events-none;
     background: linear-gradient(
       135deg,
-      hsl(0 0% 100% / 0.03) 0%,
-      transparent 50%,
-      hsl(0 0% 0% / 0.03) 100%
+      hsl(190 100% 50% / 0.03) 0%,
+      transparent 40%,
+      transparent 60%,
+      hsl(280 100% 60% / 0.02) 100%
     );
   }
 
-  /* Subtle border glow effect */
+  /* Neon border glow effect */
   .neon-border {
     @apply relative;
     box-shadow: 
-      0 0 0 1px hsl(217 91% 60% / 0.2),
-      0 4px 20px hsl(217 91% 60% / 0.08);
+      0 0 0 1px hsl(190 100% 50% / 0.3),
+      0 0 20px hsl(190 100% 50% / 0.1),
+      0 4px 20px hsl(0 0% 0% / 0.2);
   }
 
   .neon-border::after {
@@ -157,18 +164,18 @@
     @apply absolute inset-0 rounded-2xl pointer-events-none;
     background: linear-gradient(
       135deg, 
-      hsl(217 91% 60% / 0.08) 0%, 
-      transparent 40%,
-      transparent 60%,
-      hsl(262 83% 58% / 0.05) 100%
+      hsl(190 100% 50% / 0.1) 0%, 
+      transparent 30%,
+      transparent 70%,
+      hsl(280 100% 60% / 0.08) 100%
     );
   }
 
   /* Success border glow */
   .success-border {
     box-shadow: 
-      0 0 0 1px hsl(160 84% 39% / 0.3),
-      0 4px 20px hsl(160 84% 39% / 0.1);
+      0 0 0 1px hsl(150 100% 45% / 0.4),
+      0 0 20px hsl(150 100% 45% / 0.15);
   }
 
   /* Text Effects */
@@ -182,30 +189,34 @@
     background-image: var(--gradient-accent);
   }
 
-  /* Status Badges - Enhanced */
+  /* Status Badges - Cyberpunk */
   .status-pending {
-    @apply bg-warning/15 text-warning border-warning/25 backdrop-blur-sm;
+    @apply bg-warning/20 text-warning border border-warning/30 backdrop-blur-sm;
+    box-shadow: 0 0 10px hsl(45 100% 55% / 0.15);
   }
 
   .status-scheduled {
-    @apply bg-primary/15 text-primary border-primary/25 backdrop-blur-sm;
+    @apply bg-primary/20 text-primary border border-primary/30 backdrop-blur-sm;
+    box-shadow: 0 0 10px hsl(190 100% 50% / 0.15);
   }
 
   .status-sent {
-    @apply bg-success/15 text-success border-success/25 backdrop-blur-sm;
+    @apply bg-success/20 text-success border border-success/30 backdrop-blur-sm;
+    box-shadow: 0 0 10px hsl(150 100% 45% / 0.15);
   }
 
   .status-draft {
-    @apply bg-muted/80 text-muted-foreground border-muted-foreground/20 backdrop-blur-sm;
+    @apply bg-muted/60 text-muted-foreground border border-muted-foreground/20 backdrop-blur-sm;
   }
 
   .status-queued {
-    @apply bg-secondary/15 text-secondary border-secondary/25 backdrop-blur-sm;
+    @apply bg-secondary/20 text-secondary border border-secondary/30 backdrop-blur-sm;
+    box-shadow: 0 0 10px hsl(280 100% 60% / 0.15);
   }
 
-  /* Skeleton Loader */
+  /* Skeleton Loader - Cyberpunk */
   .skeleton-loader {
-    @apply relative overflow-hidden bg-muted/50 rounded-lg;
+    @apply relative overflow-hidden bg-muted/40 rounded-lg;
   }
 
   .skeleton-loader::after {
@@ -214,13 +225,13 @@
     background: linear-gradient(
       90deg,
       transparent 0%,
-      hsl(217 91% 60% / 0.08) 50%,
+      hsl(190 100% 50% / 0.1) 50%,
       transparent 100%
     );
     animation: skeleton-shimmer 1.5s ease-in-out infinite;
   }
 
-  /* Interactive Card Hover */
+  /* Interactive Card Hover - Cyberpunk */
   .card-interactive {
     @apply transition-all duration-300;
   }
@@ -228,9 +239,9 @@
   .card-interactive:hover {
     @apply -translate-y-1;
     box-shadow: 
-      0 0 0 1px hsl(217 91% 60% / 0.25),
-      0 10px 40px -10px hsl(0 0% 0% / 0.4),
-      0 4px 20px hsl(217 91% 60% / 0.1);
+      0 0 0 1px hsl(190 100% 50% / 0.4),
+      0 10px 40px -10px hsl(0 0% 0% / 0.5),
+      0 0 30px hsl(190 100% 50% / 0.15);
   }
 
   /* Button Glow Effects */
@@ -251,11 +262,18 @@
     content: '';
     @apply absolute -inset-1 rounded-3xl opacity-0 transition-opacity duration-300;
     background: var(--gradient-primary);
-    filter: blur(15px);
+    filter: blur(20px);
   }
 
   .stat-glow:hover::before {
-    @apply opacity-20;
+    @apply opacity-30;
+  }
+
+  /* Neon Input Focus */
+  .neon-input:focus-within {
+    box-shadow: 
+      0 0 0 2px hsl(190 100% 50% / 0.3),
+      0 0 20px hsl(190 100% 50% / 0.15);
   }
 }
 
@@ -272,7 +290,7 @@
 @keyframes fade-in-up {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(16px);
   }
   to {
     opacity: 1;
@@ -303,7 +321,7 @@
 @keyframes slide-in-right {
   from {
     opacity: 0;
-    transform: translateX(-12px);
+    transform: translateX(-16px);
   }
   to {
     opacity: 1;
@@ -316,7 +334,7 @@
     opacity: 1;
   }
   50% {
-    opacity: 0.6;
+    opacity: 0.5;
   }
 }
 
@@ -325,21 +343,39 @@
     transform: translateY(0);
   }
   50% {
-    transform: translateY(-8px);
+    transform: translateY(-10px);
   }
 }
 
 @keyframes glow-pulse {
   0%, 100% {
-    box-shadow: 0 0 10px hsl(217 91% 60% / 0.3);
+    box-shadow: 0 0 10px hsl(190 100% 50% / 0.3), 0 0 20px hsl(190 100% 50% / 0.1);
   }
   50% {
-    box-shadow: 0 0 25px hsl(217 91% 60% / 0.5);
+    box-shadow: 0 0 20px hsl(190 100% 50% / 0.5), 0 0 40px hsl(190 100% 50% / 0.2);
+  }
+}
+
+@keyframes neon-flicker {
+  0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% {
+    opacity: 1;
+  }
+  20%, 24%, 55% {
+    opacity: 0.8;
+  }
+}
+
+@keyframes cyber-scan {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100%);
   }
 }
 
 .animate-fade-in-up {
-  animation: fade-in-up 0.4s ease-out forwards;
+  animation: fade-in-up 0.5s ease-out forwards;
 }
 
 .animate-fade-in {
@@ -364,6 +400,10 @@
 
 .animate-glow-pulse {
   animation: glow-pulse 2s ease-in-out infinite;
+}
+
+.animate-neon-flicker {
+  animation: neon-flicker 3s infinite;
 }
 
 /* Staggered animations */
@@ -400,7 +440,7 @@
   }
 }
 
-/* Focus ring */
+/* Focus ring - Cyberpunk */
 .focus-ring {
   @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background;
 }
