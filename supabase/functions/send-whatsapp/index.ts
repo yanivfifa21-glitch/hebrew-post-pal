@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,38 +12,61 @@ interface WhatsAppRequest {
   price: number;
   imageUrl: string | null;
   affiliateLink: string | null;
+  userId: string;
 }
 
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { title, hebrewDescription, price, imageUrl, affiliateLink }: WhatsAppRequest = await req.json();
+    const { title, hebrewDescription, price, imageUrl, affiliateLink, userId }: WhatsAppRequest = await req.json();
 
-    const instanceId = Deno.env.get("GREENAPI_INSTANCE_ID");
-    const apiToken = Deno.env.get("GREENAPI_API_TOKEN");
-    let chatId = Deno.env.get("GREENAPI_CHAT_ID");
-
-    if (!instanceId || !apiToken || !chatId) {
-      console.error("Missing GreenAPI credentials");
+    if (!userId) {
+      console.error("[send-whatsapp] Missing userId");
       return new Response(
-        JSON.stringify({ success: false, error: "GreenAPI credentials not configured" }),
+        JSON.stringify({ success: false, error: "User ID is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Create Supabase client with service role to fetch user credentials
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Fetch user's credentials from app_settings
+    const { data: settings, error: settingsError } = await supabase
+      .from("app_settings")
+      .select("greenapi_instance_id, greenapi_api_token, greenapi_chat_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (settingsError) {
+      console.error("[send-whatsapp] Error fetching settings:", settingsError);
+      return new Response(
+        JSON.stringify({ success: false, error: "Failed to fetch user settings" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    const instanceId = settings?.greenapi_instance_id?.trim();
+    const apiToken = settings?.greenapi_api_token?.trim();
+    let chatId = settings?.greenapi_chat_id?.trim();
+
+    if (!instanceId || !apiToken || !chatId) {
+      console.error("[send-whatsapp] Missing user credentials");
+      return new Response(
+        JSON.stringify({ success: false, error: "Please configure your WhatsApp (GreenAPI) credentials in Settings" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Format chat ID correctly for GreenAPI
-    // Strip +, spaces, and any whitespace
     chatId = chatId.replace(/[\s+\-]/g, '').trim();
     
-    // If already has suffix, use as-is
     if (!chatId.includes('@')) {
-      // Group IDs from GreenAPI typically have format like 120363...@g.us
-      // Personal chats use phone number + @c.us
-      // If it's a long number (>12 digits) or starts with 120, it's likely a group
       if (chatId.length > 15 || chatId.startsWith('120')) {
         chatId = chatId + '@g.us';
       } else {
@@ -50,15 +74,12 @@ serve(async (req) => {
       }
     }
     
-    console.log("[send-whatsapp] Original chatId from env, formatted to:", chatId);
-    
-    console.log("Formatted chatId:", chatId);
+    console.log("[send-whatsapp] Formatted chatId:", chatId);
 
-    // Use hebrewDescription as-is (it already contains the affiliate link)
     const message = hebrewDescription;
 
-    console.log("Sending WhatsApp message to:", chatId);
-    console.log("Message preview:", message.substring(0, 100) + "...");
+    console.log("[send-whatsapp] Sending to:", chatId);
+    console.log("[send-whatsapp] Message preview:", message.substring(0, 100) + "...");
 
     // If there's an image, send image with caption
     if (imageUrl) {
@@ -77,7 +98,7 @@ serve(async (req) => {
       );
 
       const imageResult = await imageResponse.json();
-      console.log("GreenAPI image response:", imageResult);
+      console.log("[send-whatsapp] GreenAPI image response:", imageResult);
 
       if (imageResult.idMessage) {
         return new Response(
@@ -88,7 +109,6 @@ serve(async (req) => {
         throw new Error(imageResult.message || "Failed to send image");
       }
     } else {
-      // Send text only
       const textResponse = await fetch(
         `https://api.greenapi.com/waInstance${instanceId}/sendMessage/${apiToken}`,
         {
@@ -102,7 +122,7 @@ serve(async (req) => {
       );
 
       const textResult = await textResponse.json();
-      console.log("GreenAPI text response:", textResult);
+      console.log("[send-whatsapp] GreenAPI text response:", textResult);
 
       if (textResult.idMessage) {
         return new Response(
@@ -114,7 +134,7 @@ serve(async (req) => {
       }
     }
   } catch (error: unknown) {
-    console.error("Error sending WhatsApp:", error);
+    console.error("[send-whatsapp] Error:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),

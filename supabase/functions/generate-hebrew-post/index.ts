@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,11 +9,26 @@ const corsHeaders = {
 type ApiOk = { success: true; hebrewDescription: string };
 type ApiErr = { success: false; error: string; code?: string };
 
+const DEFAULT_SYSTEM_PROMPT = `אתה משווק שותפים ישראלי מקצועי. כתוב פוסט לערוץ דילים בעברית לפי המבנה הבא בדיוק:
+
+מבנה חובה:
+1. שורת כותרת: [אימוג'י מתאים] *[שם המוצר] – [תכונה עיקרית]* (הדגש עם כוכביות)
+2. תיאור קצר: 1-2 משפטים בטון טבעי ופשוט שמסבירים מה זה ולמה זה דיל טוב
+3. שורת הוכחה חברתית: ⭐ מעל *[הזמנות] הזמנות* | דירוג *[ציון]* (רק אם יש מידע)
+4. יתרונות: 2 נקודות קצרות עם אימוג'ים רלוונטיים (⚡ למהירות, 🔋 לסוללה, 🛡️ לעמידות וכו')
+
+כללים קריטיים:
+- אסור לציין מחיר בשום צורה (לא בדולרים ולא בשקלים)
+- אסור להוסיף קישור או "לחץ כאן" או "להזמנה" - האפליקציה תוסיף את זה
+- אסור להשתמש בביטויים כמו: "שובר שיאים", "כובש מסלולים", "משנה את כללי המשחק", "הרפתקה", "חלום"
+- השתמש בשפה ישירה, פשוטה ומועילה
+- השתמש בכוכביות (*) להדגשה כמו בדוגמה`;
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { title, ordersCount, rating } = await req.json();
+    const { title, ordersCount, rating, userId } = await req.json();
     const t = String(title || "").trim();
     const orders = Number(ordersCount) || 0;
     const rate = Number(rating) || 0;
@@ -26,6 +42,26 @@ serve(async (req) => {
     if (!LOVABLE_API_KEY) {
       const payload: ApiErr = { success: false, error: "AI is not configured" };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Fetch user's custom prompt if userId provided
+    let systemPrompt = DEFAULT_SYSTEM_PROMPT;
+    
+    if (userId) {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+      const { data: settings } = await supabase
+        .from("app_settings")
+        .select("custom_ai_prompt")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (settings?.custom_ai_prompt?.trim()) {
+        systemPrompt = settings.custom_ai_prompt.trim();
+        console.log("[generate-hebrew-post] Using custom prompt for user:", userId);
+      }
     }
 
     // Build social proof context
@@ -43,26 +79,11 @@ serve(async (req) => {
       socialProofText = parts.join(" | ");
     }
 
-    const systemPrompt = `אתה משווק שותפים ישראלי מקצועי. כתוב פוסט לערוץ דילים בעברית לפי המבנה הבא בדיוק:
-
-מבנה חובה:
-1. שורת כותרת: [אימוג'י מתאים] *[שם המוצר] – [תכונה עיקרית]* (הדגש עם כוכביות)
-2. תיאור קצר: 1-2 משפטים בטון טבעי ופשוט שמסבירים מה זה ולמה זה דיל טוב
-3. שורת הוכחה חברתית: ⭐ מעל *[הזמנות] הזמנות* | דירוג *[ציון]* (רק אם יש מידע)
-4. יתרונות: 2 נקודות קצרות עם אימוג'ים רלוונטיים (⚡ למהירות, 🔋 לסוללה, 🛡️ לעמידות וכו')
-
-כללים קריטיים:
-- אסור לציין מחיר בשום צורה (לא בדולרים ולא בשקלים)
-- אסור להוסיף קישור או "לחץ כאן" או "להזמנה" - האפליקציה תוסיף את זה
-- אסור להשתמש בביטויים כמו: "שובר שיאים", "כובש מסלולים", "משנה את כללי המשחק", "הרפתקה", "חלום"
-- השתמש בשפה ישירה, פשוטה ומועילה
-- השתמש בכוכביות (*) להדגשה כמו בדוגמה`;
-
     const userPrompt = `מוצר: ${t}${socialProofText ? `\n${socialProofText}` : ""}
 
 כתוב פוסט לערוץ דילים לפי המבנה. בלי מחיר ובלי קישור.`;
 
-    console.log("[generate-hebrew-post] Generating description only, no link");
+    console.log("[generate-hebrew-post] Generating description, userId:", userId || "none");
 
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",

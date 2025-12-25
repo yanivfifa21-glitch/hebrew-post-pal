@@ -103,12 +103,16 @@ const AddProduct = () => {
       };
       const cleanUrl = metaResp.cleanUrl as string;
 
+      // Get current user for RLS
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
       // 2) Generate affiliate link
       setFetchStatus("Generating affiliate link...");
       setDebugInfo((d) => (d ? { ...d, step: "affiliate" } : d));
 
       const { data: affResp, error: affErr } = await supabase.functions.invoke("generate-affiliate-link", {
-        body: { productUrl: cleanUrl || inputUrl },
+        body: { productUrl: cleanUrl || inputUrl, userId: user.id },
       });
 
       setDebugInfo((d) => (d ? { ...d, step: "affiliate:response", affiliate: affResp ?? null } : d));
@@ -124,7 +128,7 @@ const AddProduct = () => {
         });
       }
 
-      // 3) Generate Hebrew post (AI) - pass social proof data
+      // 3) Generate Hebrew post (AI) - pass social proof data and userId
       setFetchStatus("Writing Hebrew description...");
       setDebugInfo((d) => (d ? { ...d, step: "hebrew" } : d));
 
@@ -133,6 +137,7 @@ const AddProduct = () => {
           title: meta.title, 
           ordersCount: meta.orders_count,
           rating: meta.rating,
+          userId: user.id,
         },
       });
 
@@ -162,10 +167,6 @@ const AddProduct = () => {
       if (normalizedRating > 5) {
         normalizedRating = normalizedRating / 20; // Convert 0-100 to 0-5
       }
-
-      // Get current user for RLS
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
 
       const { data: draftRow, error: draftErr } = await supabase
         .from("products")
@@ -298,10 +299,13 @@ const AddProduct = () => {
   const handlePostNow = async (product: Omit<Product, "id" | "created_at" | "updated_at">) => {
     setIsSaving(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
       const { data: settings, error: settingsErr } = await supabase
         .from("app_settings")
         .select("*")
-        .limit(1)
+        .eq("user_id", user.id)
         .maybeSingle();
 
       if (settingsErr) throw settingsErr;
@@ -316,6 +320,7 @@ const AddProduct = () => {
             price: product.price,
             imageUrl: product.image_url,
             affiliateLink: product.affiliate_link,
+            userId: user.id,
           },
         });
 
@@ -333,6 +338,7 @@ const AddProduct = () => {
             price: product.price,
             imageUrl: product.image_url,
             affiliateLink: product.affiliate_link,
+            userId: user.id,
           },
         });
 

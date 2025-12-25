@@ -16,27 +16,54 @@ export type Database = {
     Tables: {
       app_settings: {
         Row: {
+          aliexpress_app_key: string | null
+          aliexpress_app_secret: string | null
+          aliexpress_tracking_id: string | null
           created_at: string
+          custom_ai_prompt: string | null
+          greenapi_api_token: string | null
+          greenapi_chat_id: string | null
+          greenapi_instance_id: string | null
           id: string
           posting_times: string[] | null
+          telegram_bot_token: string | null
+          telegram_chat_id: string | null
           telegram_enabled: boolean | null
           updated_at: string
           user_id: string | null
           whatsapp_enabled: boolean | null
         }
         Insert: {
+          aliexpress_app_key?: string | null
+          aliexpress_app_secret?: string | null
+          aliexpress_tracking_id?: string | null
           created_at?: string
+          custom_ai_prompt?: string | null
+          greenapi_api_token?: string | null
+          greenapi_chat_id?: string | null
+          greenapi_instance_id?: string | null
           id?: string
           posting_times?: string[] | null
+          telegram_bot_token?: string | null
+          telegram_chat_id?: string | null
           telegram_enabled?: boolean | null
           updated_at?: string
           user_id?: string | null
           whatsapp_enabled?: boolean | null
         }
         Update: {
+          aliexpress_app_key?: string | null
+          aliexpress_app_secret?: string | null
+          aliexpress_tracking_id?: string | null
           created_at?: string
+          custom_ai_prompt?: string | null
+          greenapi_api_token?: string | null
+          greenapi_chat_id?: string | null
+          greenapi_instance_id?: string | null
           id?: string
           posting_times?: string[] | null
+          telegram_bot_token?: string | null
+          telegram_chat_id?: string | null
           telegram_enabled?: boolean | null
           updated_at?: string
           user_id?: string | null

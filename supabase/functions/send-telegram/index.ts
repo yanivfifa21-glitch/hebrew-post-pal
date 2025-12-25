@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,6 +12,7 @@ interface TelegramRequest {
   price: number;
   imageUrl: string | null;
   affiliateLink: string | null;
+  userId: string;
 }
 
 serve(async (req) => {
@@ -19,15 +21,43 @@ serve(async (req) => {
   }
 
   try {
-    const { title, hebrewDescription, price, imageUrl, affiliateLink }: TelegramRequest = await req.json();
+    const { title, hebrewDescription, price, imageUrl, affiliateLink, userId }: TelegramRequest = await req.json();
 
-    const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN")?.trim();
-    const chatId = Deno.env.get("TELEGRAM_CHAT_ID")?.trim();
+    if (!userId) {
+      console.error("[send-telegram] Missing userId");
+      return new Response(
+        JSON.stringify({ success: false, error: "User ID is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Create Supabase client with service role to fetch user credentials
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Fetch user's credentials from app_settings
+    const { data: settings, error: settingsError } = await supabase
+      .from("app_settings")
+      .select("telegram_bot_token, telegram_chat_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (settingsError) {
+      console.error("[send-telegram] Error fetching settings:", settingsError);
+      return new Response(
+        JSON.stringify({ success: false, error: "Failed to fetch user settings" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const botToken = settings?.telegram_bot_token?.trim();
+    const chatId = settings?.telegram_chat_id?.trim();
 
     if (!botToken || !chatId) {
-      console.error("[send-telegram] Missing credentials");
+      console.error("[send-telegram] Missing user credentials");
       return new Response(
-        JSON.stringify({ success: false, error: "Telegram credentials not configured" }),
+        JSON.stringify({ success: false, error: "Please configure your Telegram credentials in Settings" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
