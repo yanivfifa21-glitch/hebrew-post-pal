@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
+import { PullToRefreshIndicator, PullToRefreshContainer } from "@/components/ui/pull-to-refresh";
 
 type HotProduct = {
   product_id: string;
@@ -44,9 +46,26 @@ const Discovery = () => {
   const [manualUrl, setManualUrl] = useState("");
   const [dataSource, setDataSource] = useState<string>("");
 
-  // Fetch from official API
-  const fetchHotProducts = async (category = selectedCategory, keywords = "") => {
-    setIsLoading(true);
+  // Pull to refresh handler
+  const handlePullRefresh = useCallback(async () => {
+    if (activeMode === "api") {
+      await fetchHotProductsAsync(selectedCategory, searchQuery);
+    } else {
+      await fetchScrapedDealsAsync();
+    }
+  }, [activeMode, selectedCategory, searchQuery]);
+
+  const {
+    containerRef,
+    pullDistance,
+    isRefreshing: isPullRefreshing,
+    progress,
+    shouldTrigger,
+  } = usePullToRefresh({ onRefresh: handlePullRefresh });
+
+  // Async versions for pull-to-refresh
+
+  const fetchHotProductsAsync = async (category = selectedCategory, keywords = "") => {
     setShowManualInput(false);
     try {
       const { data, error } = await supabase.functions.invoke("fetch-hot-products", {
@@ -70,14 +89,17 @@ const Discovery = () => {
         description: e instanceof Error ? e.message : "Could not load trending products",
         variant: "destructive",
       });
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  // Fetch via scraping
-  const fetchScrapedDeals = async () => {
+  // Fetch from official API (with loading state)
+  const fetchHotProducts = async (category = selectedCategory, keywords = "") => {
     setIsLoading(true);
+    await fetchHotProductsAsync(category, keywords);
+    setIsLoading(false);
+  };
+
+  const fetchScrapedDealsAsync = async () => {
     setShowManualInput(false);
     try {
       const { data, error } = await supabase.functions.invoke("scrape-ali-deals", {
@@ -122,9 +144,14 @@ const Discovery = () => {
         description: "Try entering a product link manually",
         variant: "destructive",
       });
-    } finally {
-      setIsLoading(false);
     }
+  };
+
+  // Fetch via scraping (with loading state)
+  const fetchScrapedDeals = async () => {
+    setIsLoading(true);
+    await fetchScrapedDealsAsync();
+    setIsLoading(false);
   };
 
   const handleSearch = () => {
@@ -255,7 +282,14 @@ const Discovery = () => {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <PullToRefreshContainer ref={containerRef} className="md:overflow-visible">
+        <PullToRefreshIndicator
+          pullDistance={pullDistance}
+          isRefreshing={isPullRefreshing}
+          progress={progress}
+          shouldTrigger={shouldTrigger}
+        />
+        <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
@@ -525,7 +559,8 @@ const Discovery = () => {
             )}
           </>
         )}
-      </div>
+        </div>
+      </PullToRefreshContainer>
     </MainLayout>
   );
 };
