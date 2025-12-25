@@ -528,9 +528,13 @@ const Discovery = () => {
                 <h3 className="font-semibold text-foreground">ייבוא מקובץ Excel</h3>
               </div>
               <p className="text-sm text-muted-foreground">
-                העלה קובץ Excel עם עמודות: Image Url, Product Description, Origin Price, Discount Price, Discount, Promotion Link
+                העלה קובץ Excel עם מוצרים - התומך בכותרות גמישות (Title, Image, Price וכו')
               </p>
-              <ExcelImporter onProductsLoaded={handleExcelProductsLoaded} />
+              <ExcelImporter 
+                onProductsLoaded={handleExcelProductsLoaded} 
+                onClearAll={() => setImportedProducts([])}
+                hasProducts={importedProducts.length > 0}
+              />
             </div>
 
             {/* Imported Products Grid */}
@@ -540,13 +544,6 @@ const Discovery = () => {
                   <h3 className="font-semibold text-foreground">
                     מוצרים מיובאים ({importedProducts.length})
                   </h3>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setImportedProducts([])}
-                  >
-                    נקה הכל
-                  </Button>
                 </div>
                 <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                   {importedProducts.map((product) => (
