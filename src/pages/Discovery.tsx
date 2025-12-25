@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,12 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { 
   Search, Loader2, Sparkles, TrendingUp, Flame, Star, 
-  ShoppingBag, RefreshCw, Zap, AlertCircle, Link as LinkIcon 
+  ShoppingBag, RefreshCw, Zap, AlertCircle, Link as LinkIcon,
+  FileSpreadsheet
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { PullToRefreshIndicator, PullToRefreshContainer } from "@/components/ui/pull-to-refresh";
+import { ExcelImporter, ExcelProduct } from "@/components/products/ExcelImporter";
+import { ExcelProductCard } from "@/components/products/ExcelProductCard";
 
 type HotProduct = {
   product_id: string;
@@ -25,6 +29,8 @@ type HotProduct = {
   discount_percent?: number;
 };
 
+type ImportedProduct = ExcelProduct & { id: string };
+
 const CATEGORIES = [
   { id: "", label: "הכל", icon: Flame },
   { id: "44", label: "אלקטרוניקה", icon: null },
@@ -35,16 +41,21 @@ const CATEGORIES = [
 ];
 
 const Discovery = () => {
+  const navigate = useNavigate();
   const [products, setProducts] = useState<HotProduct[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
   const [creatingPostId, setCreatingPostId] = useState<string | null>(null);
   const [hasFetched, setHasFetched] = useState(false);
-  const [activeMode, setActiveMode] = useState<"api" | "scrape">("api");
+  const [activeMode, setActiveMode] = useState<"api" | "scrape" | "excel">("api");
   const [showManualInput, setShowManualInput] = useState(false);
   const [manualUrl, setManualUrl] = useState("");
   const [dataSource, setDataSource] = useState<string>("");
+  
+  // Excel import state
+  const [importedProducts, setImportedProducts] = useState<ImportedProduct[]>([]);
+  const [addingProductId, setAddingProductId] = useState<string | null>(null);
 
   // Pull to refresh handler
   const handlePullRefresh = useCallback(async () => {
@@ -170,10 +181,100 @@ const Discovery = () => {
   };
 
   const handleModeChange = (mode: string) => {
-    setActiveMode(mode as "api" | "scrape");
-    setProducts([]);
-    setHasFetched(false);
+    setActiveMode(mode as "api" | "scrape" | "excel");
+    if (mode !== "excel") {
+      setProducts([]);
+      setHasFetched(false);
+    }
     setShowManualInput(false);
+  };
+
+  // Excel import handlers
+  const handleExcelProductsLoaded = (excelProducts: ExcelProduct[]) => {
+    const productsWithId = excelProducts.map((p, idx) => ({
+      ...p,
+      id: `excel-${idx}-${Date.now()}`
+    }));
+    setImportedProducts(productsWithId);
+    setDataSource("Excel");
+  };
+
+  const handleQuickAddFromExcel = async (product: ImportedProduct) => {
+    setAddingProductId(product.id);
+    try {
+      // Generate affiliate link from promotion link
+      const { data: affResp, error: affErr } = await supabase.functions.invoke("generate-affiliate-link", {
+        body: { productUrl: product.promotionLink },
+      });
+
+      if (affErr) throw new Error(affErr.message);
+      const affiliateLink = affResp?.success ? affResp.affiliateLink : product.promotionLink;
+
+      // Generate Hebrew description
+      const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
+        body: { 
+          title: product.title,
+          ordersCount: 0,
+          rating: 0,
+          originalPrice: product.originalPrice,
+          discountPrice: product.discountPrice,
+          discountPercent: product.discountPercent,
+          couponCode: product.codeName,
+          couponValue: product.codeValue,
+        },
+      });
+
+      if (hebErr) throw new Error(hebErr.message);
+      if (!hebResp?.success) throw new Error(hebResp?.error || "Failed to generate Hebrew content");
+
+      const hebrewDescription = `${hebResp.hebrewDescription}\n\n👉 לרכישה: ${affiliateLink}`;
+
+      // Save to queue
+      const { error: saveErr } = await supabase.from("products").insert({
+        original_url: product.promotionLink,
+        title: product.title,
+        price: product.discountPrice,
+        image_url: product.imageUrl,
+        orders_count: 0,
+        rating: 0,
+        affiliate_link: affiliateLink,
+        hebrew_description: hebrewDescription,
+        status: "queued",
+        channels: [],
+      });
+
+      if (saveErr) throw new Error(saveErr.message);
+
+      toast({
+        title: "✨ נוסף לתור!",
+        description: "הפוסט נוצר ונוסף לתור הפרסום שלך",
+      });
+
+      // Remove from imported list
+      setImportedProducts(prev => prev.filter(p => p.id !== product.id));
+    } catch (e) {
+      toast({
+        title: "Creation Failed",
+        description: e instanceof Error ? e.message : "Could not create post",
+        variant: "destructive",
+      });
+    } finally {
+      setAddingProductId(null);
+    }
+  };
+
+  const handleEditFromExcel = (product: ImportedProduct) => {
+    // Navigate to add product page with pre-filled data
+    const params = new URLSearchParams({
+      url: product.promotionLink,
+      title: product.title,
+      price: product.discountPrice.toString(),
+      originalPrice: product.originalPrice.toString(),
+      imageUrl: product.imageUrl,
+      couponCode: product.codeName || "",
+      couponValue: product.codeValue || "",
+    });
+    navigate(`/add?${params.toString()}`);
   };
 
   const handleManualAdd = async () => {
@@ -308,7 +409,7 @@ const Discovery = () => {
 
         {/* Mode Tabs */}
         <Tabs value={activeMode} onValueChange={handleModeChange} className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="api" className="gap-1 md:gap-2 text-xs md:text-sm px-2 md:px-4">
               <TrendingUp className="h-3.5 w-3.5 md:h-4 md:w-4" />
               <span className="hidden xs:inline">Hot</span> API
@@ -316,6 +417,10 @@ const Discovery = () => {
             <TabsTrigger value="scrape" className="gap-1 md:gap-2 text-xs md:text-sm px-2 md:px-4">
               <Zap className="h-3.5 w-3.5 md:h-4 md:w-4" />
               Super Deals
+            </TabsTrigger>
+            <TabsTrigger value="excel" className="gap-1 md:gap-2 text-xs md:text-sm px-2 md:px-4">
+              <FileSpreadsheet className="h-3.5 w-3.5 md:h-4 md:w-4" />
+              Excel
             </TabsTrigger>
           </TabsList>
 
@@ -414,10 +519,53 @@ const Discovery = () => {
               )}
             </div>
           </TabsContent>
+
+          {/* Excel Import Mode */}
+          <TabsContent value="excel" className="space-y-4 mt-4">
+            <div className="glass-card neon-border p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <FileSpreadsheet className="h-5 w-5 text-green-500" />
+                <h3 className="font-semibold text-foreground">ייבוא מקובץ Excel</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                העלה קובץ Excel עם עמודות: Image Url, Product Description, Origin Price, Discount Price, Discount, Promotion Link
+              </p>
+              <ExcelImporter onProductsLoaded={handleExcelProductsLoaded} />
+            </div>
+
+            {/* Imported Products Grid */}
+            {importedProducts.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-foreground">
+                    מוצרים מיובאים ({importedProducts.length})
+                  </h3>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setImportedProducts([])}
+                  >
+                    נקה הכל
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                  {importedProducts.map((product) => (
+                    <ExcelProductCard
+                      key={product.id}
+                      product={product}
+                      onQuickAdd={() => handleQuickAddFromExcel(product)}
+                      onEdit={() => handleEditFromExcel(product)}
+                      isAdding={addingProductId === product.id}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </TabsContent>
         </Tabs>
 
-        {/* Initial State */}
-        {!hasFetched && !isLoading && !showManualInput && (
+        {/* Initial State - only for API/Scrape modes */}
+        {activeMode !== "excel" && !hasFetched && !isLoading && !showManualInput && (
           <div className="glass-card neon-border p-12 text-center">
             <Flame className="h-16 w-16 text-primary/50 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-foreground mb-2">
