@@ -95,6 +95,51 @@ export type Database = {
         }
         Relationships: []
       }
+      messaging_accounts: {
+        Row: {
+          account_name: string
+          account_type: string
+          created_at: string
+          greenapi_api_token: string | null
+          greenapi_chat_id: string | null
+          greenapi_instance_id: string | null
+          id: string
+          is_active: boolean
+          telegram_bot_token: string | null
+          telegram_chat_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_name: string
+          account_type: string
+          created_at?: string
+          greenapi_api_token?: string | null
+          greenapi_chat_id?: string | null
+          greenapi_instance_id?: string | null
+          id?: string
+          is_active?: boolean
+          telegram_bot_token?: string | null
+          telegram_chat_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_name?: string
+          account_type?: string
+          created_at?: string
+          greenapi_api_token?: string | null
+          greenapi_chat_id?: string | null
+          greenapi_instance_id?: string | null
+          id?: string
+          is_active?: boolean
+          telegram_bot_token?: string | null
+          telegram_chat_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           affiliate_link: string | null

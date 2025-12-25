@@ -14,6 +14,8 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    console.log("[auto-post] Starting automation check...");
+
     // Get all users with automation enabled
     const { data: settings, error: settingsErr } = await supabase
       .from("app_settings")
@@ -36,120 +38,241 @@ serve(async (req) => {
 
     const results: any[] = [];
     const now = new Date();
-    const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
     for (const userSettings of settings) {
       const userId = userSettings.user_id;
       const postingTimes = userSettings.posting_times || [];
 
-      // Check if current time matches any posting window (with 5 min tolerance)
-      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      console.log(`[auto-post] Checking user ${userId}, posting times:`, postingTimes);
+
+      // Check if current time matches any posting window (with 2 min tolerance)
       const shouldPost = postingTimes.some((time: string) => {
         const [h, m] = time.split(':').map(Number);
         const targetMinutes = h * 60 + m;
-        return Math.abs(currentMinutes - targetMinutes) <= 5;
+        const diff = Math.abs(currentMinutes - targetMinutes);
+        return diff <= 2 || diff >= (24 * 60 - 2); // Handle midnight edge case
       });
 
       if (!shouldPost) {
+        console.log(`[auto-post] User ${userId}: Not posting time (current: ${now.getHours()}:${now.getMinutes()})`);
         results.push({ userId, status: "skipped", reason: "Not posting time" });
         continue;
       }
 
-      // Get next queued product for this user
+      console.log(`[auto-post] User ${userId}: It's posting time! Looking for queued products...`);
+
+      // Get next queued product for this user (FIFO - oldest first)
       const { data: product, error: productErr } = await supabase
         .from("products")
         .select("*")
         .eq("user_id", userId)
-        .eq("status", "queued")
+        .in("status", ["queued", "scheduled"])
         .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
 
-      if (productErr || !product) {
+      if (productErr) {
+        console.error(`[auto-post] Product fetch error for user ${userId}:`, productErr);
+        results.push({ userId, status: "error", error: productErr.message });
+        continue;
+      }
+
+      if (!product) {
+        console.log(`[auto-post] User ${userId}: No queued/scheduled products found`);
         results.push({ userId, status: "skipped", reason: "No queued products" });
         continue;
       }
 
-      const channels: string[] = [];
-      let sendError = null;
+      console.log(`[auto-post] User ${userId}: Found product ${product.id} - "${product.title}"`);
 
-      // Send to Telegram if enabled
-      if (userSettings.telegram_enabled && userSettings.telegram_bot_token && userSettings.telegram_chat_id) {
-        try {
-          const telegramUrl = `https://api.telegram.org/bot${userSettings.telegram_bot_token}/sendPhoto`;
-          const caption = `${product.hebrew_description || product.title}`;
-          
-          const telegramResp = await fetch(telegramUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              chat_id: userSettings.telegram_chat_id,
-              photo: product.image_url,
-              caption: caption.substring(0, 1024),
-              parse_mode: "Markdown",
-            }),
-          });
+      // Get ALL active messaging accounts for this user
+      const { data: accounts, error: accountsErr } = await supabase
+        .from("messaging_accounts")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("is_active", true);
 
-          if (telegramResp.ok) {
-            channels.push("telegram");
-            console.log(`[auto-post] Telegram sent for product ${product.id}`);
-          } else {
-            const errText = await telegramResp.text();
-            console.error("[auto-post] Telegram error:", errText);
-            sendError = `Telegram: ${errText}`;
-          }
-        } catch (e) {
-          console.error("[auto-post] Telegram exception:", e);
-          sendError = `Telegram: ${e}`;
-        }
+      if (accountsErr) {
+        console.error(`[auto-post] Accounts fetch error for user ${userId}:`, accountsErr);
       }
 
-      // Send to WhatsApp if enabled
-      if (userSettings.whatsapp_enabled && userSettings.greenapi_instance_id && userSettings.greenapi_api_token) {
-        try {
-          const greenApiUrl = `https://api.green-api.com/waInstance${userSettings.greenapi_instance_id}/sendMessage/${userSettings.greenapi_api_token}`;
-          const message = `${product.hebrew_description || product.title}`;
-          
-          const whatsappResp = await fetch(greenApiUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              chatId: userSettings.greenapi_chat_id,
-              message: message,
-            }),
-          });
+      const channels: string[] = [];
+      const errors: string[] = [];
 
-          if (whatsappResp.ok) {
-            channels.push("whatsapp");
-            console.log(`[auto-post] WhatsApp sent for product ${product.id}`);
-          } else {
-            const errText = await whatsappResp.text();
-            console.error("[auto-post] WhatsApp error:", errText);
-            sendError = sendError ? `${sendError}; WhatsApp: ${errText}` : `WhatsApp: ${errText}`;
+      // Build message content
+      const message = product.hebrew_description || product.title || "New deal!";
+
+      // Send to all active accounts
+      if (accounts && accounts.length > 0) {
+        for (const account of accounts) {
+          if (account.account_type === "telegram" && account.telegram_bot_token && account.telegram_chat_id) {
+            try {
+              console.log(`[auto-post] Sending to Telegram account: ${account.account_name}`);
+              const telegramUrl = `https://api.telegram.org/bot${account.telegram_bot_token}/sendPhoto`;
+              
+              const telegramResp = await fetch(telegramUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  chat_id: account.telegram_chat_id,
+                  photo: product.image_url || "https://via.placeholder.com/400",
+                  caption: message.substring(0, 1024),
+                  parse_mode: "Markdown",
+                }),
+              });
+
+              if (telegramResp.ok) {
+                channels.push(`telegram:${account.account_name}`);
+                console.log(`[auto-post] Telegram sent successfully to ${account.account_name}`);
+              } else {
+                const errText = await telegramResp.text();
+                console.error(`[auto-post] Telegram error for ${account.account_name}:`, errText);
+                errors.push(`Telegram(${account.account_name}): ${errText}`);
+              }
+            } catch (e) {
+              console.error(`[auto-post] Telegram exception for ${account.account_name}:`, e);
+              errors.push(`Telegram(${account.account_name}): ${e}`);
+            }
           }
-        } catch (e) {
-          console.error("[auto-post] WhatsApp exception:", e);
-          sendError = sendError ? `${sendError}; WhatsApp: ${e}` : `WhatsApp: ${e}`;
+
+          if (account.account_type === "whatsapp" && account.greenapi_instance_id && account.greenapi_api_token) {
+            try {
+              console.log(`[auto-post] Sending to WhatsApp account: ${account.account_name}`);
+              
+              // Format chat ID for GreenAPI
+              let chatId = account.greenapi_chat_id || "";
+              if (chatId && !chatId.includes("@")) {
+                chatId = chatId.includes("-") ? `${chatId}@g.us` : `${chatId}@c.us`;
+              }
+
+              // Send image with caption if we have an image
+              if (product.image_url) {
+                const sendFileUrl = `https://api.green-api.com/waInstance${account.greenapi_instance_id}/sendFileByUrl/${account.greenapi_api_token}`;
+                const whatsappResp = await fetch(sendFileUrl, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    chatId: chatId,
+                    urlFile: product.image_url,
+                    fileName: "deal.jpg",
+                    caption: message,
+                  }),
+                });
+
+                if (whatsappResp.ok) {
+                  channels.push(`whatsapp:${account.account_name}`);
+                  console.log(`[auto-post] WhatsApp sent successfully to ${account.account_name}`);
+                } else {
+                  const errText = await whatsappResp.text();
+                  console.error(`[auto-post] WhatsApp error for ${account.account_name}:`, errText);
+                  errors.push(`WhatsApp(${account.account_name}): ${errText}`);
+                }
+              } else {
+                // Send text only
+                const sendMessageUrl = `https://api.green-api.com/waInstance${account.greenapi_instance_id}/sendMessage/${account.greenapi_api_token}`;
+                const whatsappResp = await fetch(sendMessageUrl, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    chatId: chatId,
+                    message: message,
+                  }),
+                });
+
+                if (whatsappResp.ok) {
+                  channels.push(`whatsapp:${account.account_name}`);
+                  console.log(`[auto-post] WhatsApp text sent successfully to ${account.account_name}`);
+                } else {
+                  const errText = await whatsappResp.text();
+                  console.error(`[auto-post] WhatsApp error for ${account.account_name}:`, errText);
+                  errors.push(`WhatsApp(${account.account_name}): ${errText}`);
+                }
+              }
+            } catch (e) {
+              console.error(`[auto-post] WhatsApp exception for ${account.account_name}:`, e);
+              errors.push(`WhatsApp(${account.account_name}): ${e}`);
+            }
+          }
+        }
+      } else {
+        console.log(`[auto-post] User ${userId}: No active messaging accounts found`);
+        
+        // Fallback to legacy single-account settings
+        if (userSettings.telegram_enabled && userSettings.telegram_bot_token && userSettings.telegram_chat_id) {
+          try {
+            const telegramUrl = `https://api.telegram.org/bot${userSettings.telegram_bot_token}/sendPhoto`;
+            const telegramResp = await fetch(telegramUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                chat_id: userSettings.telegram_chat_id,
+                photo: product.image_url || "https://via.placeholder.com/400",
+                caption: message.substring(0, 1024),
+                parse_mode: "Markdown",
+              }),
+            });
+
+            if (telegramResp.ok) {
+              channels.push("telegram");
+            } else {
+              const errText = await telegramResp.text();
+              errors.push(`Telegram: ${errText}`);
+            }
+          } catch (e) {
+            errors.push(`Telegram: ${e}`);
+          }
+        }
+
+        if (userSettings.whatsapp_enabled && userSettings.greenapi_instance_id && userSettings.greenapi_api_token) {
+          try {
+            let chatId = userSettings.greenapi_chat_id || "";
+            if (chatId && !chatId.includes("@")) {
+              chatId = chatId.includes("-") ? `${chatId}@g.us` : `${chatId}@c.us`;
+            }
+
+            const sendMessageUrl = `https://api.green-api.com/waInstance${userSettings.greenapi_instance_id}/sendMessage/${userSettings.greenapi_api_token}`;
+            const whatsappResp = await fetch(sendMessageUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                chatId: chatId,
+                message: message,
+              }),
+            });
+
+            if (whatsappResp.ok) {
+              channels.push("whatsapp");
+            } else {
+              const errText = await whatsappResp.text();
+              errors.push(`WhatsApp: ${errText}`);
+            }
+          } catch (e) {
+            errors.push(`WhatsApp: ${e}`);
+          }
         }
       }
 
       // Update product status
       if (channels.length > 0) {
+        console.log(`[auto-post] Updating product ${product.id} status to 'sent'`);
         await supabase
           .from("products")
           .update({ status: "sent", channels })
           .eq("id", product.id);
 
         results.push({ userId, productId: product.id, status: "sent", channels });
-      } else if (sendError) {
-        results.push({ userId, productId: product.id, status: "error", error: sendError });
+      } else if (errors.length > 0) {
+        console.log(`[auto-post] Product ${product.id} had send errors:`, errors);
+        results.push({ userId, productId: product.id, status: "error", errors });
       } else {
+        console.log(`[auto-post] User ${userId}: No channels configured`);
         results.push({ userId, status: "skipped", reason: "No channels enabled" });
       }
     }
 
-    console.log("[auto-post] Results:", results);
-    return new Response(JSON.stringify({ success: true, results }), {
+    console.log("[auto-post] Final results:", JSON.stringify(results, null, 2));
+    return new Response(JSON.stringify({ success: true, results, timestamp: now.toISOString() }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

@@ -3,9 +3,10 @@ import { Product } from "@/types/product";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Rocket, Trash2, Loader2, ExternalLink, Star, ShoppingCart, Copy, Check, ArrowRightLeft } from "lucide-react";
+import { Rocket, Trash2, Loader2, ExternalLink, Star, ShoppingCart, Copy, Check, ArrowRightLeft, Clock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { format } from "date-fns";
 
 interface QueueCardProps {
   product: Product;
@@ -203,7 +204,7 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged }: Queue
             </h3>
             
             {/* Stats Row */}
-            <div className="flex items-center gap-4 text-sm">
+            <div className="flex flex-wrap items-center gap-4 text-sm">
               {product.rating && product.rating > 0 && (
                 <div className="flex items-center gap-1.5 text-warning">
                   <Star className="h-4 w-4 fill-current" />
@@ -214,6 +215,14 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged }: Queue
                 <div className="flex items-center gap-1.5 text-muted-foreground">
                   <ShoppingCart className="h-4 w-4" />
                   <span>{product.orders_count.toLocaleString()} sold</span>
+                </div>
+              )}
+              {product.scheduled_time && (
+                <div className="flex items-center gap-1.5 text-primary">
+                  <Clock className="h-4 w-4" />
+                  <span className="font-medium">
+                    {format(new Date(product.scheduled_time), 'MMM dd, HH:mm')}
+                  </span>
                 </div>
               )}
               {product.affiliate_link && (
