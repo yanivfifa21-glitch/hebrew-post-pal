@@ -9,6 +9,8 @@ interface AuthGuardProps {
   children: React.ReactNode;
 }
 
+const ADMIN_EMAIL = "yanivfifa21@gmail.com";
+
 export const AuthGuard = ({ children }: AuthGuardProps) => {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
@@ -16,29 +18,81 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
   const [isAuthorized, setIsAuthorized] = useState(false);
 
   const checkAuthorization = async (userEmail: string | undefined) => {
-    if (!userEmail) return false;
+    if (!userEmail) return { authorized: false, status: null };
     
     const { data, error } = await supabase
       .from("authorized_users")
-      .select("email")
+      .select("email, status")
       .eq("email", userEmail.toLowerCase())
       .maybeSingle();
     
-    return !!data && !error;
+    if (error) return { authorized: false, status: null };
+    if (!data) return { authorized: false, status: null };
+    
+    return { authorized: data.status === "approved", status: data.status };
   };
 
-  const handleUnauthorized = async () => {
-    toast({
-      title: "Access Denied",
-      description: "You are not authorized to use this application.",
-      variant: "destructive",
-    });
+  const createPendingRequest = async (email: string) => {
+    const { error } = await supabase
+      .from("authorized_users")
+      .insert({ email: email.toLowerCase(), status: "pending" });
+    
+    return !error;
+  };
+
+  const checkPendingRequests = async () => {
+    const { data } = await supabase
+      .from("authorized_users")
+      .select("id")
+      .eq("status", "pending");
+    
+    return data?.length || 0;
+  };
+
+  const handleUnauthorized = async (status: string | null, email: string) => {
+    if (status === "pending") {
+      toast({
+        title: "Access Pending",
+        description: "Your access request is pending approval.",
+      });
+    } else {
+      // User not in list, create pending request
+      const created = await createPendingRequest(email);
+      if (created) {
+        toast({
+          title: "Access Requested",
+          description: "Your access request is pending approval.",
+        });
+      } else {
+        toast({
+          title: "Request Failed",
+          description: "Could not submit access request. Please try again.",
+          variant: "destructive",
+        });
+      }
+    }
     await supabase.auth.signOut();
     navigate("/auth");
   };
 
+  const notifyAdminOfPendingRequests = async (pendingCount: number) => {
+    if (pendingCount > 0) {
+      toast({
+        title: "Pending Requests",
+        description: `You have ${pendingCount} pending access request${pendingCount > 1 ? "s" : ""}.`,
+        action: (
+          <button
+            onClick={() => navigate("/admin")}
+            className="text-primary underline text-sm"
+          >
+            View
+          </button>
+        ),
+      });
+    }
+  };
+
   useEffect(() => {
-    // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
       
@@ -47,20 +101,24 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
         setIsAuthorized(false);
         navigate("/auth");
       } else {
-        // Defer authorization check
         setTimeout(async () => {
-          const authorized = await checkAuthorization(session.user.email);
+          const { authorized, status } = await checkAuthorization(session.user.email);
           if (authorized) {
             setIsAuthorized(true);
             setLoading(false);
+            
+            // Notify admin of pending requests
+            if (session.user.email === ADMIN_EMAIL) {
+              const pendingCount = await checkPendingRequests();
+              notifyAdminOfPendingRequests(pendingCount);
+            }
           } else {
-            handleUnauthorized();
+            handleUnauthorized(status, session.user.email || "");
           }
         }, 0);
       }
     });
 
-    // THEN check for existing session
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setUser(session?.user ?? null);
       
@@ -68,12 +126,18 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
         setLoading(false);
         navigate("/auth");
       } else {
-        const authorized = await checkAuthorization(session.user.email);
+        const { authorized, status } = await checkAuthorization(session.user.email);
         if (authorized) {
           setIsAuthorized(true);
           setLoading(false);
+          
+          // Notify admin of pending requests
+          if (session.user.email === ADMIN_EMAIL) {
+            const pendingCount = await checkPendingRequests();
+            notifyAdminOfPendingRequests(pendingCount);
+          }
         } else {
-          handleUnauthorized();
+          handleUnauthorized(status, session.user.email || "");
         }
       }
     });
