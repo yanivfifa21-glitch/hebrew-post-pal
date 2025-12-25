@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Product } from "@/types/product";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Rocket, Trash2, Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Rocket, Trash2, Loader2, ExternalLink, Star, ShoppingCart } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
@@ -20,7 +21,6 @@ export const QueueCard = ({ product, onSent, onDeleted }: QueueCardProps) => {
   const handleSendNow = async () => {
     setIsSending(true);
     try {
-      // Get settings to check which channels are enabled
       const { data: settings } = await supabase
         .from("app_settings")
         .select("telegram_enabled, whatsapp_enabled")
@@ -68,7 +68,6 @@ export const QueueCard = ({ product, onSent, onDeleted }: QueueCardProps) => {
         return;
       }
 
-      // Update product status to 'sent'
       await supabase
         .from("products")
         .update({ 
@@ -110,63 +109,121 @@ export const QueueCard = ({ product, onSent, onDeleted }: QueueCardProps) => {
     }
   };
 
+  const getStatusVariant = (status: string) => {
+    switch (status) {
+      case 'queued': return 'queued';
+      case 'scheduled': return 'scheduled';
+      case 'sent': return 'sent';
+      default: return 'draft';
+    }
+  };
+
   return (
-    <div className="glass-card neon-border overflow-hidden">
-      <div className="flex flex-col sm:flex-row gap-4 p-4">
-        {/* Thumbnail */}
-        <div className="w-full sm:w-32 h-32 flex-shrink-0 rounded-lg overflow-hidden border border-border">
+    <div className="glass-card card-interactive overflow-hidden animate-fade-in-up">
+      <div className="flex flex-col md:flex-row">
+        {/* Product Image */}
+        <div className="relative w-full md:w-44 h-44 flex-shrink-0 overflow-hidden">
           {product.image_url ? (
             <img
               src={product.image_url}
               alt={product.title}
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
             />
           ) : (
             <div className="w-full h-full bg-muted flex items-center justify-center">
-              <span className="text-muted-foreground text-xs">No Image</span>
+              <span className="text-muted-foreground text-sm">No Image</span>
             </div>
           )}
+          
+          {/* Overlay gradient */}
+          <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent" />
+          
+          {/* Status Badge */}
+          <div className="absolute top-3 left-3">
+            <Badge variant={getStatusVariant(product.status)} className="capitalize shadow-lg">
+              {product.status}
+            </Badge>
+          </div>
+          
+          {/* Price Badge */}
+          <div className="absolute bottom-3 left-3">
+            <div className="bg-primary/90 backdrop-blur-sm text-primary-foreground px-3 py-1.5 rounded-lg font-bold text-sm shadow-glow-sm">
+              ${product.price?.toFixed(2)}
+            </div>
+          </div>
         </div>
 
         {/* Content */}
-        <div className="flex-1 flex flex-col gap-3">
-          <h3 className="font-semibold text-foreground line-clamp-2">{product.title}</h3>
+        <div className="flex-1 p-5 flex flex-col gap-4">
+          {/* Header */}
+          <div className="space-y-2">
+            <h3 className="font-semibold text-foreground line-clamp-2 text-base leading-snug">
+              {product.title}
+            </h3>
+            
+            {/* Stats Row */}
+            <div className="flex items-center gap-4 text-sm">
+              {product.rating && product.rating > 0 && (
+                <div className="flex items-center gap-1.5 text-warning">
+                  <Star className="h-4 w-4 fill-current" />
+                  <span className="font-medium">{product.rating.toFixed(1)}</span>
+                </div>
+              )}
+              {product.orders_count && product.orders_count > 0 && (
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <ShoppingCart className="h-4 w-4" />
+                  <span>{product.orders_count.toLocaleString()} sold</span>
+                </div>
+              )}
+              {product.affiliate_link && (
+                <a 
+                  href={product.affiliate_link} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-primary hover:text-primary/80 transition-colors"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  <span className="text-xs">Link</span>
+                </a>
+              )}
+            </div>
+          </div>
 
           {/* Editable Hebrew Description */}
           <Textarea
             value={hebrewDescription}
             onChange={(e) => setHebrewDescription(e.target.value)}
-            className="min-h-[120px] text-sm text-right"
+            className="min-h-[120px] text-sm text-right font-hebrew bg-muted/30 border-border/50 focus:border-primary/50 resize-none"
             dir="rtl"
-            placeholder="Hebrew description..."
+            placeholder="תיאור בעברית..."
           />
 
           {/* Action Buttons */}
-          <div className="flex gap-2 mt-auto">
+          <div className="flex gap-3 mt-auto">
             <Button
-              variant="gradient"
-              className="flex-1"
+              variant="success"
+              className="flex-1 btn-glow-success"
               onClick={handleSendNow}
               disabled={isSending || isDeleting}
             >
               {isSending ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Sending...
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Sending...</span>
                 </>
               ) : (
                 <>
-                  <Rocket className="h-4 w-4 mr-2" />
-                  Send Now
+                  <Rocket className="h-4 w-4" />
+                  <span>Send Now</span>
                 </>
               )}
             </Button>
             <Button
-              variant="outline"
+              variant="ghost-destructive"
               size="icon"
               onClick={handleDelete}
               disabled={isSending || isDeleting}
-              className="text-destructive hover:bg-destructive/10"
+              className="flex-shrink-0"
             >
               {isDeleting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
