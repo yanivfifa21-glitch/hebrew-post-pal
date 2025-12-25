@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { 
   LayoutDashboard, 
   Plus, 
@@ -8,7 +8,8 @@ import {
   Settings,
   TrendingUp,
   Menu,
-  X
+  X,
+  LogOut
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -18,6 +19,8 @@ import {
   DrawerClose,
 } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
 
 const navItems = [
   { icon: LayoutDashboard, label: "דאשבורד", path: "/" },
@@ -30,7 +33,19 @@ const navItems = [
 
 export const MobileNav = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      toast({ title: "התנתקת בהצלחה" });
+      setOpen(false);
+      navigate("/auth");
+    } catch (error) {
+      toast({ title: "התנתקות נכשלה", variant: "destructive" });
+    }
+  };
 
   return (
     <div className="fixed top-0 right-0 z-[100] md:hidden p-4" style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 16px)' }}>
@@ -89,7 +104,17 @@ export const MobileNav = () => {
             </nav>
             
             {/* Footer */}
-            <div className="p-4 border-t border-border/50">
+            <div className="p-4 border-t border-border/50 space-y-3">
+              <Button 
+                variant="ghost" 
+                className="w-full justify-start gap-4 px-4 py-3 text-destructive hover:text-destructive hover:bg-destructive/10 font-hebrew"
+                onClick={handleLogout}
+              >
+                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-destructive/10">
+                  <LogOut className="h-5 w-5" />
+                </div>
+                <span className="text-base font-medium">התנתק</span>
+              </Button>
               <p className="text-xs text-muted-foreground text-center font-hebrew">
                 AliExpress Affiliate Manager
               </p>

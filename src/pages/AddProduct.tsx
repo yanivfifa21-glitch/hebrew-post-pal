@@ -130,6 +130,10 @@ const AddProduct = () => {
         normalizedRating = normalizedRating / 20; // Convert 0-100 to 0-5
       }
 
+      // Get current user for RLS
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
       const { data: draftRow, error: draftErr } = await supabase
         .from("products")
         .insert({
@@ -143,6 +147,7 @@ const AddProduct = () => {
           hebrew_description: hebrewDescription || null,
           status: "draft",
           channels: [],
+          user_id: user.id,
         })
         .select("id")
         .single();
@@ -194,7 +199,9 @@ const AddProduct = () => {
           .eq("id", draftProductId);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("products").insert({ ...product, status: "queued" });
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Not authenticated");
+        const { error } = await supabase.from("products").insert({ ...product, status: "queued", user_id: user.id });
         if (error) throw error;
       }
 
@@ -278,7 +285,9 @@ const AddProduct = () => {
           .eq("id", draftProductId);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("products").insert({ ...product, status: "sent", channels });
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Not authenticated");
+        const { error } = await supabase.from("products").insert({ ...product, status: "sent", channels, user_id: user.id });
         if (error) throw error;
       }
 
