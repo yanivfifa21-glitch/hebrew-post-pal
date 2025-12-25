@@ -14,24 +14,45 @@ const DEFAULT_SYSTEM_PROMPT = `אתה משווק שותפים ישראלי מק�
 מבנה חובה:
 1. שורת כותרת: [אימוג'י מתאים] *[שם המוצר] – [תכונה עיקרית]* (הדגש עם כוכביות)
 2. תיאור קצר: 1-2 משפטים בטון טבעי ופשוט שמסבירים מה זה ולמה זה דיל טוב
-3. שורת הוכחה חברתית: ⭐ מעל *[הזמנות] הזמנות* | דירוג *[ציון]* (רק אם יש מידע)
-4. יתרונות: 2 נקודות קצרות עם אימוג'ים רלוונטיים (⚡ למהירות, 🔋 לסוללה, 🛡️ לעמידות וכו')
+3. שורת מחיר והנחה: 💰 *[מחיר מקורי]* ➜ *[מחיר סופי]* ([אחוז הנחה]% הנחה!) - רק אם יש מידע
+4. שורת הוכחה חברתית: ⭐ מעל *[הזמנות] הזמנות* | דירוג *[ציון]* (רק אם יש מידע)
+5. יתרונות: 2 נקודות קצרות עם אימוג'ים רלוונטיים (⚡ למהירות, 🔋 לסוללה, 🛡️ לעמידות וכו')
+6. שורת קופון (אם יש): 🎟️ יש להזין קופון: *[קוד הקופון]* [פרטי ההנחה אם יש]
 
 כללים קריטיים:
-- אסור לציין מחיר בשום צורה (לא בדולרים ולא בשקלים)
 - אסור להוסיף קישור או "לחץ כאן" או "להזמנה" - האפליקציה תוסיף את זה
 - אסור להשתמש בביטויים כמו: "שובר שיאים", "כובש מסלולים", "משנה את כללי המשחק", "הרפתקה", "חלום"
 - השתמש בשפה ישירה, פשוטה ומועילה
-- השתמש בכוכביות (*) להדגשה כמו בדוגמה`;
+- השתמש בכוכביות (*) להדגשה כמו בדוגמה
+- אם יש קופון בלי ערך ספציפי, כתוב: "יש להזין קופון: [קוד]"
+- אם יש שני קופונים, כתוב: "יש להזין קופון + קופון"`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { title, ordersCount, rating, userId } = await req.json();
+    const body = await req.json();
+    const { 
+      title, 
+      ordersCount, 
+      rating, 
+      userId,
+      // New Excel fields
+      originalPrice,
+      discountPrice,
+      discountPercent,
+      couponCode,
+      couponValue
+    } = body;
+    
     const t = String(title || "").trim();
     const orders = Number(ordersCount) || 0;
     const rate = Number(rating) || 0;
+    const origPrice = Number(originalPrice) || 0;
+    const discPrice = Number(discountPrice) || 0;
+    const discPct = Number(discountPercent) || 0;
+    const coupon = String(couponCode || "").trim();
+    const couponVal = String(couponValue || "").trim();
 
     if (!t) {
       const payload: ApiErr = { success: false, error: "title is required" };
@@ -64,26 +85,58 @@ serve(async (req) => {
       }
     }
 
-    // Build social proof context
-    let socialProofText = "";
-    if (orders > 0 || rate > 0) {
-      const parts = [];
-      if (rate > 0) {
-        const displayRating = rate > 5 ? (rate / 20).toFixed(1) : rate.toFixed(1);
-        parts.push(`ציון ${displayRating}/5 כוכבים`);
+    // Build comprehensive product context
+    const productDetails: string[] = [];
+    
+    // Add price info if available
+    if (origPrice > 0 && discPrice > 0) {
+      productDetails.push(`מחיר מקורי: $${origPrice.toFixed(2)}`);
+      productDetails.push(`מחיר סופי: $${discPrice.toFixed(2)}`);
+      if (discPct > 0) {
+        productDetails.push(`הנחה: ${discPct}%`);
+      } else {
+        const calculatedDiscount = Math.round(((origPrice - discPrice) / origPrice) * 100);
+        if (calculatedDiscount > 0) {
+          productDetails.push(`הנחה: ${calculatedDiscount}%`);
+        }
       }
-      if (orders > 0) {
-        const ordersText = orders > 500 ? "מאות" : orders > 100 ? "עשרות" : String(orders);
-        parts.push(`${ordersText} הזמנות`);
-      }
-      socialProofText = parts.join(" | ");
+    } else if (discPrice > 0) {
+      productDetails.push(`מחיר: $${discPrice.toFixed(2)}`);
     }
 
-    const userPrompt = `מוצר: ${t}${socialProofText ? `\n${socialProofText}` : ""}
+    // Add social proof
+    if (rate > 0) {
+      const displayRating = rate > 5 ? (rate / 20).toFixed(1) : rate.toFixed(1);
+      productDetails.push(`ציון: ${displayRating}/5 כוכבים`);
+    }
+    if (orders > 0) {
+      const ordersText = orders > 1000 ? `${Math.round(orders/1000)}K+` : orders > 500 ? "מאות" : orders > 100 ? "עשרות" : String(orders);
+      productDetails.push(`הזמנות: ${ordersText}`);
+    }
 
-כתוב פוסט לערוץ דילים לפי המבנה. בלי מחיר ובלי קישור.`;
+    // Add coupon info with smart logic
+    if (coupon) {
+      if (couponVal) {
+        productDetails.push(`קופון: ${coupon} (הנחה: ${couponVal})`);
+      } else {
+        productDetails.push(`קופון להזנה: ${coupon}`);
+      }
+    }
 
-    console.log("[generate-hebrew-post] Generating description, userId:", userId || "none");
+    const userPrompt = `מוצר: ${t}
+${productDetails.length > 0 ? `\nפרטים:\n${productDetails.join("\n")}` : ""}
+
+כתוב פוסט לערוץ דילים לפי המבנה. בלי קישור.`;
+
+    console.log("[generate-hebrew-post] Generating description with full data:", {
+      title: t,
+      originalPrice: origPrice,
+      discountPrice: discPrice,
+      discountPercent: discPct,
+      couponCode: coupon,
+      couponValue: couponVal,
+      userId: userId || "none"
+    });
 
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
