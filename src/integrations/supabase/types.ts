@@ -95,6 +95,36 @@ export type Database = {
         }
         Relationships: []
       }
+      automation_logs: {
+        Row: {
+          context: Json | null
+          created_at: string
+          id: string
+          level: string
+          message: string
+          run_id: string
+          user_id: string
+        }
+        Insert: {
+          context?: Json | null
+          created_at?: string
+          id?: string
+          level?: string
+          message: string
+          run_id: string
+          user_id: string
+        }
+        Update: {
+          context?: Json | null
+          created_at?: string
+          id?: string
+          level?: string
+          message?: string
+          run_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       messaging_accounts: {
         Row: {
           account_name: string
