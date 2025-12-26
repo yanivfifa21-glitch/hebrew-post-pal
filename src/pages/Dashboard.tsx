@@ -121,7 +121,7 @@ const Dashboard = () => {
 
   const stats = {
     total: products.length,
-    queued: products.filter(p => p.status === 'queued').length,
+    queued: products.filter(p => p.status === 'pending' || p.status === 'processing').length,
     sent: products.filter(p => p.status === 'sent').length,
     scheduled: products.filter(p => p.status === 'scheduled').length,
   };

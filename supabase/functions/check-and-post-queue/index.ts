@@ -43,20 +43,16 @@ function matchPostingTime(currentMinutes: number, postingTimes: string[]): strin
   return null;
 }
 
+// Build CLEAN message from product data - ONLY hebrew_description
+// NO automatic footers (price, rating, links, coupon text) – all content is AI-generated
 function buildMessage(product: Record<string, unknown>): string {
-  const parts: string[] = [];
-
-  if (product.title) parts.push(`🔥 *${product.title}*`);
-  if (product.hebrew_description) parts.push(String(product.hebrew_description));
-
-  if (product.price) parts.push(`💰 מחיר: $${product.price}`);
-  if (product.rating && Number(product.rating) > 0) parts.push(`⭐ דירוג: ${product.rating}`);
-  if (product.orders_count && Number(product.orders_count) > 0) parts.push(`📦 הזמנות: ${product.orders_count}`);
-
-  if (product.affiliate_link) parts.push(`\n🔗 ${product.affiliate_link}`);
-  else if (product.original_url) parts.push(`\n🔗 ${product.original_url}`);
-
-  return parts.join("\n\n");
+  // STRICT: Only return the hebrew_description as-is – link is already inside it
+  if (product.hebrew_description) {
+    return String(product.hebrew_description).trim();
+  }
+  
+  // Fallback if no hebrew_description exists - minimal title only
+  return product.title ? String(product.title) : "מוצר חדש";
 }
 
 async function sendToTelegram(
@@ -198,7 +194,7 @@ serve(async (req) => {
           .from("products")
           .select("*")
           .eq("user_id", userId)
-          .in("status", ["queued", "scheduled"])
+          .in("status", ["pending", "scheduled"])
           .order("created_at", { ascending: true })
           .limit(1)
           .single();
@@ -225,12 +221,12 @@ serve(async (req) => {
         continue;
       }
 
-      // IMMEDIATE LOCK: mark as sent before sending
+      // IMMEDIATE LOCK: mark as processing before sending
       const { data: locked, error: lockErr } = await supabase
         .from("products")
-        .update({ status: "sent" })
+        .update({ status: "processing" })
         .eq("id", String(product.id))
-        .in("status", ["queued", "scheduled"])
+        .in("status", ["pending", "scheduled"])
         .select("*")
         .maybeSingle();
 
@@ -285,8 +281,8 @@ serve(async (req) => {
       }
 
       if (sendOps.length === 0) {
-        // Revert to queued
-        await supabase.from("products").update({ status: "queued" }).eq("id", String(product.id));
+        // Revert to pending
+        await supabase.from("products").update({ status: "pending" }).eq("id", String(product.id));
         pushLog(action, "error", { errorMessage: "No active accounts – reverted to queued" });
         await supabase.from("automation_logs").insert(logs);
         results.push({ userId, productId: product.id, status: "failed", error: "No active accounts" });
@@ -307,14 +303,14 @@ serve(async (req) => {
       }
 
       if (ok.length > 0) {
-        // Already sent – update channels only
-        await supabase.from("products").update({ channels: ok }).eq("id", String(product.id));
+        // Mark as sent and update channels
+        await supabase.from("products").update({ status: "sent", channels: ok }).eq("id", String(product.id));
         pushLog(`Post #${product.id} SENT`, "info", { channels: ok, failedChannels: failed });
         await supabase.from("automation_logs").insert(logs);
         results.push({ userId, productId: product.id, status: "sent", channels: ok, failed });
       } else {
-        // Revert to queued
-        await supabase.from("products").update({ status: "queued" }).eq("id", String(product.id));
+        // Revert to pending
+        await supabase.from("products").update({ status: "pending" }).eq("id", String(product.id));
         pushLog(action, "error", { errorMessage: failed.join(" | ") + " – reverted to queued" });
         await supabase.from("automation_logs").insert(logs);
         results.push({ userId, productId: product.id, status: "failed", errors: failed });

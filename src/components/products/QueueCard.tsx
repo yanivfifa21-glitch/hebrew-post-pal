@@ -131,7 +131,7 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged }: Queue
 
   const handleToggleStatus = async () => {
     setIsChangingStatus(true);
-    const newStatus = product.status === 'queued' ? 'scheduled' : 'queued';
+    const newStatus = product.status === 'pending' ? 'scheduled' : 'pending';
     try {
       const { error } = await supabase
         .from("products")
@@ -153,7 +153,8 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged }: Queue
 
   const getStatusVariant = (status: string) => {
     switch (status) {
-      case 'queued': return 'queued';
+      case 'pending': return 'queued';
+      case 'processing': return 'queued';
       case 'scheduled': return 'scheduled';
       case 'sent': return 'sent';
       default: return 'draft';
@@ -284,14 +285,14 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged }: Queue
                 </>
               )}
             </Button>
-            {(product.status === 'queued' || product.status === 'scheduled') && (
+            {(product.status === 'pending' || product.status === 'scheduled') && (
               <Button
                 variant="outline"
                 size="icon"
                 onClick={handleToggleStatus}
                 disabled={isSending || isDeleting || isChangingStatus}
                 className="flex-shrink-0 border-primary/50 hover:bg-primary/10"
-                title={product.status === 'queued' ? 'Move to Scheduled' : 'Move to Queued'}
+                title={product.status === 'pending' ? 'Move to Scheduled' : 'Move to Queue'}
               >
                 {isChangingStatus ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
