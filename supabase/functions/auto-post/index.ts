@@ -101,11 +101,12 @@ serve(async (req) => {
 
       // Step C: Fetch ONLY ONE product (CRITICAL FIX)
       // We verify it is in an allowed status and grab the OLDEST one.
+      // ONLY fetch products with status exactly 'Scheduled' - ignore 'Queued' and all other statuses
       const { data: product, error: fetchError } = await supabase
         .from("products")
         .select("*")
         .eq("user_id", userId)
-        .in("status", ["pending", "scheduled", "Scheduled"])
+        .eq("status", "Scheduled")
         .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
@@ -123,7 +124,7 @@ serve(async (req) => {
         .from("products")
         .update({ status: "processing" })
         .eq("id", product.id)
-        .in("status", ["pending", "scheduled", "Scheduled"]); // Double check it wasn't stolen by another process
+        .eq("status", "Scheduled"); // Only lock if still Scheduled
 
       if (lockError) {
         console.log(`User ${userId}: Failed to lock product (already processing?)`);
