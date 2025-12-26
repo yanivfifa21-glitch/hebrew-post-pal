@@ -27,6 +27,7 @@ export type Database = {
           greenapi_instance_id: string | null
           id: string
           posting_times: string[] | null
+          publishing_days: number[] | null
           telegram_bot_token: string | null
           telegram_chat_id: string | null
           telegram_enabled: boolean | null
@@ -46,6 +47,7 @@ export type Database = {
           greenapi_instance_id?: string | null
           id?: string
           posting_times?: string[] | null
+          publishing_days?: number[] | null
           telegram_bot_token?: string | null
           telegram_chat_id?: string | null
           telegram_enabled?: boolean | null
@@ -65,6 +67,7 @@ export type Database = {
           greenapi_instance_id?: string | null
           id?: string
           posting_times?: string[] | null
+          publishing_days?: number[] | null
           telegram_bot_token?: string | null
           telegram_chat_id?: string | null
           telegram_enabled?: boolean | null
