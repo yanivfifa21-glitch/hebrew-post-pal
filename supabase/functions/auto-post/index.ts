@@ -41,6 +41,7 @@ serve(async (req) => {
     const currentTimeStr = formatTime(israelTime);
     const currentDayOfWeek = getIsraelDayOfWeek(israelTime);
 
+    console.log("Main Sender Triggered - Success");
     console.log(`[auto-post] Running at Israel Time: ${currentTimeStr}`);
 
     // Get active users
@@ -122,7 +123,7 @@ serve(async (req) => {
         .from("products")
         .update({ status: "processing" })
         .eq("id", product.id)
-        .eq("status", "pending"); // Double check it wasn't stolen by another process
+        .in("status", ["pending", "scheduled", "Scheduled"]); // Double check it wasn't stolen by another process
 
       if (lockError) {
         console.log(`User ${userId}: Failed to lock product (already processing?)`);
