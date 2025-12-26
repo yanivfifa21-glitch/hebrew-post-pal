@@ -159,11 +159,16 @@ serve(async (req) => {
       }
 
       // Step F: Final Status Update
-      const finalStatus = sendSuccess ? "sent" : "pending"; // Return to pending if failed
-      await supabase
+      // Mark as 'sent' ONLY after a successful API call.
+      const finalStatus = sendSuccess ? "sent" : "pending";
+      const { error: finalUpdateError } = await supabase
         .from("products")
-        .update({ status: finalStatus, last_posted_at: new Date().toISOString() })
+        .update({ status: finalStatus })
         .eq("id", product.id);
+
+      if (finalUpdateError) {
+        console.error(`User ${userId}: Failed to update final status for ${product.id}: ${finalUpdateError.message}`);
+      }
 
       results.push({ userId, productId: product.id, status: finalStatus });
     }
@@ -181,15 +186,9 @@ serve(async (req) => {
 
 // 1. CLEAN MESSAGE BUILDER
 function buildMessage(product: Record<string, unknown>): string {
-  // Take ONLY the Hebrew description.
-  // The AI puts the link INSIDE this text. We do NOT append anything.
-  let text = String(product.hebrew_description || product.title || "");
-
-  // Extra Safety: Remove any auto-generated "Price:" or "Link:" lines if they appear at the end
-  // This cleans up dirty data from the DB if it exists
-  text = text.trim();
-
-  return text;
+  // STRICT: The message MUST be ONLY the hebrew_description field.
+  // No footer, no price/rating/link append, no coupon text.
+  return String(product.hebrew_description ?? "").trim();
 }
 
 // 2. TELEGRAM SENDER
