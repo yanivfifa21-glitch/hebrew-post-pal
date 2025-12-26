@@ -293,43 +293,29 @@ serve(async (req) => {
   }
 });
 
-// Build a rich message from product data
+// Build CLEAN message from product data - ONLY AI-generated content
+// No automatic footers (price, rating, links) - AI prompt already handles formatting
 function buildMessage(product: Record<string, unknown>): string {
-  const parts: string[] = [];
-  
-  // Title
-  if (product.title) {
-    parts.push(`🔥 *${product.title}*`);
-  }
-  
-  // Hebrew description (main content)
+  // Use ONLY the hebrew_description - the AI prompt already generates complete content
+  // including any price/coupon info that was passed to it during generation
   if (product.hebrew_description) {
-    parts.push(String(product.hebrew_description));
+    let content = String(product.hebrew_description).trim();
+    
+    // Append affiliate link at the end if available (required for users to click)
+    if (product.affiliate_link) {
+      content += `\n\n🔗 ${product.affiliate_link}`;
+    } else if (product.original_url) {
+      content += `\n\n🔗 ${product.original_url}`;
+    }
+    
+    return content;
   }
   
-  // Price
-  if (product.price) {
-    parts.push(`💰 מחיר: $${product.price}`);
-  }
+  // Fallback if no hebrew_description exists - minimal format
+  const title = product.title ? String(product.title) : "מוצר חדש";
+  const link = product.affiliate_link || product.original_url || "";
   
-  // Rating
-  if (product.rating && Number(product.rating) > 0) {
-    parts.push(`⭐ דירוג: ${product.rating}`);
-  }
-  
-  // Orders count
-  if (product.orders_count && Number(product.orders_count) > 0) {
-    parts.push(`📦 הזמנות: ${product.orders_count}`);
-  }
-  
-  // Affiliate link
-  if (product.affiliate_link) {
-    parts.push(`\n🔗 ${product.affiliate_link}`);
-  } else if (product.original_url) {
-    parts.push(`\n🔗 ${product.original_url}`);
-  }
-  
-  return parts.join('\n\n');
+  return link ? `${title}\n\n🔗 ${link}` : title;
 }
 
 // Send to Telegram

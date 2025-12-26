@@ -30,14 +30,29 @@ const normalizeHeader = (header: string): string => {
   return String(header || "").toLowerCase().replace(/[\s_\-\.]/g, "");
 };
 
-// Flexible column matching with partial keywords
+// STRICT column matching - prioritize exact matches, then partial matches
+// This prevents data jumping to wrong fields
 const findColumn = (headers: string[], keywords: string[]): string | null => {
   const normalizedHeaders = headers.map(h => ({ original: h, normalized: normalizeHeader(h) }));
   
+  // Priority 1: Exact match (normalized)
   for (const keyword of keywords) {
-    const match = normalizedHeaders.find(h => h.normalized.includes(keyword));
-    if (match) return match.original;
+    const exactMatch = normalizedHeaders.find(h => h.normalized === keyword);
+    if (exactMatch) return exactMatch.original;
   }
+  
+  // Priority 2: Starts with keyword (more reliable than includes)
+  for (const keyword of keywords) {
+    const startsMatch = normalizedHeaders.find(h => h.normalized.startsWith(keyword));
+    if (startsMatch) return startsMatch.original;
+  }
+  
+  // Priority 3: Contains keyword (last resort)
+  for (const keyword of keywords) {
+    const containsMatch = normalizedHeaders.find(h => h.normalized.includes(keyword));
+    if (containsMatch) return containsMatch.original;
+  }
+  
   return null;
 };
 

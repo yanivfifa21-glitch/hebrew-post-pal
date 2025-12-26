@@ -287,9 +287,9 @@ const Discovery = () => {
         hebrewDescription = hebResp.hebrewDescription;
       }
 
-      // Append affiliate link to description
-      const fullDescription = `${hebrewDescription}\n\n👉 לרכישה: ${affiliateLink}`;
-
+      // Store clean AI description - auto-post will append the link when sending
+      // This keeps the stored content clean and lets the delivery logic handle formatting
+      
       // Save to queue
       const { error: saveErr } = await supabase.from("products").insert({
         original_url: product.promotionLink,
@@ -299,7 +299,7 @@ const Discovery = () => {
         orders_count: 0,
         rating: 0,
         affiliate_link: affiliateLink,
-        hebrew_description: fullDescription,
+        hebrew_description: hebrewDescription,
         status: "queued",
         channels: [],
         user_id: userId,

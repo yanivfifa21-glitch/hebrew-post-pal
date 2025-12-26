@@ -230,7 +230,8 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged }: Queue
                   href={product.affiliate_link} 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 text-primary hover:text-primary/80 transition-colors"
+                  className="inline-flex items-center gap-1.5 text-primary hover:text-primary/80 transition-colors"
+                  onClick={(e) => e.stopPropagation()}
                 >
                   <ExternalLink className="h-4 w-4" />
                   <span className="text-xs">Link</span>
