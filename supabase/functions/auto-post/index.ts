@@ -82,13 +82,13 @@ serve(async (req) => {
       }
 
       // כדי שהקוד יעבוד בול בזמן שהגדרת, תשאיר את ה-continue פעיל.
-      // כרגע הקוד שלי למטה בודק את ה-1 דקה טולרנס בצורה מתירנית:
+      // כרגע הקוד שלי למטה בודק את ה-2 דקות טולרנס בצורה מתירנית:
       const [currH, currM] = currentTimeStr.split(":").map(Number);
       const currentTotal = currH * 60 + currM;
       const matched = postingTimes.some((t) => {
         const [th, tm] = t.split(":").map(Number);
         const total = th * 60 + tm;
-        return Math.abs(currentTotal - total) <= 1;
+        return Math.abs(currentTotal - total) <= 2;
       });
 
       if (!matched) {
@@ -96,13 +96,15 @@ serve(async (req) => {
         continue;
       }
 
+      console.log("Automation Triggered - Search started");
+
       // Step C: Fetch ONLY ONE product (CRITICAL FIX)
-      // We verify it is PENDING and grab the OLDEST one.
+      // We verify it is in an allowed status and grab the OLDEST one.
       const { data: product, error: fetchError } = await supabase
         .from("products")
         .select("*")
         .eq("user_id", userId)
-        .eq("status", "pending")
+        .in("status", ["pending", "scheduled", "Scheduled"])
         .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
