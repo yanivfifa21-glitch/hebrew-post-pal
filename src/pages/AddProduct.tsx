@@ -253,15 +253,16 @@ const AddProduct = () => {
   };
 
   const handleSaveToQueue = async (product: Omit<Product, "id" | "created_at" | "updated_at">) => {
-    // Check for duplicates – only block if same affiliate link + same user + still pending
-    const isDuplicate = await checkDuplicate(product.affiliate_link ?? null);
+    // FINAL OVERRIDE: disable duplicate restriction completely (per request)
+    const isDuplicate = false;
+
     if (isDuplicate && !showDuplicateConfirm) {
       setPendingProduct(product);
       setPendingAction("queue");
       setShowDuplicateConfirm(true);
       return;
     }
-    
+
     setShowDuplicateConfirm(false);
     setPendingProduct(null);
     setPendingAction(null);
