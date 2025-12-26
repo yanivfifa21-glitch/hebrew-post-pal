@@ -6,7 +6,6 @@ import { Package, Clock, Send, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Product } from "@/types/product";
 import { toast } from "@/hooks/use-toast";
-import { sendToTelegram, sendToWhatsApp } from "@/lib/mockApi";
 
 const Dashboard = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -19,9 +18,11 @@ const Dashboard = () => {
 
   const fetchData = async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
       const [productsRes, settingsRes] = await Promise.all([
         supabase.from('products').select('*').order('created_at', { ascending: false }),
-        supabase.from('app_settings').select('*').limit(1).single()
+        user ? supabase.from('app_settings').select('*').eq('user_id', user.id).maybeSingle() : Promise.resolve({ data: null, error: null })
       ]);
 
       if (productsRes.error) throw productsRes.error;
@@ -42,16 +43,41 @@ const Dashboard = () => {
 
   const handlePostNow = async (product: Product) => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
       const channels: string[] = [];
       
-      if (settings?.telegram_enabled) {
-        await sendToTelegram(product);
-        channels.push('telegram');
+      if (settings?.whatsapp_enabled) {
+        const { data, error } = await supabase.functions.invoke("send-whatsapp", {
+          body: {
+            title: product.title,
+            hebrewDescription: product.hebrew_description,
+            price: product.price,
+            imageUrl: product.image_url,
+            affiliateLink: product.affiliate_link,
+            userId: user.id,
+          },
+        });
+        if (error) throw new Error(`WhatsApp: ${error.message}`);
+        if (!data?.success) throw new Error(`WhatsApp: ${data?.error || "Failed"}`);
+        channels.push('whatsapp');
       }
       
-      if (settings?.whatsapp_enabled) {
-        await sendToWhatsApp(product);
-        channels.push('whatsapp');
+      if (settings?.telegram_enabled) {
+        const { data, error } = await supabase.functions.invoke("send-telegram", {
+          body: {
+            title: product.title,
+            hebrewDescription: product.hebrew_description,
+            price: product.price,
+            imageUrl: product.image_url,
+            affiliateLink: product.affiliate_link,
+            userId: user.id,
+          },
+        });
+        if (error) throw new Error(`Telegram: ${error.message}`);
+        if (!data?.success) throw new Error(`Telegram: ${data?.error || "Failed"}`);
+        channels.push('telegram');
       }
 
       if (channels.length === 0) {
@@ -77,7 +103,7 @@ const Dashboard = () => {
     } catch (error) {
       toast({
         title: "Failed to post",
-        description: "An error occurred while posting.",
+        description: error instanceof Error ? error.message : "An error occurred while posting.",
         variant: "destructive",
       });
     }
