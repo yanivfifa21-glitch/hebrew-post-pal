@@ -6,31 +6,41 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// --- ISRAEL TIME LOGIC ---
-function getIsraelTime(): Date {
+// --- ISRAEL TIME LOGIC (using Asia/Jerusalem timezone) ---
+function getIsraelTimeInfo(): { hours: number; minutes: number; dayOfWeek: number; timeStr: string } {
   const now = new Date();
-  const month = now.getUTCMonth();
-  const isDST = month >= 2 && month <= 9;
-  const offsetHours = isDST ? 3 : 2;
-  return new Date(now.getTime() + offsetHours * 60 * 60 * 1000);
-}
-
-function formatTime(date: Date): string {
-  return `${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")}`;
-}
-
-function getIsraelDayOfWeek(israelTime: Date): number {
-  return israelTime.getUTCDay();
+  
+  // Use Intl.DateTimeFormat for accurate Israel timezone with proper DST
+  const timeFormatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jerusalem',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  
+  const dayFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Jerusalem',
+    weekday: 'short'
+  });
+  
+  const timeParts = timeFormatter.formatToParts(now);
+  const hours = parseInt(timeParts.find(p => p.type === 'hour')?.value || '0');
+  const minutes = parseInt(timeParts.find(p => p.type === 'minute')?.value || '0');
+  const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  
+  const dayStr = dayFormatter.format(now);
+  const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const dayOfWeek = dayMap[dayStr] ?? 0;
+  
+  return { hours, minutes, dayOfWeek, timeStr };
 }
 
 // Check if current time matches any posting time (exact minute match)
 function isPostingTime(currentTimeStr: string, postingTimes: string[]): boolean {
-  // Extract current hour and minute
   const [currH, currM] = currentTimeStr.split(":").map(Number);
   
   for (const scheduledTime of postingTimes) {
     const [schedH, schedM] = scheduledTime.split(":").map(Number);
-    // Exact match only - cron runs every minute so we check exact HH:MM
     if (currH === schedH && currM === schedM) {
       return true;
     }
@@ -51,11 +61,12 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    const israelTime = getIsraelTime();
-    const currentTimeStr = formatTime(israelTime);
-    const currentDayOfWeek = getIsraelDayOfWeek(israelTime);
+    const israelTimeInfo = getIsraelTimeInfo();
+    const currentTimeStr = israelTimeInfo.timeStr;
+    const currentDayOfWeek = israelTimeInfo.dayOfWeek;
 
     console.log(`[auto-post] Running at Israel Time: ${currentTimeStr} (Day: ${currentDayOfWeek})`);
+
 
     // Get active users with automation enabled
     const { data: settings } = await supabase
