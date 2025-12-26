@@ -261,24 +261,26 @@ serve(async (req) => {
       }
 
       if (sendOperations.length === 0) {
-        addLog(userId, 'warn', `No active messaging accounts configured`);
-        results.push({ userId, status: "skipped", reason: "No active accounts" });
+        // Revert to queued since we couldn't send
+        await supabase.from("products").update({ status: "queued" }).eq("id", String(product.id));
+        addLog(userId, 'warn', `No active messaging accounts configured – reverted to queued`);
+        results.push({ userId, productId: product.id, status: "skipped", reason: "No active accounts" });
         continue;
       }
 
       // Execute all sends in parallel using Promise.allSettled
       const sendResults = await Promise.allSettled(sendOperations);
 
-      for (const result of sendResults) {
-        if (result.status === "fulfilled") {
-          const { channel, success, error } = result.value;
+      for (const res of sendResults) {
+        if (res.status === "fulfilled") {
+          const { channel, success, error } = res.value;
           if (success) {
             successChannels.push(channel);
           } else {
             failedChannels.push(`${channel}: ${error}`);
           }
         } else {
-          failedChannels.push(`Unknown: ${result.reason}`);
+          failedChannels.push(`Unknown: ${res.reason}`);
         }
       }
 
@@ -291,10 +293,11 @@ serve(async (req) => {
 
       // Update product status based on results
       if (successChannels.length > 0) {
+        // Already marked as sent during lock – update channels
         await supabase
           .from("products")
-          .update({ status: "sent", channels: successChannels })
-          .eq("id", product.id);
+          .update({ channels: successChannels })
+          .eq("id", String(product.id));
 
         addLog(userId, 'info', `Product marked as sent`, { productId: product.id, channels: successChannels });
         results.push({ 
@@ -305,7 +308,9 @@ serve(async (req) => {
           failedChannels: failedChannels.length > 0 ? failedChannels : undefined 
         });
       } else {
-        addLog(userId, 'error', `All channels failed`, { productId: product.id, errors: failedChannels });
+        // All channels failed – revert to queued so user can retry
+        await supabase.from("products").update({ status: "queued" }).eq("id", String(product.id));
+        addLog(userId, 'error', `All channels failed – reverted to queued`, { productId: product.id, errors: failedChannels });
         results.push({ userId, productId: product.id, status: "all_failed", errors: failedChannels });
       }
     }
