@@ -22,6 +22,11 @@ function formatTime(date: Date): string {
   return `${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}`;
 }
 
+// Get day of week in Israel timezone (0=Sunday, 6=Saturday)
+function getIsraelDayOfWeek(israelTime: Date): number {
+  return israelTime.getUTCDay();
+}
+
 interface LogEntry {
   user_id: string;
   run_id: string;
@@ -61,8 +66,11 @@ serve(async (req) => {
     const currentHour = israelTime.getUTCHours();
     const currentMinute = israelTime.getUTCMinutes();
     const currentTotalMinutes = currentHour * 60 + currentMinute;
+    const currentDayOfWeek = getIsraelDayOfWeek(israelTime);
+    
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-    console.log(`[auto-post] Starting automation check at Israel time: ${currentTimeStr}`);
+    console.log(`[auto-post] Starting automation check at Israel time: ${currentTimeStr} (${dayNames[currentDayOfWeek]})`);
 
     // Get all users with automation enabled
     const { data: settings, error: settingsErr } = await supabase
@@ -89,8 +97,24 @@ serve(async (req) => {
     for (const userSettings of settings) {
       const userId = userSettings.user_id;
       const postingTimes: string[] = userSettings.posting_times || [];
+      const publishingDays: number[] = userSettings.publishing_days || [0, 1, 2, 3, 4, 5, 6]; // Default all days
 
-      addLog(userId, 'info', `Checking automation`, { postingTimes, currentTime: currentTimeStr });
+      addLog(userId, 'info', `Checking automation`, { 
+        postingTimes, 
+        publishingDays, 
+        currentTime: currentTimeStr,
+        currentDay: dayNames[currentDayOfWeek]
+      });
+
+      // Check if today is a publishing day
+      if (!publishingDays.includes(currentDayOfWeek)) {
+        addLog(userId, 'info', `Skipping - not a publishing day`, { 
+          currentDay: dayNames[currentDayOfWeek],
+          allowedDays: publishingDays.map(d => dayNames[d])
+        });
+        results.push({ userId, status: "skipped", reason: `Not a publishing day (${dayNames[currentDayOfWeek]})` });
+        continue;
+      }
 
       // Check if current time matches any posting window (within 1 minute tolerance)
       let matchedTime: string | null = null;
@@ -113,7 +137,7 @@ serve(async (req) => {
 
       addLog(userId, 'info', `Matched posting time: ${matchedTime}`, { currentTime: currentTimeStr });
 
-      // Get next queued product for this user (FIFO - oldest first)
+      // SEQUENTIAL SENDING: Get ONLY ONE queued product for this user (FIFO - oldest first)
       const { data: product, error: productErr } = await supabase
         .from("products")
         .select("*")
@@ -135,7 +159,7 @@ serve(async (req) => {
         continue;
       }
 
-      addLog(userId, 'info', `Found product to send`, { productId: product.id, title: product.title });
+      addLog(userId, 'info', `Found 1 product to send (sequential mode)`, { productId: product.id, title: product.title });
 
       // Get ALL active messaging accounts for this user
       const { data: accounts, error: accountsErr } = await supabase
@@ -254,6 +278,7 @@ serve(async (req) => {
       success: true, 
       results, 
       israelTime: currentTimeStr,
+      israelDay: dayNames[currentDayOfWeek],
       runId 
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

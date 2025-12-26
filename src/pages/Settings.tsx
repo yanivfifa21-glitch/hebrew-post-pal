@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import { 
   Settings as SettingsIcon, 
   Clock, 
@@ -22,7 +23,8 @@ import {
   ShoppingBag,
   Zap,
   Power,
-  Trash2
+  Trash2,
+  Calendar
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -96,6 +98,9 @@ const Settings = () => {
   // Posting times
   const [postingTimes, setPostingTimes] = useState<string[]>(['10:00', '14:00', '20:00']);
   const [newTime, setNewTime] = useState('');
+  
+  // Publishing days (0=Sunday, 6=Saturday)
+  const [publishingDays, setPublishingDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
 
   // AliExpress credentials
   const [aliexpressAppKey, setAliexpressAppKey] = useState('');
@@ -166,6 +171,7 @@ const Settings = () => {
         setSettingsId(data.id);
         setAutomationEnabled(data.automation_enabled || false);
         setPostingTimes(data.posting_times || ['10:00', '14:00', '20:00']);
+        setPublishingDays(data.publishing_days || [0, 1, 2, 3, 4, 5, 6]);
         setAliexpressAppKey(data.aliexpress_app_key || '');
         setAliexpressAppSecret(data.aliexpress_app_secret || '');
         setAliexpressTrackingId(data.aliexpress_tracking_id || '');
@@ -203,6 +209,7 @@ const Settings = () => {
       const updateData = {
         automation_enabled: automationEnabled,
         posting_times: postingTimes,
+        publishing_days: publishingDays,
         aliexpress_app_key: aliexpressAppKey || null,
         aliexpress_app_secret: aliexpressAppSecret || null,
         aliexpress_tracking_id: aliexpressTrackingId || null,
@@ -449,6 +456,53 @@ const Settings = () => {
                   <Plus className="h-4 w-4 mr-1" />
                   Add
                 </Button>
+              </div>
+            </div>
+
+            {/* Publishing Days */}
+            <div className="space-y-3">
+              <Label className="text-sm font-medium flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                Publishing Days
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Select which days of the week automation should run
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { day: 0, nameEn: 'Sun', nameHe: "א'" },
+                  { day: 1, nameEn: 'Mon', nameHe: "ב'" },
+                  { day: 2, nameEn: 'Tue', nameHe: "ג'" },
+                  { day: 3, nameEn: 'Wed', nameHe: "ד'" },
+                  { day: 4, nameEn: 'Thu', nameHe: "ה'" },
+                  { day: 5, nameEn: 'Fri', nameHe: "ו'" },
+                  { day: 6, nameEn: 'Sat', nameHe: "ש'" },
+                ].map(({ day, nameEn, nameHe }) => {
+                  const isSelected = publishingDays.includes(day);
+                  return (
+                    <label
+                      key={day}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-all ${
+                        isSelected
+                          ? 'bg-primary/10 border-primary/50 text-primary'
+                          : 'bg-muted/30 border-border text-muted-foreground hover:border-primary/30'
+                      }`}
+                    >
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setPublishingDays([...publishingDays, day].sort());
+                          } else {
+                            setPublishingDays(publishingDays.filter(d => d !== day));
+                          }
+                        }}
+                      />
+                      <span className="text-sm font-medium">{nameHe}</span>
+                      <span className="text-xs text-muted-foreground">({nameEn})</span>
+                    </label>
+                  );
+                })}
               </div>
             </div>
           </CardContent>

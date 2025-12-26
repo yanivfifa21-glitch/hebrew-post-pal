@@ -11,6 +11,9 @@ export interface ExcelProduct {
   discountPrice: number;
   discountPercent: number;
   promotionLink: string;
+  affiliateLink?: string;
+  hebrewDescription?: string;
+  category?: string;
   codeName?: string;
   codeValue?: string;
 }
@@ -78,7 +81,11 @@ export const ExcelImporter = ({ onProductsLoaded, onClearAll, hasProducts, isLoa
         "Origin Price": "100.00",
         "Discount Price": "79.99",
         "Discount": "20",
-        "Promotion Link": "https://aliexpress.com/item/12345.html",
+        "Original Link": "https://aliexpress.com/item/12345.html",
+        "Promotion Link": "https://s.click.aliexpress.com/e/abc123",
+        "Affiliate Link": "https://s.click.aliexpress.com/e/affiliate123",
+        "Hebrew Description": "תיאור המוצר בעברית",
+        "Category": "Electronics",
         "Code Name": "SAVE10",
         "Code Value": "10%"
       }
@@ -91,7 +98,7 @@ export const ExcelImporter = ({ onProductsLoaded, onClearAll, hasProducts, isLoa
     
     toast({
       title: "Template Downloaded",
-      description: "Use this template to prepare your product data",
+      description: "Use this template to prepare your product data with all fields",
     });
   };
 
@@ -113,16 +120,20 @@ export const ExcelImporter = ({ onProductsLoaded, onClearAll, hasProducts, isLoa
       const headers = Object.keys(jsonData[0] as object);
       console.log("Found headers:", headers);
 
-      // Flexible column mapping with partial keyword matching
+      // Flexible column mapping with partial keyword matching - ENHANCED with all fields
       const columnMap = {
-        imageUrl: findColumn(headers, ["imageurl", "image"]),
-        title: findColumn(headers, ["productdescription", "description", "title", "name"]),
-        originalPrice: findColumn(headers, ["originpric", "originalprice", "origin"]),
-        discountPrice: findColumn(headers, ["discountprice", "discountf", "price", "finalprice"]),
-        discount: findColumn(headers, ["discount"]),
-        promotionLink: findColumn(headers, ["promotionlink", "promotion", "link", "url"]),
-        codeName: findColumn(headers, ["codename", "couponcode", "code"]),
-        codeValue: findColumn(headers, ["codevalue", "couponvalue", "value"]),
+        imageUrl: findColumn(headers, ["imageurl", "image", "photo", "picture"]),
+        title: findColumn(headers, ["productdescription", "description", "title", "name", "productname"]),
+        originalPrice: findColumn(headers, ["originpric", "originalprice", "origin", "baseprice"]),
+        discountPrice: findColumn(headers, ["discountprice", "discountf", "price", "finalprice", "saleprice"]),
+        discount: findColumn(headers, ["discount", "percent", "off"]),
+        originalLink: findColumn(headers, ["originallink", "originalurl", "producturl", "productlink", "sourceurl"]),
+        promotionLink: findColumn(headers, ["promotionlink", "promotion", "promolink"]),
+        affiliateLink: findColumn(headers, ["affiliatelink", "affiliate", "afflink", "trackinglink"]),
+        hebrewDescription: findColumn(headers, ["hebrewdescription", "hebrew", "תיאור", "description_he"]),
+        category: findColumn(headers, ["category", "cat", "קטגוריה", "type"]),
+        codeName: findColumn(headers, ["codename", "couponcode", "code", "coupon"]),
+        codeValue: findColumn(headers, ["codevalue", "couponvalue", "value", "discount_value"]),
       };
 
       console.log("Column mapping:", columnMap);
@@ -145,7 +156,11 @@ export const ExcelImporter = ({ onProductsLoaded, onClearAll, hasProducts, isLoa
         const originalPrice = columnMap.originalPrice ? cleanPrice(row[columnMap.originalPrice]) : 0;
         const discountPrice = columnMap.discountPrice ? cleanPrice(row[columnMap.discountPrice]) : 0;
         const discountPercent = columnMap.discount ? cleanDiscount(row[columnMap.discount]) : 0;
+        const originalLink = columnMap.originalLink ? String(row[columnMap.originalLink] || "").trim() : "";
         const promotionLink = columnMap.promotionLink ? String(row[columnMap.promotionLink] || "").trim() : "";
+        const affiliateLink = columnMap.affiliateLink ? String(row[columnMap.affiliateLink] || "").trim() : "";
+        const hebrewDescription = columnMap.hebrewDescription ? String(row[columnMap.hebrewDescription] || "").trim() : "";
+        const category = columnMap.category ? String(row[columnMap.category] || "").trim() : "";
         const codeName = columnMap.codeName ? String(row[columnMap.codeName] || "").trim() : "";
         const codeValue = columnMap.codeValue ? String(row[columnMap.codeValue] || "").trim() : "";
 
@@ -161,7 +176,11 @@ export const ExcelImporter = ({ onProductsLoaded, onClearAll, hasProducts, isLoa
           originalPrice,
           discountPrice,
           discountPercent,
-          promotionLink,
+          // Use the best available link: affiliate > promotion > original
+          promotionLink: affiliateLink || promotionLink || originalLink,
+          affiliateLink: affiliateLink || promotionLink || undefined,
+          hebrewDescription: hebrewDescription || undefined,
+          category: category || undefined,
           codeName: codeName || undefined,
           codeValue: codeValue || undefined,
         });

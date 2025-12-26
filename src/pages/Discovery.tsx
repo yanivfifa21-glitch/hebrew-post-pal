@@ -252,33 +252,43 @@ const Discovery = () => {
 
     setAddingProductId(product.id);
     try {
-      // Generate affiliate link from promotion link
-      const { data: affResp, error: affErr } = await supabase.functions.invoke("generate-affiliate-link", {
-        body: { productUrl: product.promotionLink, userId },
-      });
+      // Use existing affiliate link from Excel if available, otherwise generate
+      let affiliateLink = product.affiliateLink || product.promotionLink;
+      
+      if (!product.affiliateLink) {
+        const { data: affResp, error: affErr } = await supabase.functions.invoke("generate-affiliate-link", {
+          body: { productUrl: product.promotionLink, userId },
+        });
 
-      if (affErr) throw new Error(affErr.message);
-      const affiliateLink = affResp?.success ? affResp.affiliateLink : product.promotionLink;
+        if (affErr) throw new Error(affErr.message);
+        affiliateLink = affResp?.success ? affResp.affiliateLink : product.promotionLink;
+      }
 
-      // Generate Hebrew description - PASS userId to fetch custom prompt
-      const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
-        body: { 
-          title: product.title,
-          ordersCount: 0,
-          rating: 0,
-          originalPrice: product.originalPrice,
-          discountPrice: product.discountPrice,
-          discountPercent: product.discountPercent,
-          couponCode: product.codeName,
-          couponValue: product.codeValue,
-          userId, // Critical: pass userId to fetch custom prompt
-        },
-      });
+      // Use existing Hebrew description from Excel if available, otherwise generate
+      let hebrewDescription = product.hebrewDescription || "";
+      
+      if (!hebrewDescription) {
+        const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
+          body: { 
+            title: product.title,
+            ordersCount: 0,
+            rating: 0,
+            originalPrice: product.originalPrice,
+            discountPrice: product.discountPrice,
+            discountPercent: product.discountPercent,
+            couponCode: product.codeName,
+            couponValue: product.codeValue,
+            userId,
+          },
+        });
 
-      if (hebErr) throw new Error(hebErr.message);
-      if (!hebResp?.success) throw new Error(hebResp?.error || "Failed to generate Hebrew content");
+        if (hebErr) throw new Error(hebErr.message);
+        if (!hebResp?.success) throw new Error(hebResp?.error || "Failed to generate Hebrew content");
+        hebrewDescription = hebResp.hebrewDescription;
+      }
 
-      const hebrewDescription = `${hebResp.hebrewDescription}\n\n👉 לרכישה: ${affiliateLink}`;
+      // Append affiliate link to description
+      const fullDescription = `${hebrewDescription}\n\n👉 לרכישה: ${affiliateLink}`;
 
       // Save to queue
       const { error: saveErr } = await supabase.from("products").insert({
@@ -289,7 +299,7 @@ const Discovery = () => {
         orders_count: 0,
         rating: 0,
         affiliate_link: affiliateLink,
-        hebrew_description: hebrewDescription,
+        hebrew_description: fullDescription,
         status: "queued",
         channels: [],
         user_id: userId,
