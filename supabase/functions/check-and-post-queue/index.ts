@@ -191,19 +191,30 @@ serve(async (req) => {
 
       pushLog("Posting slot matched", "info", { matchedTime, currentTime: hhmm });
 
-      const { data: product, error: productErr } = await supabase
-        .from("products")
-        .select("*")
-        .eq("user_id", userId)
-        .in("status", ["queued", "scheduled"])
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      if (productErr) {
-        pushLog("Checking Queue", "error", { errorMessage: productErr.message });
+      // SEQUENTIAL: fetch ONE product only using .single() + error handling for 0 rows
+      let product: Record<string, unknown> | null = null;
+      try {
+        const { data, error } = await supabase
+          .from("products")
+          .select("*")
+          .eq("user_id", userId)
+          .in("status", ["queued", "scheduled"])
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .single();
+        if (error) throw error;
+        product = data as unknown as Record<string, unknown>;
+      } catch (e) {
+        const err = e as { code?: string; message?: string };
+        if (err?.code === "PGRST116" || String(err?.message ?? "").toLowerCase().includes("0 rows")) {
+          pushLog("Checking Queue", "info", { result: "No queued post found" });
+          await supabase.from("automation_logs").insert(logs);
+          results.push({ userId, status: "skipped", reason: "No queued post" });
+          continue;
+        }
+        pushLog("Checking Queue", "error", { errorMessage: err?.message ?? String(e) });
         await supabase.from("automation_logs").insert(logs);
-        results.push({ userId, status: "error", error: productErr.message });
+        results.push({ userId, status: "error", error: err?.message ?? String(e) });
         continue;
       }
 
@@ -213,6 +224,31 @@ serve(async (req) => {
         results.push({ userId, status: "skipped", reason: "No queued post" });
         continue;
       }
+
+      // IMMEDIATE LOCK: mark as sent before sending
+      const { data: locked, error: lockErr } = await supabase
+        .from("products")
+        .update({ status: "sent" })
+        .eq("id", String(product.id))
+        .in("status", ["queued", "scheduled"])
+        .select("*")
+        .maybeSingle();
+
+      if (lockErr) {
+        pushLog("Lock failed", "error", { productId: product.id, errorMessage: lockErr.message });
+        await supabase.from("automation_logs").insert(logs);
+        results.push({ userId, productId: product.id, status: "error", error: lockErr.message });
+        continue;
+      }
+
+      if (!locked) {
+        pushLog("Already locked by another run", "info", { productId: product.id });
+        await supabase.from("automation_logs").insert(logs);
+        results.push({ userId, status: "skipped", reason: "Already locked" });
+        continue;
+      }
+
+      product = locked as unknown as Record<string, unknown>;
 
       const action = `Sending Post #${product.id}`;
       pushLog(action, "info", { productId: product.id, title: product.title });
@@ -227,7 +263,7 @@ serve(async (req) => {
         pushLog("Loading accounts", "error", { errorMessage: accountsErr.message });
       }
 
-      const message = buildMessage(product as unknown as Record<string, unknown>);
+      const message = buildMessage(product);
       const sendOps: Promise<{ channel: string; ok: boolean; error?: string }>[] = [];
 
       for (const a of accounts ?? []) {
@@ -249,7 +285,9 @@ serve(async (req) => {
       }
 
       if (sendOps.length === 0) {
-        pushLog(action, "error", { errorMessage: "No active accounts configured" });
+        // Revert to queued
+        await supabase.from("products").update({ status: "queued" }).eq("id", String(product.id));
+        pushLog(action, "error", { errorMessage: "No active accounts – reverted to queued" });
         await supabase.from("automation_logs").insert(logs);
         results.push({ userId, productId: product.id, status: "failed", error: "No active accounts" });
         continue;
@@ -269,16 +307,15 @@ serve(async (req) => {
       }
 
       if (ok.length > 0) {
-        await supabase
-          .from("products")
-          .update({ status: "sent", channels: ok })
-          .eq("id", product.id);
-
+        // Already sent – update channels only
+        await supabase.from("products").update({ channels: ok }).eq("id", String(product.id));
         pushLog(`Post #${product.id} SENT`, "info", { channels: ok, failedChannels: failed });
         await supabase.from("automation_logs").insert(logs);
         results.push({ userId, productId: product.id, status: "sent", channels: ok, failed });
       } else {
-        pushLog(action, "error", { errorMessage: failed.join(" | ") });
+        // Revert to queued
+        await supabase.from("products").update({ status: "queued" }).eq("id", String(product.id));
+        pushLog(action, "error", { errorMessage: failed.join(" | ") + " – reverted to queued" });
         await supabase.from("automation_logs").insert(logs);
         results.push({ userId, productId: product.id, status: "failed", errors: failed });
       }
