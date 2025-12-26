@@ -147,7 +147,7 @@ serve(async (req) => {
           .from("products")
           .select("*")
           .eq("user_id", userId)
-          .in("status", ["queued", "scheduled"])
+          .in("status", ["pending", "scheduled"])
           .order("created_at", { ascending: true })
           .limit(1)
           .single();
@@ -174,13 +174,13 @@ serve(async (req) => {
         continue;
       }
 
-      // IMMEDIATE LOCK (atomic-ish): mark as sent BEFORE sending to prevent concurrent cron runs
-      // If sending fails for all channels we revert back to queued below.
+      // IMMEDIATE LOCK (atomic-ish): mark as processing BEFORE sending to prevent concurrent cron runs
+      // If sending fails for all channels we revert back to pending below.
       const { data: locked, error: lockErr } = await supabase
         .from("products")
-        .update({ status: "sent" })
+        .update({ status: "processing" })
         .eq("id", String(product.id))
-        .in("status", ["queued", "scheduled"])
+        .in("status", ["pending", "scheduled"])
         .select("*")
         .maybeSingle();
 
@@ -261,9 +261,9 @@ serve(async (req) => {
       }
 
       if (sendOperations.length === 0) {
-        // Revert to queued since we couldn't send
-        await supabase.from("products").update({ status: "queued" }).eq("id", String(product.id));
-        addLog(userId, 'warn', `No active messaging accounts configured – reverted to queued`);
+        // Revert to pending since we couldn't send
+        await supabase.from("products").update({ status: "pending" }).eq("id", String(product.id));
+        addLog(userId, 'warn', `No active messaging accounts configured – reverted to pending`);
         results.push({ userId, productId: product.id, status: "skipped", reason: "No active accounts" });
         continue;
       }
@@ -293,10 +293,10 @@ serve(async (req) => {
 
       // Update product status based on results
       if (successChannels.length > 0) {
-        // Already marked as sent during lock – update channels
+        // Mark as sent and update channels
         await supabase
           .from("products")
-          .update({ channels: successChannels })
+          .update({ status: "sent", channels: successChannels })
           .eq("id", String(product.id));
 
         addLog(userId, 'info', `Product marked as sent`, { productId: product.id, channels: successChannels });
@@ -308,9 +308,9 @@ serve(async (req) => {
           failedChannels: failedChannels.length > 0 ? failedChannels : undefined 
         });
       } else {
-        // All channels failed – revert to queued so user can retry
-        await supabase.from("products").update({ status: "queued" }).eq("id", String(product.id));
-        addLog(userId, 'error', `All channels failed – reverted to queued`, { productId: product.id, errors: failedChannels });
+        // All channels failed – revert to pending so user can retry
+        await supabase.from("products").update({ status: "pending" }).eq("id", String(product.id));
+        addLog(userId, 'error', `All channels failed – reverted to pending`, { productId: product.id, errors: failedChannels });
         results.push({ userId, productId: product.id, status: "all_failed", errors: failedChannels });
       }
     }
@@ -338,29 +338,16 @@ serve(async (req) => {
   }
 });
 
-// Build CLEAN message from product data - ONLY AI-generated content
-// No automatic footers (price, rating, links) - AI prompt already handles formatting
+// Build CLEAN message from product data - ONLY hebrew_description
+// NO automatic footers (price, rating, links, coupon text) – all content is AI-generated
 function buildMessage(product: Record<string, unknown>): string {
-  // Use ONLY the hebrew_description - the AI prompt already generates complete content
-  // including any price/coupon info that was passed to it during generation
+  // STRICT: Only return the hebrew_description as-is – link is already inside it
   if (product.hebrew_description) {
-    let content = String(product.hebrew_description).trim();
-    
-    // Append affiliate link at the end if available (required for users to click)
-    if (product.affiliate_link) {
-      content += `\n\n🔗 ${product.affiliate_link}`;
-    } else if (product.original_url) {
-      content += `\n\n🔗 ${product.original_url}`;
-    }
-    
-    return content;
+    return String(product.hebrew_description).trim();
   }
   
-  // Fallback if no hebrew_description exists - minimal format
-  const title = product.title ? String(product.title) : "מוצר חדש";
-  const link = product.affiliate_link || product.original_url || "";
-  
-  return link ? `${title}\n\n🔗 ${link}` : title;
+  // Fallback if no hebrew_description exists - minimal title only
+  return product.title ? String(product.title) : "מוצר חדש";
 }
 
 // Send to Telegram

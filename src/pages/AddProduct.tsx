@@ -236,20 +236,25 @@ const AddProduct = () => {
     }
   };
 
-  // Check for duplicate products by URL
-  const checkDuplicate = async (productUrl: string): Promise<boolean> => {
+  // Check for duplicate products – only block if same affiliate_link + same user + still pending
+  const checkDuplicate = async (affiliateLink: string | null): Promise<boolean> => {
+    if (!affiliateLink) return false;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
     const { data } = await supabase
       .from("products")
       .select("id")
-      .eq("original_url", productUrl)
+      .eq("affiliate_link", affiliateLink)
+      .eq("user_id", user.id)
+      .eq("status", "pending")
       .neq("id", draftProductId || "")
       .limit(1);
     return (data?.length ?? 0) > 0;
   };
 
   const handleSaveToQueue = async (product: Omit<Product, "id" | "created_at" | "updated_at">) => {
-    // Check for duplicates first
-    const isDuplicate = await checkDuplicate(product.original_url);
+    // Check for duplicates – only block if same affiliate link + same user + still pending
+    const isDuplicate = await checkDuplicate(product.affiliate_link ?? null);
     if (isDuplicate && !showDuplicateConfirm) {
       setPendingProduct(product);
       setPendingAction("queue");
@@ -266,13 +271,13 @@ const AddProduct = () => {
       if (draftProductId) {
         const { error } = await supabase
           .from("products")
-          .update({ ...product, status: "queued" })
+          .update({ ...product, status: "pending" })
           .eq("id", draftProductId);
         if (error) throw error;
       } else {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error("Not authenticated");
-        const { error } = await supabase.from("products").insert({ ...product, status: "queued", user_id: user.id });
+        const { error } = await supabase.from("products").insert({ ...product, status: "pending", user_id: user.id });
         if (error) throw error;
       }
 

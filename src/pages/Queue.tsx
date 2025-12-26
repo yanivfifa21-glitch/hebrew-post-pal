@@ -23,7 +23,7 @@ const Queue = () => {
       const { data, error } = await supabase
         .from("products")
         .select("*")
-        .in("status", ["queued", "scheduled", "draft"])
+        .in("status", ["pending", "scheduled", "draft"])
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -49,7 +49,7 @@ const Queue = () => {
     );
   };
 
-  const queuedProducts = products.filter((p) => p.status === "queued");
+  const queuedProducts = products.filter((p) => p.status === "pending");
   const scheduledProducts = products.filter((p) => p.status === "scheduled");
   const draftProducts = products.filter((p) => p.status === "draft");
 

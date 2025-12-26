@@ -21,7 +21,8 @@ interface ProductCardProps {
 export const ProductCard = ({ product, onPostNow, onSchedule, onEdit, onDelete }: ProductCardProps) => {
   const getStatusVariant = (status: string) => {
     switch (status) {
-      case 'queued': return 'queued';
+      case 'pending': return 'queued';
+      case 'processing': return 'queued';
       case 'scheduled': return 'scheduled';
       case 'sent': return 'sent';
       default: return 'draft';

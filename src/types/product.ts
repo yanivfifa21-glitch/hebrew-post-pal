@@ -8,7 +8,7 @@ export interface Product {
   price: number | null;
   orders_count: number;
   rating: number;
-  status: 'draft' | 'queued' | 'scheduled' | 'sent';
+  status: 'draft' | 'pending' | 'processing' | 'scheduled' | 'sent';
   scheduled_time: string | null;
   channels: string[];
   created_at: string;
