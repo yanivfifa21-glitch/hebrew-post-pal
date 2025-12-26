@@ -137,27 +137,67 @@ serve(async (req) => {
 
       addLog(userId, 'info', `Matched posting time: ${matchedTime}`, { currentTime: currentTimeStr });
 
-      // SEQUENTIAL SENDING: Get ONLY ONE queued product for this user (FIFO - oldest first)
-      const { data: product, error: productErr } = await supabase
-        .from("products")
-        .select("*")
-        .eq("user_id", userId)
-        .in("status", ["queued", "scheduled"])
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
+      // SEQUENTIAL SENDING: fetch ONLY ONE product (oldest first)
+      // NOTE: DB currently uses statuses: draft | queued | scheduled | sent
+      // We treat queued/scheduled as "pending" for automation.
+      let product: Record<string, unknown> | null = null;
 
-      if (productErr) {
-        addLog(userId, 'error', `Product fetch error`, { error: productErr.message });
-        results.push({ userId, status: "error", error: productErr.message });
+      try {
+        const { data, error } = await supabase
+          .from("products")
+          .select("*")
+          .eq("user_id", userId)
+          .in("status", ["queued", "scheduled"])
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .single();
+
+        if (error) throw error;
+        product = data as unknown as Record<string, unknown>;
+      } catch (e) {
+        // PostgREST "0 rows" for .single() -> treat as empty queue
+        const err = e as { code?: string; message?: string };
+        if (err?.code === "PGRST116" || String(err?.message ?? "").toLowerCase().includes("0 rows")) {
+          addLog(userId, "info", `No queued products found`);
+          results.push({ userId, status: "skipped", reason: "No queued products" });
+          continue;
+        }
+
+        addLog(userId, "error", `Product fetch error`, { error: err?.message ?? String(e) });
+        results.push({ userId, status: "error", error: err?.message ?? String(e) });
         continue;
       }
 
       if (!product) {
-        addLog(userId, 'info', `No queued products found`);
+        addLog(userId, "info", `No queued products found`);
         results.push({ userId, status: "skipped", reason: "No queued products" });
         continue;
       }
+
+      // IMMEDIATE LOCK (atomic-ish): mark as sent BEFORE sending to prevent concurrent cron runs
+      // If sending fails for all channels we revert back to queued below.
+      const { data: locked, error: lockErr } = await supabase
+        .from("products")
+        .update({ status: "sent" })
+        .eq("id", String(product.id))
+        .in("status", ["queued", "scheduled"])
+        .select("*")
+        .maybeSingle();
+
+      if (lockErr) {
+        addLog(userId, "error", "Failed to lock product", { productId: product.id, error: lockErr.message });
+        results.push({ userId, status: "error", error: lockErr.message });
+        continue;
+      }
+
+      if (!locked) {
+        // Another concurrent run already grabbed it
+        addLog(userId, "info", "Product already locked by another run", { productId: product.id });
+        results.push({ userId, status: "skipped", reason: "Already locked" });
+        continue;
+      }
+
+      product = locked as unknown as Record<string, unknown>;
 
       addLog(userId, 'info', `Found 1 product to send (sequential mode)`, { productId: product.id, title: product.title });
 
