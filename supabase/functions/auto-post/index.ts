@@ -191,9 +191,22 @@ serve(async (req) => {
 
 // --- HELPER FUNCTIONS ---
 
-// Message builder - only uses hebrew_description
+// Message builder - includes title, price, and description
 function buildMessage(product: Record<string, unknown>): string {
-  return String(product.hebrew_description ?? "").trim();
+  const title = String(product.title ?? "").trim();
+  const price = product.price ? `₪${Number(product.price).toFixed(2)}` : "";
+  const description = String(product.hebrew_description ?? "").trim();
+  const affiliateLink = String(product.affiliate_link ?? "").trim();
+  
+  // Build message with all components
+  const parts: string[] = [];
+  
+  if (title) parts.push(`🛒 *${title}*`);
+  if (price) parts.push(`💰 ${price}`);
+  if (description) parts.push(`\n${description}`);
+  if (affiliateLink) parts.push(`\n🔗 ${affiliateLink}`);
+  
+  return parts.join("\n");
 }
 
 // Telegram sender
