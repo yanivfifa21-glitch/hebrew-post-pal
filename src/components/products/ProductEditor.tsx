@@ -125,7 +125,7 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
       price: parseFloat(price),
       orders_count: productData.orders_count ?? 0,
       rating: normalizedRating,
-      status: "draft",
+      status: "Scheduled",
       scheduled_time: null,
       channels: [],
     };

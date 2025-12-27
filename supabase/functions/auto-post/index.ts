@@ -35,7 +35,7 @@ function getIsraelTimeInfo(): { hours: number; minutes: number; dayOfWeek: numbe
   return { hours, minutes, dayOfWeek, timeStr };
 }
 
-// Check if current time matches any posting time (within 5-minute window)
+// Check if current time matches any posting time (within 10-minute window)
 function isPostingTime(currentTimeStr: string, postingTimes: string[]): boolean {
   const [currH, currM] = currentTimeStr.split(":").map(Number);
   const currentTotalMinutes = currH * 60 + currM;
@@ -44,9 +44,9 @@ function isPostingTime(currentTimeStr: string, postingTimes: string[]): boolean 
     const [schedH, schedM] = scheduledTime.split(":").map(Number);
     const scheduledTotalMinutes = schedH * 60 + schedM;
     
-    // Allow 5-minute window: current time can be 0-5 minutes AFTER scheduled time
+    // Allow 10-minute window: current time can be 0-10 minutes AFTER scheduled time
     const diff = currentTotalMinutes - scheduledTotalMinutes;
-    if (diff >= 0 && diff <= 5) {
+    if (diff >= 0 && diff <= 10) {
       return true;
     }
   }
@@ -109,13 +109,12 @@ serve(async (req) => {
 
       console.log(`[auto-post] User ${userId}: ✓ Time ${currentTimeStr} matches! Searching for scheduled product...`);
 
-      // Step C: Fetch ONE product with status 'Scheduled' OR 'processing' (oldest first)
-      // This allows recovery of stuck products
+      // Step C: Fetch the OLDEST product with status 'Scheduled' (processing already handled above)
       const { data: product, error: fetchError } = await supabase
         .from("products")
         .select("*")
         .eq("user_id", userId)
-        .in("status", ["Scheduled", "processing"])
+        .eq("status", "Scheduled")
         .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
@@ -127,7 +126,7 @@ serve(async (req) => {
       }
 
       if (!product) {
-        console.log(`[auto-post] User ${userId}: No 'Scheduled' or 'processing' products in queue`);
+        console.log(`[auto-post] User ${userId}: No 'Scheduled' products in queue`);
         results.push({ userId, status: "queue_empty" });
         continue;
       }
