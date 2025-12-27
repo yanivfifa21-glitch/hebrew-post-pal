@@ -24,7 +24,8 @@ import {
   Zap,
   Power,
   Trash2,
-  Calendar
+  Calendar,
+  RotateCcw
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -123,6 +124,7 @@ const Settings = () => {
   // System logs
   const [systemLogs, setSystemLogs] = useState<AutomationLogRow[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
+  const [isResettingStuck, setIsResettingStuck] = useState(false);
 
   useEffect(() => {
     fetchSettings();
@@ -258,6 +260,38 @@ const Settings = () => {
 
   const removePostingTime = (time: string) => {
     setPostingTimes(postingTimes.filter(t => t !== time));
+  };
+
+  const handleResetStuckPosts = async () => {
+    if (!userId) return;
+    setIsResettingStuck(true);
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .update({ status: 'Scheduled' })
+        .eq('user_id', userId)
+        .eq('status', 'processing')
+        .select('id');
+
+      if (error) throw error;
+
+      const count = data?.length || 0;
+      toast({
+        title: "Stuck Posts Reset",
+        description: count > 0 
+          ? `${count} product(s) reset to 'Scheduled' status.`
+          : "No stuck posts found.",
+      });
+    } catch (error) {
+      console.error('Reset stuck posts error:', error);
+      toast({
+        title: "Reset Failed",
+        description: "Could not reset stuck posts.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsResettingStuck(false);
+    }
   };
 
   const handleAddAccount = async () => {
@@ -503,6 +537,36 @@ const Settings = () => {
                     </label>
                   );
                 })}
+              </div>
+            </div>
+
+            {/* Reset Stuck Posts */}
+            <div className="pt-4 border-t border-border">
+              <div className="flex items-center justify-between p-4 rounded-xl bg-destructive/5 border border-destructive/20">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-destructive/10">
+                    <RotateCcw className="h-5 w-5 text-destructive" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-foreground">Reset Stuck Posts</p>
+                    <p className="text-sm text-muted-foreground">
+                      Reset all 'processing' products back to 'Scheduled'
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleResetStuckPosts}
+                  disabled={isResettingStuck}
+                >
+                  {isResettingStuck ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                  ) : (
+                    <RotateCcw className="h-4 w-4 mr-1" />
+                  )}
+                  Reset
+                </Button>
               </div>
             </div>
           </CardContent>
