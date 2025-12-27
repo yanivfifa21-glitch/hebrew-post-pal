@@ -3,7 +3,7 @@ import { Product } from "@/types/product";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Rocket, Trash2, Loader2, ExternalLink, Star, ShoppingCart, Copy, Check, ArrowRightLeft, Clock } from "lucide-react";
+import { Rocket, Trash2, Loader2, ExternalLink, Star, ShoppingCart, Copy, Check, Clock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -15,12 +15,11 @@ interface QueueCardProps {
   onStatusChanged?: (productId: string, newStatus: string) => void;
 }
 
-export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged }: QueueCardProps) => {
+export const QueueCard = ({ product, onSent, onDeleted }: QueueCardProps) => {
   const [hebrewDescription, setHebrewDescription] = useState(product.hebrew_description || "");
   const [isSending, setIsSending] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
-  const [isChangingStatus, setIsChangingStatus] = useState(false);
 
   const handleCopyToClipboard = async () => {
     try {
@@ -91,7 +90,7 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged }: Queue
       await supabase
         .from("products")
         .update({ 
-          status: "sent", 
+          status: "Sent", 
           channels,
           hebrew_description: hebrewDescription 
         })
@@ -129,35 +128,12 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged }: Queue
     }
   };
 
-  const handleToggleStatus = async () => {
-    setIsChangingStatus(true);
-    const newStatus = product.status === 'pending' ? 'scheduled' : 'pending';
-    try {
-      const { error } = await supabase
-        .from("products")
-        .update({ status: newStatus })
-        .eq("id", product.id);
-      if (error) throw error;
-
-      toast({ 
-        title: "Status Changed", 
-        description: `Moved to ${newStatus === 'scheduled' ? 'Scheduled' : 'Queued'}` 
-      });
-      onStatusChanged?.(product.id, newStatus);
-    } catch {
-      toast({ title: "Failed to change status", variant: "destructive" });
-    } finally {
-      setIsChangingStatus(false);
-    }
-  };
-
   const getStatusVariant = (status: string) => {
     switch (status) {
-      case 'pending': return 'queued';
+      case 'Scheduled': return 'scheduled';
+      case 'Sent': return 'sent';
       case 'processing': return 'queued';
-      case 'scheduled': return 'scheduled';
-      case 'sent': return 'sent';
-      default: return 'draft';
+      default: return 'scheduled';
     }
   };
 
@@ -271,7 +247,7 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged }: Queue
               variant="success"
               className="flex-1 btn-glow-success"
               onClick={handleSendNow}
-              disabled={isSending || isDeleting || isChangingStatus}
+              disabled={isSending || isDeleting}
             >
               {isSending ? (
                 <>
@@ -285,27 +261,11 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged }: Queue
                 </>
               )}
             </Button>
-            {(product.status === 'pending' || product.status === 'scheduled') && (
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={handleToggleStatus}
-                disabled={isSending || isDeleting || isChangingStatus}
-                className="flex-shrink-0 border-primary/50 hover:bg-primary/10"
-                title={product.status === 'pending' ? 'Move to Scheduled' : 'Move to Queue'}
-              >
-                {isChangingStatus ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <ArrowRightLeft className="h-4 w-4" />
-                )}
-              </Button>
-            )}
             <Button
               variant="ghost-destructive"
               size="icon"
               onClick={handleDelete}
-              disabled={isSending || isDeleting || isChangingStatus}
+              disabled={isSending || isDeleting}
               className="flex-shrink-0"
             >
               {isDeleting ? (

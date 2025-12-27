@@ -91,7 +91,7 @@ const Dashboard = () => {
 
       await supabase
         .from('products')
-        .update({ status: 'sent', channels })
+        .update({ status: 'Sent', channels })
         .eq('id', product.id);
 
       toast({
@@ -121,9 +121,9 @@ const Dashboard = () => {
 
   const stats = {
     total: products.length,
-    queued: products.filter(p => p.status === 'pending' || p.status === 'processing').length,
-    sent: products.filter(p => p.status === 'sent').length,
-    scheduled: products.filter(p => p.status === 'scheduled').length,
+    queued: products.filter(p => p.status === 'Scheduled' || p.status === 'processing').length,
+    sent: products.filter(p => p.status === 'Sent').length,
+    scheduled: products.filter(p => p.status === 'Scheduled').length,
   };
 
   const recentProducts = products.slice(0, 5);

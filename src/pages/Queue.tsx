@@ -7,7 +7,7 @@ import { SkeletonList } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { Product } from "@/types/product";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { List, Clock, FileText, Sparkles } from "lucide-react";
+import { Clock, CheckCircle, Sparkles } from "lucide-react";
 
 const Queue = () => {
   const navigate = useNavigate();
@@ -23,7 +23,7 @@ const Queue = () => {
       const { data, error } = await supabase
         .from("products")
         .select("*")
-        .in("status", ["pending", "scheduled", "draft"])
+        .in("status", ["Scheduled", "Sent"])
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -36,7 +36,9 @@ const Queue = () => {
   };
 
   const handleProductSent = (productId: string) => {
-    setProducts((prev) => prev.filter((p) => p.id !== productId));
+    setProducts((prev) => 
+      prev.map((p) => p.id === productId ? { ...p, status: 'Sent' as Product['status'] } : p)
+    );
   };
 
   const handleProductDeleted = (productId: string) => {
@@ -49,9 +51,8 @@ const Queue = () => {
     );
   };
 
-  const queuedProducts = products.filter((p) => p.status === "pending");
-  const scheduledProducts = products.filter((p) => p.status === "scheduled");
-  const draftProducts = products.filter((p) => p.status === "draft");
+  const scheduledProducts = products.filter((p) => p.status === "Scheduled");
+  const sentProducts = products.filter((p) => p.status === "Sent");
 
   const renderProducts = (items: Product[], emptyMessage: string, emptyDescription: string) => {
     if (isLoading) {
@@ -103,19 +104,9 @@ const Queue = () => {
           </div>
         </div>
 
-        {/* Tabs */}
-        <Tabs defaultValue="queued" className="space-y-6">
+        {/* Tabs - Simplified to Scheduled and Sent only */}
+        <Tabs defaultValue="scheduled" className="space-y-6">
           <TabsList className="bg-muted/30 p-1.5 rounded-xl border border-border/50 backdrop-blur-sm">
-            <TabsTrigger 
-              value="queued" 
-              className="gap-2 rounded-lg data-[state=active]:bg-secondary/20 data-[state=active]:text-secondary data-[state=active]:shadow-sm"
-            >
-              <List className="h-4 w-4" />
-              <span className="hidden sm:inline">Queued</span>
-              <span className="bg-secondary/20 text-secondary text-xs font-bold px-2 py-0.5 rounded-full">
-                {queuedProducts.length}
-              </span>
-            </TabsTrigger>
             <TabsTrigger 
               value="scheduled" 
               className="gap-2 rounded-lg data-[state=active]:bg-primary/20 data-[state=active]:text-primary data-[state=active]:shadow-sm"
@@ -127,27 +118,23 @@ const Queue = () => {
               </span>
             </TabsTrigger>
             <TabsTrigger 
-              value="drafts" 
-              className="gap-2 rounded-lg data-[state=active]:bg-muted data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+              value="sent" 
+              className="gap-2 rounded-lg data-[state=active]:bg-green-500/20 data-[state=active]:text-green-500 data-[state=active]:shadow-sm"
             >
-              <FileText className="h-4 w-4" />
-              <span className="hidden sm:inline">Drafts</span>
-              <span className="bg-muted text-muted-foreground text-xs font-bold px-2 py-0.5 rounded-full">
-                {draftProducts.length}
+              <CheckCircle className="h-4 w-4" />
+              <span className="hidden sm:inline">Sent</span>
+              <span className="bg-green-500/20 text-green-500 text-xs font-bold px-2 py-0.5 rounded-full">
+                {sentProducts.length}
               </span>
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="queued" className="animate-fade-in">
-            {renderProducts(queuedProducts, "No products in queue", "Add products to get started!")}
-          </TabsContent>
-
           <TabsContent value="scheduled" className="animate-fade-in">
-            {renderProducts(scheduledProducts, "No scheduled products", "Schedule products for automatic posting.")}
+            {renderProducts(scheduledProducts, "No scheduled products", "Add products to schedule for automatic posting.")}
           </TabsContent>
 
-          <TabsContent value="drafts" className="animate-fade-in">
-            {renderProducts(draftProducts, "No draft products", "Drafts are products you haven't finished editing.")}
+          <TabsContent value="sent" className="animate-fade-in">
+            {renderProducts(sentProducts, "No sent products", "Products that have been posted will appear here.")}
           </TabsContent>
         </Tabs>
       </div>
