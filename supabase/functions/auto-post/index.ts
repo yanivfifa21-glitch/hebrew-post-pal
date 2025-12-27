@@ -35,13 +35,18 @@ function getIsraelTimeInfo(): { hours: number; minutes: number; dayOfWeek: numbe
   return { hours, minutes, dayOfWeek, timeStr };
 }
 
-// Check if current time matches any posting time (exact minute match)
+// Check if current time matches any posting time (within 5-minute window)
 function isPostingTime(currentTimeStr: string, postingTimes: string[]): boolean {
   const [currH, currM] = currentTimeStr.split(":").map(Number);
+  const currentTotalMinutes = currH * 60 + currM;
   
   for (const scheduledTime of postingTimes) {
     const [schedH, schedM] = scheduledTime.split(":").map(Number);
-    if (currH === schedH && currM === schedM) {
+    const scheduledTotalMinutes = schedH * 60 + schedM;
+    
+    // Allow 5-minute window: current time can be 0-5 minutes AFTER scheduled time
+    const diff = currentTotalMinutes - scheduledTotalMinutes;
+    if (diff >= 0 && diff <= 5) {
       return true;
     }
   }
@@ -104,12 +109,13 @@ serve(async (req) => {
 
       console.log(`[auto-post] User ${userId}: ✓ Time ${currentTimeStr} matches! Searching for scheduled product...`);
 
-      // Step C: Fetch ONLY ONE product with status 'Scheduled' (oldest first)
+      // Step C: Fetch ONE product with status 'Scheduled' OR 'processing' (oldest first)
+      // This allows recovery of stuck products
       const { data: product, error: fetchError } = await supabase
         .from("products")
         .select("*")
         .eq("user_id", userId)
-        .eq("status", "Scheduled")
+        .in("status", ["Scheduled", "processing"])
         .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
@@ -121,7 +127,7 @@ serve(async (req) => {
       }
 
       if (!product) {
-        console.log(`[auto-post] User ${userId}: No 'Scheduled' products in queue`);
+        console.log(`[auto-post] User ${userId}: No 'Scheduled' or 'processing' products in queue`);
         results.push({ userId, status: "queue_empty" });
         continue;
       }
@@ -177,7 +183,16 @@ serve(async (req) => {
       }
 
       // Step F: Final Status Update
-      const finalStatus = sendSuccess ? "sent" : "pending";
+      // If BOTH channels failed, reset to 'Scheduled' for retry
+      let finalStatus: string;
+      if (sendSuccess) {
+        finalStatus = "sent";
+      } else {
+        // No channel succeeded - reset to Scheduled for retry
+        finalStatus = "Scheduled";
+        console.log(`[auto-post] User ${userId}: Both channels failed - resetting product to 'Scheduled' for retry`);
+      }
+      
       const { error: finalUpdateError } = await supabase
         .from("products")
         .update({ status: finalStatus })
