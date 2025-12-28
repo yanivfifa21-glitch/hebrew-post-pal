@@ -35,22 +35,9 @@ function getIsraelTimeInfo(): { hours: number; minutes: number; dayOfWeek: numbe
   return { hours, minutes, dayOfWeek, timeStr };
 }
 
-// Check if current time matches any posting time (within 10-minute window)
+// Check if current time matches any posting time EXACTLY (same HH:MM)
 function isPostingTime(currentTimeStr: string, postingTimes: string[]): boolean {
-  const [currH, currM] = currentTimeStr.split(":").map(Number);
-  const currentTotalMinutes = currH * 60 + currM;
-  
-  for (const scheduledTime of postingTimes) {
-    const [schedH, schedM] = scheduledTime.split(":").map(Number);
-    const scheduledTotalMinutes = schedH * 60 + schedM;
-    
-    // Allow 10-minute window: current time can be 0-10 minutes AFTER scheduled time
-    const diff = currentTotalMinutes - scheduledTotalMinutes;
-    if (diff >= 0 && diff <= 10) {
-      return true;
-    }
-  }
-  return false;
+  return postingTimes.includes(currentTimeStr);
 }
 // -------------------------
 
@@ -107,14 +94,14 @@ serve(async (req) => {
         continue;
       }
 
-      // Step B.5: ONE POST PER SLOT - Check if we already sent in the last 10 minutes (prevents multi-send within same time slot)
-      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      // Step B.5: 15-MINUTE LOCKOUT - Check if we already sent in the last 15 minutes (prevents duplicates)
+      const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
       const { data: recentSent, error: recentError } = await supabase
         .from("products")
         .select("id, updated_at")
         .eq("user_id", userId)
-        .eq("status", "sent")
-        .gte("updated_at", tenMinutesAgo)
+        .eq("status", "Sent")
+        .gte("updated_at", fifteenMinutesAgo)
         .limit(1);
 
       if (recentError) {
@@ -122,7 +109,7 @@ serve(async (req) => {
       }
 
       if (recentSent && recentSent.length > 0) {
-        console.log(`[auto-post] User ${userId}: Skipping - Already sent a post in last 10 min (product ${recentSent[0].id} at ${recentSent[0].updated_at})`);
+        console.log(`[auto-post] User ${userId}: Skipping - Already sent a post in last 15 min (product ${recentSent[0].id} at ${recentSent[0].updated_at})`);
         results.push({ userId, status: "already_sent_this_slot" });
         continue;
       }
@@ -205,7 +192,7 @@ serve(async (req) => {
       // If BOTH channels failed, reset to 'Scheduled' for retry
       let finalStatus: string;
       if (sendSuccess) {
-        finalStatus = "sent";
+        finalStatus = "Sent";
       } else {
         // No channel succeeded - reset to Scheduled for retry
         finalStatus = "Scheduled";
