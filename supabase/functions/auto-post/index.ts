@@ -107,14 +107,14 @@ serve(async (req) => {
         continue;
       }
 
-      // Step B.5: ONE POST PER SLOT - Check if we already sent in the last 55 minutes (prevents multi-send in 10min window)
-      const fiftyFiveMinutesAgo = new Date(Date.now() - 55 * 60 * 1000).toISOString();
+      // Step B.5: ONE POST PER SLOT - Check if we already sent in the last 10 minutes (prevents multi-send within same time slot)
+      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
       const { data: recentSent, error: recentError } = await supabase
         .from("products")
         .select("id, updated_at")
         .eq("user_id", userId)
         .eq("status", "sent")
-        .gte("updated_at", fiftyFiveMinutesAgo)
+        .gte("updated_at", tenMinutesAgo)
         .limit(1);
 
       if (recentError) {
@@ -122,7 +122,7 @@ serve(async (req) => {
       }
 
       if (recentSent && recentSent.length > 0) {
-        console.log(`[auto-post] User ${userId}: Skipping - Already sent a post in last 55 min (product ${recentSent[0].id} at ${recentSent[0].updated_at})`);
+        console.log(`[auto-post] User ${userId}: Skipping - Already sent a post in last 10 min (product ${recentSent[0].id} at ${recentSent[0].updated_at})`);
         results.push({ userId, status: "already_sent_this_slot" });
         continue;
       }
