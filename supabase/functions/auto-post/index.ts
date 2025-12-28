@@ -107,7 +107,27 @@ serve(async (req) => {
         continue;
       }
 
-      console.log(`[auto-post] User ${userId}: ✓ Time ${currentTimeStr} matches! Searching for scheduled product...`);
+      // Step B.5: ONE POST PER SLOT - Check if we already sent in the last 55 minutes (prevents multi-send in 10min window)
+      const fiftyFiveMinutesAgo = new Date(Date.now() - 55 * 60 * 1000).toISOString();
+      const { data: recentSent, error: recentError } = await supabase
+        .from("products")
+        .select("id, updated_at")
+        .eq("user_id", userId)
+        .eq("status", "sent")
+        .gte("updated_at", fiftyFiveMinutesAgo)
+        .limit(1);
+
+      if (recentError) {
+        console.error(`[auto-post] User ${userId}: Error checking recent sends: ${recentError.message}`);
+      }
+
+      if (recentSent && recentSent.length > 0) {
+        console.log(`[auto-post] User ${userId}: Skipping - Already sent a post in last 55 min (product ${recentSent[0].id} at ${recentSent[0].updated_at})`);
+        results.push({ userId, status: "already_sent_this_slot" });
+        continue;
+      }
+
+      console.log(`[auto-post] User ${userId}: ✓ Time ${currentTimeStr} matches! No recent sends. Searching for scheduled product...`);
 
       // Step C: Fetch the OLDEST product with status 'Scheduled' (processing already handled above)
       const { data: product, error: fetchError } = await supabase
@@ -229,7 +249,11 @@ function buildMessage(product: Record<string, unknown>): string {
   if (title) parts.push(`🛒 *${title}*`);
   if (price) parts.push(`💰 ${price}`);
   if (description) parts.push(`\n${description}`);
-  if (affiliateLink) parts.push(`\n🔗 ${affiliateLink}`);
+  
+  // Only add affiliate link if it's NOT already in the description
+  if (affiliateLink && !description.includes(affiliateLink)) {
+    parts.push(`\n🔗 ${affiliateLink}`);
+  }
   
   return parts.join("\n");
 }
