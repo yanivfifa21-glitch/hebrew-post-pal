@@ -196,7 +196,7 @@ const AddProduct = () => {
           rating: Math.min(normalizedRating, 5),
           affiliate_link: affiliateLink || null,
           hebrew_description: hebrewDescription || null,
-          status: "draft",
+          status: "Scheduled",
           channels: [],
           user_id: user.id,
         })
@@ -246,7 +246,7 @@ const AddProduct = () => {
       .select("id")
       .eq("affiliate_link", affiliateLink)
       .eq("user_id", user.id)
-      .eq("status", "pending")
+      .eq("status", "Scheduled")
       .neq("id", draftProductId || "")
       .limit(1);
     return (data?.length ?? 0) > 0;
@@ -272,13 +272,13 @@ const AddProduct = () => {
       if (draftProductId) {
         const { error } = await supabase
           .from("products")
-          .update({ ...product, status: "pending" })
+          .update({ ...product, status: "Scheduled" })
           .eq("id", draftProductId);
         if (error) throw error;
       } else {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error("Not authenticated");
-        const { error } = await supabase.from("products").insert({ ...product, status: "pending", user_id: user.id });
+        const { error } = await supabase.from("products").insert({ ...product, status: "Scheduled", user_id: user.id });
         if (error) throw error;
       }
 
@@ -379,13 +379,13 @@ const AddProduct = () => {
       if (draftProductId) {
         const { error } = await supabase
           .from("products")
-          .update({ ...product, status: "sent", channels })
+          .update({ ...product, status: "Sent", channels })
           .eq("id", draftProductId);
         if (error) throw error;
       } else {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error("Not authenticated");
-        const { error } = await supabase.from("products").insert({ ...product, status: "sent", channels, user_id: user.id });
+        const { error } = await supabase.from("products").insert({ ...product, status: "Sent", channels, user_id: user.id });
         if (error) throw error;
       }
 
