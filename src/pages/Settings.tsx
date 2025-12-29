@@ -87,6 +87,84 @@ interface AutomationLogRow {
   context: any;
 }
 
+// Pre-defined prompt templates
+const PROMPT_TEMPLATES: Record<string, { name: string; nameHe: string; icon: string; prompt: string }> = {
+  sales: {
+    name: 'Sales',
+    nameHe: 'מכירתי',
+    icon: '💰',
+    prompt: `אתה משווק שותפים ישראלי מקצועי. כתוב פוסט מכירתי לערוץ דילים בעברית.
+
+מבנה חובה:
+1. שורת כותרת: [אימוג'י מתאים] *[שם המוצר] – [תכונה עיקרית]* (הדגש עם כוכביות)
+2. תיאור מכירתי: 2-3 משפטים שמדגישים למה זה דיל מעולה ולמה כדאי לקנות עכשיו
+3. שורת מחיר והנחה: 💰 *[מחיר מקורי]* ➜ *[מחיר סופי]* ([אחוז הנחה]% הנחה!) - רק אם יש מידע
+4. שורת הוכחה חברתית: ⭐ מעל *[הזמנות] הזמנות* | דירוג *[ציון]* (רק אם יש מידע)
+5. יתרונות: 3 נקודות קצרות עם אימוג'ים רלוונטיים
+6. שורת קופון (אם יש): 🎟️ יש להזין קופון: *[קוד הקופון]* [פרטי ההנחה אם יש]
+
+כללים קריטיים:
+- אסור להוסיף קישור או "לחץ כאן" או "להזמנה" - האפליקציה תוסיף את זה
+- הדגש את הערך והחיסכון
+- צור תחושת הזדמנות`
+  },
+  personal: {
+    name: 'Personal',
+    nameHe: 'אישי',
+    icon: '💬',
+    prompt: `אתה חבר שממליץ על מוצר טוב. כתוב פוסט אישי וחברי בעברית.
+
+מבנה חובה:
+1. שורת פתיחה אישית: התחל עם "מצאתי משהו מגניב" או "חייב לשתף אתכם"
+2. תיאור אישי: 2-3 משפטים בטון של שיחה עם חברים, למה אתה ממליץ על זה
+3. מחיר (אם יש): 💰 *[מחיר]* - בלי לחץ, פשוט מידע
+4. יתרונות: 2 נקודות שבאמת שימושיות ביום יום
+5. שורת קופון (אם יש): 🎟️ קוד: *[קוד הקופון]*
+
+כללים:
+- אסור להוסיף קישור או "לחץ כאן"
+- כתוב בשפה טבעית ופשוטה
+- אל תהיה מכירתי מדי`
+  },
+  urgent: {
+    name: 'Urgent',
+    nameHe: 'דחוף',
+    icon: '🔥',
+    prompt: `אתה משווק שותפים. כתוב פוסט דחוף עם תחושת מיידיות בעברית.
+
+מבנה חובה:
+1. שורת כותרת דחופה: 🔥 *[שם המוצר]* - מחיר הכי נמוך!
+2. תיאור קצר ודחוף: משפט אחד שמדגיש שזה זמני
+3. שורת מחיר: 💰 *[מחיר מקורי]* ➜ *[מחיר סופי]* 🔥
+4. קופון (אם יש): 🎟️ קוד: *[קוד]*
+5. סיום: ⚡ מלאי מוגבל
+
+כללים:
+- אסור להוסיף קישור
+- קצר וממוקד
+- תחושת דחיפות אמיתית`
+  },
+  professional: {
+    name: 'Professional',
+    nameHe: 'מקצועי',
+    icon: '📋',
+    prompt: `אתה כותב תוכן מקצועי. כתוב פוסט מפורט ומקצועי בעברית.
+
+מבנה חובה:
+1. שורת כותרת: *[שם המוצר המלא]*
+2. תיאור מפורט: 3-4 משפטים עם מידע טכני ומפרט
+3. מחיר והנחה: 💰 מחיר: *[מחיר]* (אם יש הנחה - ציין)
+4. נתונים: ⭐ דירוג: [ציון] | מכירות: [הזמנות]
+5. מפרט יתרונות: 4 נקודות טכניות
+6. קופון (אם יש): 🎟️ קוד הנחה: *[קוד]* - [פרטים]
+
+כללים:
+- אסור להוסיף קישור
+- שפה מקצועית ומדויקת
+- התמקד במפרט ובפרטים טכניים`
+  }
+};
+
 const Settings = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -110,6 +188,7 @@ const Settings = () => {
 
   // Custom AI prompt
   const [customAiPrompt, setCustomAiPrompt] = useState('');
+  const [selectedPromptType, setSelectedPromptType] = useState<string | null>(null);
 
   // Multi-account management
   const [messagingAccounts, setMessagingAccounts] = useState<MessagingAccount[]>([]);
@@ -880,24 +959,70 @@ const Settings = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-purple-500" />
-              Custom AI Prompt
+              AI Prompt Templates
             </CardTitle>
             <CardDescription>
-              Define your own system prompt for generating Hebrew product descriptions
+              בחר סגנון מוכן או כתוב פרומפט מותאם אישית. המידע על קופונים וקישורים יילקח אוטומטית מהמוצר
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Pre-defined prompt type selector */}
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">סגנון פוסט מוכן</Label>
+              <div className="grid grid-cols-2 gap-3">
+                {Object.entries(PROMPT_TEMPLATES).map(([key, template]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      if (selectedPromptType === key) {
+                        setSelectedPromptType(null);
+                        setCustomAiPrompt('');
+                      } else {
+                        setSelectedPromptType(key);
+                        setCustomAiPrompt(template.prompt);
+                      }
+                    }}
+                    className={`p-4 rounded-xl border-2 text-right transition-all ${
+                      selectedPromptType === key
+                        ? 'border-primary bg-primary/10 shadow-lg'
+                        : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xl">{template.icon}</span>
+                      <span className="font-semibold text-foreground">{template.nameHe}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{template.name}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card px-2 text-muted-foreground">או כתוב פרומפט מותאם</span>
+              </div>
+            </div>
+
             <Textarea
               value={customAiPrompt}
-              onChange={(e) => setCustomAiPrompt(e.target.value)}
-              placeholder="Leave empty to use the default prompt. Enter your custom instructions for the AI here..."
+              onChange={(e) => {
+                setCustomAiPrompt(e.target.value);
+                setSelectedPromptType(null);
+              }}
+              placeholder="השאר ריק לשימוש בפרומפט ברירת מחדל. כתוב הוראות מותאמות אישית לAI כאן..."
               className="min-h-[200px] font-mono text-sm"
               dir="rtl"
             />
-            <p className="text-xs text-muted-foreground">
-              This prompt will be used as the system message when generating Hebrew descriptions. 
-              Leave empty to use the default professional affiliate marketing prompt.
-            </p>
+            <div className="bg-muted/50 p-3 rounded-lg border border-border">
+              <p className="text-xs text-muted-foreground" dir="rtl">
+                💡 <strong>טיפ:</strong> אל תכלול קישורים או קופונים בפרומפט - המידע הזה יילקח אוטומטית מהקישור שהוזן או מהקופון שהוספת ידנית למוצר
+              </p>
+            </div>
           </CardContent>
         </Card>
 
