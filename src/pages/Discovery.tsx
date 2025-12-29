@@ -300,7 +300,7 @@ const Discovery = () => {
         rating: 0,
         affiliate_link: affiliateLink,
         hebrew_description: hebrewDescription,
-        status: "queued",
+        status: "Scheduled",
         channels: [],
         user_id: userId,
       });
@@ -428,7 +428,7 @@ const Discovery = () => {
         rating: normalizedRating,
         affiliate_link: affiliateLink,
         hebrew_description: hebrewDescription,
-        status: "queued",
+        status: "Scheduled",
         channels: [],
         user_id: userId,
       });

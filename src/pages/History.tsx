@@ -19,7 +19,7 @@ const History = () => {
       const { data, error } = await supabase
         .from('products')
         .select('*')
-        .eq('status', 'sent')
+        .eq('status', 'Sent')
         .order('updated_at', { ascending: false });
 
       if (error) throw error;
