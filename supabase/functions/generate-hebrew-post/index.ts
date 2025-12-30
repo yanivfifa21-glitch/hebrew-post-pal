@@ -9,23 +9,20 @@ const corsHeaders = {
 type ApiOk = { success: true; hebrewDescription: string };
 type ApiErr = { success: false; error: string; code?: string };
 
-const DEFAULT_SYSTEM_PROMPT = `אתה משווק שותפים ישראלי מקצועי. כתוב פוסט לערוץ דילים בעברית לפי המבנה הבא בדיוק:
+// Default prompt - product description only, no prices/coupons/links
+const DEFAULT_SYSTEM_PROMPT = `אתה משווק שותפים ישראלי. כתוב תיאור מוצר קצר וממוקד בעברית.
 
 מבנה חובה:
-1. שורת כותרת: [אימוג'י מתאים] *[שם המוצר] – [תכונה עיקרית]* (הדגש עם כוכביות)
-2. תיאור קצר: 1-2 משפטים בטון טבעי ופשוט שמסבירים מה זה ולמה זה דיל טוב
-3. שורת מחיר והנחה: 💰 *[מחיר מקורי]* ➜ *[מחיר סופי]* ([אחוז הנחה]% הנחה!) - רק אם יש מידע
-4. שורת הוכחה חברתית: ⭐ מעל *[הזמנות] הזמנות* | דירוג *[ציון]* (רק אם יש מידע)
-5. יתרונות: 2 נקודות קצרות עם אימוג'ים רלוונטיים (⚡ למהירות, 🔋 לסוללה, 🛡️ לעמידות וכו')
-6. שורת קופון (אם יש): 🎟️ יש להזין קופון: *[קוד הקופון]* [פרטי ההנחה אם יש]
+1. שורת כותרת: [אימוג'י מתאים] *[שם המוצר באנגלית/מותג]* – [תכונה עיקרית בעברית]
+2. תיאור: 2-3 שורות בעברית שמסבירים מה המוצר, למה הוא טוב, ויתרונות עיקריים
+3. נתונים: ⭐ [דירוג כוכבים] | [כמות הזמנות] הזמנות (רק אם יש מידע)
 
 כללים קריטיים:
-- אסור להוסיף קישור או "לחץ כאן" או "להזמנה" - האפליקציה תוסיף את זה
-- אסור להשתמש בביטויים כמו: "שובר שיאים", "כובש מסלולים", "משנה את כללי המשחק", "הרפתקה", "חלום"
-- השתמש בשפה ישירה, פשוטה ומועילה
-- השתמש בכוכביות (*) להדגשה כמו בדוגמה
-- אם יש קופון בלי ערך ספציפי, כתוב: "יש להזין קופון: [קוד]"
-- אם יש שני קופונים, כתוב: "יש להזין קופון + קופון"`;
+- שם המוצר/מותג יישאר באנגלית
+- כל השאר בעברית בלבד
+- אסור להוסיף מחיר או קופון - המידע הזה יתווסף אוטומטית
+- אסור להוסיף קישור או "לחץ כאן" או "להזמנה"
+- התמקד בתיאור ויתרונות בלבד`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -36,23 +33,12 @@ serve(async (req) => {
       title, 
       ordersCount, 
       rating, 
-      userId,
-      // New Excel fields
-      originalPrice,
-      discountPrice,
-      discountPercent,
-      couponCode,
-      couponValue
+      userId
     } = body;
     
     const t = String(title || "").trim();
     const orders = Number(ordersCount) || 0;
     const rate = Number(rating) || 0;
-    const origPrice = Number(originalPrice) || 0;
-    const discPrice = Number(discountPrice) || 0;
-    const discPct = Number(discountPercent) || 0;
-    const coupon = String(couponCode || "").trim();
-    const couponVal = String(couponValue || "").trim();
 
     if (!t) {
       const payload: ApiErr = { success: false, error: "title is required" };
@@ -85,56 +71,28 @@ serve(async (req) => {
       }
     }
 
-    // Build comprehensive product context
+    // Build product context - only title, orders, and rating
     const productDetails: string[] = [];
     
-    // Add price info if available
-    if (origPrice > 0 && discPrice > 0) {
-      productDetails.push(`מחיר מקורי: $${origPrice.toFixed(2)}`);
-      productDetails.push(`מחיר סופי: $${discPrice.toFixed(2)}`);
-      if (discPct > 0) {
-        productDetails.push(`הנחה: ${discPct}%`);
-      } else {
-        const calculatedDiscount = Math.round(((origPrice - discPrice) / origPrice) * 100);
-        if (calculatedDiscount > 0) {
-          productDetails.push(`הנחה: ${calculatedDiscount}%`);
-        }
-      }
-    } else if (discPrice > 0) {
-      productDetails.push(`מחיר: $${discPrice.toFixed(2)}`);
-    }
-
-    // Add social proof
+    // Add social proof data from API
     if (rate > 0) {
       const displayRating = rate > 5 ? (rate / 20).toFixed(1) : rate.toFixed(1);
       productDetails.push(`ציון: ${displayRating}/5 כוכבים`);
     }
     if (orders > 0) {
-      const ordersText = orders > 1000 ? `${Math.round(orders/1000)}K+` : orders > 500 ? "מאות" : orders > 100 ? "עשרות" : String(orders);
+      const ordersText = orders > 10000 ? `${Math.round(orders/1000)}K+` : orders > 1000 ? `${(orders/1000).toFixed(1)}K` : String(orders);
       productDetails.push(`הזמנות: ${ordersText}`);
     }
 
-    // Add coupon info with smart logic
-    if (coupon) {
-      if (couponVal) {
-        productDetails.push(`קופון: ${coupon} (הנחה: ${couponVal})`);
-      } else {
-        productDetails.push(`קופון להזנה: ${coupon}`);
-      }
-    }
-
     const userPrompt = `מוצר: ${t}
-${productDetails.length > 0 ? `\nפרטים:\n${productDetails.join("\n")}` : ""}
+${productDetails.length > 0 ? `\nנתונים מה-API:\n${productDetails.join("\n")}` : ""}
 
-כתוב פוסט לערוץ דילים לפי המבנה. בלי קישור.`;
+כתוב תיאור מוצר קצר. בלי מחיר, בלי קופון, בלי קישור.`;
 
-    console.log("[generate-hebrew-post] Generating description with full data:", {
+    console.log("[generate-hebrew-post] Generating description:", {
       title: t,
-      originalPrice: origPrice,
-      discountPrice: discPrice,
-      discountPercent: discPct,
-      couponCode: coupon,
-      couponValue: couponVal,
+      ordersCount: orders,
+      rating: rate,
       userId: userId || "none"
     });
 
@@ -172,14 +130,21 @@ ${productDetails.length > 0 ? `\nפרטים:\n${productDetails.join("\n")}` : ""
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Clean up - remove any links or CTAs the AI might have added anyway
+    // Clean up - remove any links, prices, or CTAs the AI might have added
     content = String(content).trim();
     content = content.replace(/https?:\/\/[^\s]+/g, '');
     content = content.replace(/👉[^\n]*/g, '');
-    content = content.replace(/🛒[^\n]*/g, '');
     content = content.replace(/🔗[^\n]*/g, '');
     content = content.replace(/לרכישה[:\s]*/gi, '');
     content = content.replace(/לחץ כאן[^\n]*/gi, '');
+    // Remove price lines
+    content = content.replace(/💰[^\n]*/g, '');
+    content = content.replace(/מחיר[:\s]*[\d\.\$₪]+[^\n]*/gi, '');
+    // Remove coupon lines
+    content = content.replace(/🎟️[^\n]*/g, '');
+    content = content.replace(/קופון[:\s]*[^\n]*/gi, '');
+    content = content.replace(/קוד[:\s]*[A-Z0-9]+[^\n]*/gi, '');
+    // Clean up extra newlines
     content = content.replace(/\n{3,}/g, '\n\n').trim();
 
     const payload: ApiOk = { success: true, hebrewDescription: content };
