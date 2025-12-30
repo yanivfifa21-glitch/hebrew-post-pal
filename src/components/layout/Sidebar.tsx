@@ -11,7 +11,8 @@ import {
   LogOut,
   TrendingUp,
   Sparkles,
-  Shield
+  Shield,
+  Search
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ const ADMIN_EMAIL = "yanivfifa21@gmail.com";
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   { icon: TrendingUp, label: "Discovery", path: "/discovery" },
+  { icon: Search, label: "חיפוש חופשי", path: "/free-search" },
   { icon: Plus, label: "Add Product", path: "/add-product" },
   { icon: List, label: "Queue", path: "/queue" },
   { icon: History, label: "History", path: "/history" },
