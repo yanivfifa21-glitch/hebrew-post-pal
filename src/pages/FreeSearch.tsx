@@ -5,16 +5,15 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { 
-  Search, 
-  Loader2, 
-  Plus, 
-  Star, 
+import {
+  Search,
+  Loader2,
+  Plus,
+  Star,
   ShoppingCart,
   Package,
   ImageOff,
-  Sparkles
+  Sparkles,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -52,11 +51,11 @@ const FreeSearch = () => {
     setSelectedProducts(new Set());
 
     try {
-      const { data, error } = await supabase.functions.invoke("fetch-hot-products", {
-        body: { 
+      const { data, error } = await supabase.functions.invoke("search-ali-products", {
+        body: {
           keywords: searchQuery.trim(),
           pageSize: 40,
-          sort: "SALE_PRICE_ASC"
+          sort: "VOLUME_DESC",
         },
       });
 
@@ -246,90 +245,104 @@ const FreeSearch = () => {
             </div>
 
             {/* Products Grid */}
-            <ScrollArea className="h-[calc(100vh-380px)]">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-4">
-                {products.map((product) => {
-                  const isSelected = selectedProducts.has(product.product_id);
-                  const discount = product.original_price > product.price 
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-4">
+              {products.map((product) => {
+                const isSelected = selectedProducts.has(product.product_id);
+                const discount =
+                  product.original_price > product.price
                     ? Math.round((1 - product.price / product.original_price) * 100)
                     : 0;
 
-                  return (
-                    <Card 
-                      key={product.product_id}
-                      className={`overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-lg ${
-                        isSelected 
-                          ? "ring-2 ring-primary bg-primary/5" 
-                          : "hover:ring-1 hover:ring-primary/30"
-                      }`}
-                      onClick={() => toggleProductSelection(product.product_id)}
-                    >
-                      <div className="relative aspect-square bg-muted">
-                        {product.image_url ? (
-                          <img
-                            src={product.image_url}
-                            alt={product.title}
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <ImageOff className="h-12 w-12 text-muted-foreground/50" />
-                          </div>
-                        )}
-                        
-                        {/* Selection Checkbox */}
-                        <div className="absolute top-2 right-2">
-                          <div className={`p-1 rounded-lg ${isSelected ? "bg-primary" : "bg-background/80 backdrop-blur-sm"}`}>
-                            <Checkbox
-                              checked={isSelected}
-                              className={isSelected ? "border-primary-foreground data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground" : ""}
-                            />
-                          </div>
+                return (
+                  <Card
+                    key={product.product_id}
+                    className={`overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-lg ${
+                      isSelected
+                        ? "ring-2 ring-primary bg-primary/5"
+                        : "hover:ring-1 hover:ring-primary/30"
+                    }`}
+                    onClick={() => toggleProductSelection(product.product_id)}
+                  >
+                    <div className="relative aspect-square bg-muted">
+                      {product.image_url ? (
+                        <img
+                          src={product.image_url}
+                          alt={product.title}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <ImageOff className="h-12 w-12 text-muted-foreground/50" />
                         </div>
+                      )}
 
-                        {/* Discount Badge */}
-                        {discount > 0 && (
-                          <Badge className="absolute top-2 left-2 bg-destructive text-destructive-foreground">
-                            -{discount}%
-                          </Badge>
-                        )}
+                      {/* Selection Checkbox */}
+                      <div className="absolute top-2 right-2">
+                        <div
+                          className={`p-1 rounded-lg ${
+                            isSelected
+                              ? "bg-primary"
+                              : "bg-background/80 backdrop-blur-sm"
+                          }`}
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            className={
+                              isSelected
+                                ? "border-primary-foreground data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
+                                : ""
+                            }
+                          />
+                        </div>
                       </div>
 
-                      <CardContent className="p-3 space-y-2">
-                        <p className="text-sm font-medium line-clamp-2 min-h-[40px]" dir="ltr">
-                          {product.title}
-                        </p>
+                      {/* Discount Badge */}
+                      {discount > 0 && (
+                        <Badge className="absolute top-2 left-2 bg-destructive text-destructive-foreground">
+                          -{discount}%
+                        </Badge>
+                      )}
+                    </div>
 
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-baseline gap-1">
-                            <span className="text-lg font-bold text-primary">
-                              ${product.price.toFixed(2)}
+                    <CardContent className="p-3 space-y-2">
+                      <p
+                        className="text-sm font-medium line-clamp-2 min-h-[40px]"
+                        dir="ltr"
+                      >
+                        {product.title}
+                      </p>
+
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-lg font-bold text-primary">
+                            ${product.price.toFixed(2)}
+                          </span>
+                          {product.original_price > product.price && (
+                            <span className="text-xs text-muted-foreground line-through">
+                              ${product.original_price.toFixed(2)}
                             </span>
-                            {product.original_price > product.price && (
-                              <span className="text-xs text-muted-foreground line-through">
-                                ${product.original_price.toFixed(2)}
-                              </span>
-                            )}
-                          </div>
+                          )}
                         </div>
+                      </div>
 
-                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
-                            <span>{product.rating > 0 ? product.rating.toFixed(1) : "-"}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <ShoppingCart className="h-3 w-3" />
-                            <span>{product.sales_count.toLocaleString()}</span>
-                          </div>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+                          <span>
+                            {product.rating > 0 ? product.rating.toFixed(1) : "-"}
+                          </span>
                         </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            </ScrollArea>
+                        <div className="flex items-center gap-1">
+                          <ShoppingCart className="h-3 w-3" />
+                          <span>{product.sales_count.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
           </>
         )}
 
