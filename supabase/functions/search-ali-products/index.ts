@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-type HotProduct = {
+type Product = {
   product_id: string;
   title: string;
   price: number;
@@ -17,10 +17,13 @@ type HotProduct = {
   product_url: string;
 };
 
-type ApiOk = { success: true; products: HotProduct[]; total: number };
+type ApiOk = { success: true; products: Product[]; total: number };
 type ApiErr = { success: false; error: string; code?: string };
 
-async function generateMd5Signature(params: Record<string, string>, appSecret: string): Promise<string> {
+async function generateMd5Signature(
+  params: Record<string, string>,
+  appSecret: string
+): Promise<string> {
   const sortedKeys = Object.keys(params).sort();
   let signStr = appSecret;
   for (const key of sortedKeys) signStr += key + params[key];
@@ -37,11 +40,12 @@ serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
+
     const category = String(body?.category || "").trim();
     const keywords = String(body?.keywords || "").trim();
     const page = parseInt(body?.page) || 1;
     const pageSize = Math.min(parseInt(body?.pageSize) || 20, 50);
-    const sort = String(body?.sort || "SALE_PRICE_ASC").trim();
+    const sort = String(body?.sort || "VOLUME_DESC").trim();
 
     const appKey = Deno.env.get("ALIEXPRESS_APP_KEY")?.trim();
     const appSecret = Deno.env.get("ALIEXPRESS_APP_SECRET")?.trim();
@@ -49,13 +53,24 @@ serve(async (req) => {
 
     if (!appKey || !appSecret) {
       const payload: ApiErr = { success: false, error: "AliExpress API not configured" };
-      return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify(payload), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // Build API params for hot products
+    if (!keywords && !category) {
+      const payload: ApiErr = {
+        success: false,
+        error: "Missing search input (keywords or category)",
+      };
+      return new Response(JSON.stringify(payload), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const params: Record<string, string> = {
       app_key: appKey,
-      method: "aliexpress.affiliate.hotproduct.query",
+      method: "aliexpress.affiliate.product.query",
       timestamp: Date.now().toString(),
       v: "2.0",
       sign_method: "md5",
@@ -64,18 +79,13 @@ serve(async (req) => {
       target_currency: "USD",
       page_no: page.toString(),
       page_size: pageSize.toString(),
-      sort: sort,
+      sort,
     };
 
-    // Add optional filters
-    if (keywords) {
-      params.keywords = keywords;
-    }
-    if (category) {
-      params.category_ids = category;
-    }
+    if (keywords) params.keywords = keywords;
+    if (category) params.category_ids = category;
 
-    console.log("[fetch-hot-products] API params:", JSON.stringify(params));
+    console.log("[search-ali-products] API params:", JSON.stringify(params));
 
     const sign = await generateMd5Signature(params, appSecret);
     const qs = Object.entries({ ...params, sign })
@@ -86,7 +96,7 @@ serve(async (req) => {
     const resp = await fetch(apiUrl, { method: "GET" });
     const data = await resp.json().catch(() => ({}));
 
-    console.log("[fetch-hot-products] API response:", JSON.stringify(data).substring(0, 500));
+    console.log("[search-ali-products] API response:", JSON.stringify(data).substring(0, 500));
 
     const err = data?.error_response;
     if (err?.msg || err?.code) {
@@ -95,42 +105,56 @@ serve(async (req) => {
         error: String(err?.msg || "AliExpress API error"),
         code: err?.code,
       };
-      return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify(payload), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const rr = data?.aliexpress_affiliate_hotproduct_query_response?.resp_result;
+    const rr = data?.aliexpress_affiliate_product_query_response?.resp_result;
     const result = rr?.result;
-    
+
     if (!rr || rr?.resp_code !== 200) {
-      const payload: ApiErr = { 
-        success: false, 
-        error: `API error (resp_code: ${rr?.resp_code})` 
+      const payload: ApiErr = {
+        success: false,
+        error: `API error (resp_code: ${rr?.resp_code})`,
       };
-      return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify(payload), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const rawProducts = result?.products?.product || [];
-    const products: HotProduct[] = rawProducts.map((p: any) => ({
+
+    const products: Product[] = rawProducts.map((p: any) => ({
       product_id: String(p.product_id || ""),
       title: String(p.product_title || ""),
       price: parseFloat(p.target_sale_price || p.target_original_price || "0"),
       original_price: parseFloat(p.target_original_price || "0"),
       image_url: String(p.product_main_image_url || ""),
-      sales_count: parseInt(p.lastest_volume || "0") || 0,
+      // Some responses use different fields for volume; we map defensively.
+      sales_count:
+        parseInt(p.lastest_volume || p.volume || p.total_sold || "0") || 0,
       rating: parseFloat(p.evaluate_rate || "0") || 0,
       product_url: `https://www.aliexpress.com/item/${p.product_id}.html`,
     }));
 
-    const payload: ApiOk = { 
-      success: true, 
-      products, 
-      total: parseInt(result?.total_record_count || "0") 
+    const payload: ApiOk = {
+      success: true,
+      products,
+      total: parseInt(result?.total_record_count || "0"),
     };
-    
-    return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+    return new Response(JSON.stringify(payload), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (e: unknown) {
-    console.error("[fetch-hot-products] Error:", e);
-    const payload: ApiErr = { success: false, error: e instanceof Error ? e.message : "Unknown error" };
-    return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.error("[search-ali-products] Error:", e);
+    const payload: ApiErr = {
+      success: false,
+      error: e instanceof Error ? e.message : "Unknown error",
+    };
+    return new Response(JSON.stringify(payload), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });

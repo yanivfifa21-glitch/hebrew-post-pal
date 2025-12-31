@@ -111,12 +111,17 @@ const Discovery = () => {
   const fetchHotProductsAsync = async (category = selectedCategory, keywords = "") => {
     setShowManualInput(false);
     try {
-      const { data, error } = await supabase.functions.invoke("fetch-hot-products", {
-        body: { 
-          category, 
-          keywords,
+      const trimmedKeywords = keywords.trim();
+
+      // If user typed keywords, use the general search endpoint (more relevant than "hot" API).
+      const fnName = trimmedKeywords ? "search-ali-products" : "fetch-hot-products";
+
+      const { data, error } = await supabase.functions.invoke(fnName, {
+        body: {
+          category,
+          keywords: trimmedKeywords,
           pageSize: 30,
-          sort: "LAST_VOLUME_DESC" 
+          sort: trimmedKeywords ? "VOLUME_DESC" : "LAST_VOLUME_DESC",
         },
       });
 
@@ -125,7 +130,7 @@ const Discovery = () => {
 
       setProducts(data.products);
       setHasFetched(true);
-      setDataSource("API");
+      setDataSource(trimmedKeywords ? "Search" : "API");
     } catch (e) {
       toast({
         title: "Failed to Load",
@@ -450,9 +455,7 @@ const Discovery = () => {
     }
   };
 
-  const filteredProducts = products.filter(p => 
-    !searchQuery || p.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredProducts = products;
 
   return (
     <MainLayout>

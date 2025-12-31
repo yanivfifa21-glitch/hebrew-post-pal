@@ -97,29 +97,29 @@ export const MobileNav = () => {
               {navItems.map((item) => {
                 const isActive = location.pathname === item.path;
                 const Icon = item.icon;
-                
+
                 return (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    onClick={() => setOpen(false)}
-                    className={cn(
-                      "flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-200 font-hebrew",
-                      isActive 
-                        ? "bg-primary/15 text-primary border border-primary/20" 
-                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground active:scale-[0.98]"
-                    )}
-                  >
-                    <div className={cn(
-                      "flex items-center justify-center w-10 h-10 rounded-lg transition-all",
-                      isActive 
-                        ? "bg-primary/20" 
-                        : "bg-muted/50"
-                    )}>
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <span className="text-base font-medium">{item.label}</span>
-                  </Link>
+                  <DrawerClose asChild key={item.path}>
+                    <Link
+                      to={item.path}
+                      className={cn(
+                        "flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-200 font-hebrew",
+                        isActive
+                          ? "bg-primary/15 text-primary border border-primary/20"
+                          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground active:scale-[0.98]"
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "flex items-center justify-center w-10 h-10 rounded-lg transition-all",
+                          isActive ? "bg-primary/20" : "bg-muted/50"
+                        )}
+                      >
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <span className="text-base font-medium">{item.label}</span>
+                    </Link>
+                  </DrawerClose>
                 );
               })}
             </nav>
