@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { 
   LayoutDashboard, 
@@ -31,10 +31,31 @@ const navItems = [
   { icon: Settings, label: "הגדרות", path: "/settings" },
 ];
 
+function unlockScroll() {
+  // Vaul/Radix can leave the page "scroll-locked" if navigation happens mid-transition.
+  document.body.style.removeProperty("overflow");
+  document.body.style.removeProperty("padding-right");
+  document.body.removeAttribute("data-scroll-locked");
+
+  document.documentElement.style.removeProperty("overflow");
+  document.documentElement.style.removeProperty("padding-right");
+  document.documentElement.removeAttribute("data-scroll-locked");
+}
+
 export const MobileNav = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+
+  // Ensure navigation never leaves the app in a locked/no-scroll state on mobile.
+  useEffect(() => {
+    setOpen(false);
+    requestAnimationFrame(unlockScroll);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!open) requestAnimationFrame(unlockScroll);
+  }, [open]);
 
   const handleLogout = async () => {
     try {
