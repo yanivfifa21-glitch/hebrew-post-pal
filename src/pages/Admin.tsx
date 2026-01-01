@@ -15,14 +15,18 @@ interface PendingUser {
   created_at: string;
 }
 
-const ADMIN_EMAIL = "yanivfifa21@gmail.com";
-
 const Admin = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
+
+  const checkIsAdmin = async (): Promise<boolean> => {
+    const { data, error } = await supabase.rpc("is_admin");
+    if (error) return false;
+    return data === true;
+  };
 
   useEffect(() => {
     const checkAdminAndFetch = async () => {
@@ -33,7 +37,9 @@ const Admin = () => {
         return;
       }
 
-      if (session.user.email !== ADMIN_EMAIL) {
+      // Use RLS-based admin check instead of hardcoded email
+      const adminStatus = await checkIsAdmin();
+      if (!adminStatus) {
         toast({
           title: "Access Denied",
           description: "You don't have permission to access this page.",
