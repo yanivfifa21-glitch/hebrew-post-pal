@@ -45,6 +45,7 @@ serve(async (req) => {
     const keywords = String(body?.keywords || "").trim();
     const page = parseInt(body?.page) || 1;
     const pageSize = Math.min(parseInt(body?.pageSize) || 20, 50);
+    // Default sort by volume (sales) for most relevant deals
     const sort = String(body?.sort || "VOLUME_DESC").trim();
 
     const appKey = Deno.env.get("ALIEXPRESS_APP_KEY")?.trim();
@@ -68,6 +69,7 @@ serve(async (req) => {
       });
     }
 
+    // Use aliexpress.affiliate.product.query for better keyword relevance
     const params: Record<string, string> = {
       app_key: appKey,
       method: "aliexpress.affiliate.product.query",
@@ -79,11 +81,18 @@ serve(async (req) => {
       target_currency: "USD",
       page_no: page.toString(),
       page_size: pageSize.toString(),
-      sort,
+      sort: sort,
     };
 
-    if (keywords) params.keywords = keywords;
-    if (category) params.category_ids = category;
+    // Add keywords - this is the main search parameter
+    if (keywords) {
+      params.keywords = keywords;
+    }
+    
+    // Add category filter if provided
+    if (category) {
+      params.category_ids = category;
+    }
 
     console.log("[search-ali-products] API params:", JSON.stringify(params));
 
@@ -131,7 +140,6 @@ serve(async (req) => {
       price: parseFloat(p.target_sale_price || p.target_original_price || "0"),
       original_price: parseFloat(p.target_original_price || "0"),
       image_url: String(p.product_main_image_url || ""),
-      // Some responses use different fields for volume; we map defensively.
       sales_count:
         parseInt(p.lastest_volume || p.volume || p.total_sold || "0") || 0,
       rating: parseFloat(p.evaluate_rate || "0") || 0,

@@ -6,6 +6,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Popular category IDs for Israel market
+const POPULAR_CATEGORIES = ["509", "15", "34", "44", "7"];
+
 type HotProduct = {
   product_id: string;
   title: string;
@@ -41,7 +44,7 @@ serve(async (req) => {
     const keywords = String(body?.keywords || "").trim();
     const page = parseInt(body?.page) || 1;
     const pageSize = Math.min(parseInt(body?.pageSize) || 20, 50);
-    const sort = String(body?.sort || "SALE_PRICE_ASC").trim();
+    const sort = String(body?.sort || "LAST_VOLUME_DESC").trim();
 
     const appKey = Deno.env.get("ALIEXPRESS_APP_KEY")?.trim();
     const appSecret = Deno.env.get("ALIEXPRESS_APP_SECRET")?.trim();
@@ -50,6 +53,14 @@ serve(async (req) => {
     if (!appKey || !appSecret) {
       const payload: ApiErr = { success: false, error: "AliExpress API not configured" };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Use specified category or cycle through popular categories
+    let categoryIds = category;
+    if (!categoryIds) {
+      // Pick a random popular category for variety
+      const randomIndex = Math.floor(Math.random() * POPULAR_CATEGORIES.length);
+      categoryIds = POPULAR_CATEGORIES[randomIndex];
     }
 
     // Build API params for hot products
@@ -65,14 +76,12 @@ serve(async (req) => {
       page_no: page.toString(),
       page_size: pageSize.toString(),
       sort: sort,
+      category_ids: categoryIds,
     };
 
-    // Add optional filters
+    // Add optional keywords filter
     if (keywords) {
       params.keywords = keywords;
-    }
-    if (category) {
-      params.category_ids = category;
     }
 
     console.log("[fetch-hot-products] API params:", JSON.stringify(params));

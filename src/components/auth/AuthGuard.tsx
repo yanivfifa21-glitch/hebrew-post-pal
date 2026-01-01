@@ -9,8 +9,6 @@ interface AuthGuardProps {
   children: React.ReactNode;
 }
 
-const ADMIN_EMAIL = "yanivfifa21@gmail.com";
-
 export const AuthGuard = ({ children }: AuthGuardProps) => {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
@@ -38,6 +36,12 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
       .insert({ email: email.toLowerCase(), status: "pending" });
     
     return !error;
+  };
+
+  const checkIsAdmin = async (): Promise<boolean> => {
+    const { data, error } = await supabase.rpc("is_admin");
+    if (error) return false;
+    return data === true;
   };
 
   const checkPendingRequests = async () => {
@@ -107,8 +111,9 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
             setIsAuthorized(true);
             setLoading(false);
             
-            // Notify admin of pending requests
-            if (session.user.email === ADMIN_EMAIL) {
+            // Check if user is admin using RLS function
+            const isAdmin = await checkIsAdmin();
+            if (isAdmin) {
               const pendingCount = await checkPendingRequests();
               notifyAdminOfPendingRequests(pendingCount);
             }
@@ -131,8 +136,9 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
           setIsAuthorized(true);
           setLoading(false);
           
-          // Notify admin of pending requests
-          if (session.user.email === ADMIN_EMAIL) {
+          // Check if user is admin using RLS function
+          const isAdmin = await checkIsAdmin();
+          if (isAdmin) {
             const pendingCount = await checkPendingRequests();
             notifyAdminOfPendingRequests(pendingCount);
           }
