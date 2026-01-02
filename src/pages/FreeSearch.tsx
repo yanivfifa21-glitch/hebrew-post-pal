@@ -82,6 +82,11 @@ const FreeSearch = () => {
       const receivedProducts = data.products || [];
       console.log("[FreeSearch] Products received:", receivedProducts.length);
       
+      // Show translated keywords if applicable
+      if (data.translatedKeywords) {
+        console.log("[FreeSearch] Translated to:", data.translatedKeywords);
+      }
+      
       setProducts(receivedProducts);
 
       if (receivedProducts.length === 0) {
@@ -90,9 +95,12 @@ const FreeSearch = () => {
           description: "נסה מילות חיפוש אחרות",
         });
       } else {
+        const translatedMsg = data.translatedKeywords 
+          ? `תורגם ל: "${data.translatedKeywords}"` 
+          : "ממוין לפי מספר מכירות";
         toast({
           title: `נמצאו ${receivedProducts.length} מוצרים`,
-          description: "ממוין לפי מספר מכירות",
+          description: translatedMsg,
         });
       }
     } catch (error) {

@@ -25,8 +25,31 @@ type Product = {
   product_url: string;
 };
 
-type ApiOk = { success: true; products: Product[]; total: number };
+type ApiOk = { success: true; products: Product[]; total: number; translatedKeywords?: string };
 type ApiErr = { success: false; error: string; code?: string };
+
+// Check if text contains Hebrew characters
+function containsHebrew(text: string): boolean {
+  return /[\u0590-\u05FF]/.test(text);
+}
+
+// Translate Hebrew to English using Google Translate API
+async function translateToEnglish(text: string): Promise<string> {
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=he&tl=en&dt=t&q=${encodeURIComponent(text)}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    // Extract translated text from response
+    if (data && data[0] && data[0][0] && data[0][0][0]) {
+      return data[0][0][0];
+    }
+    return text;
+  } catch (error) {
+    console.error("[search-ali-products] Translation error:", error);
+    return text;
+  }
+}
 
 async function generateMd5Signature(
   params: Record<string, string>,
@@ -93,6 +116,17 @@ serve(async (req) => {
       });
     }
 
+    // Translate Hebrew to English if needed
+    let searchKeywords = keywords;
+    let translatedKeywords: string | undefined;
+    
+    if (containsHebrew(keywords)) {
+      console.log("[search-ali-products] Hebrew detected, translating:", keywords);
+      searchKeywords = await translateToEnglish(keywords);
+      translatedKeywords = searchKeywords;
+      console.log("[search-ali-products] Translated to:", searchKeywords);
+    }
+
     // Build params - DIRECT API CALL to AliExpress
     const params: Record<string, string> = {
       app_key: appKey,
@@ -111,9 +145,9 @@ serve(async (req) => {
       delivery_days: MAX_DELIVERY_DAYS.toString(),
     };
 
-    // Explicitly set keywords - this is the search term
-    if (keywords) {
-      params.keywords = keywords;
+    // Explicitly set keywords - use translated keywords
+    if (searchKeywords) {
+      params.keywords = searchKeywords;
     }
     
     if (category) {
@@ -172,9 +206,9 @@ serve(async (req) => {
     const rawProducts = result?.products?.product || [];
     console.log("[search-ali-products] Raw products count:", rawProducts.length);
 
-    // Check if we need to filter accessories
-    const filterAccessories = shouldFilterAccessories(keywords);
-    console.log("[search-ali-products] Filter accessories:", filterAccessories, "for keyword:", keywords);
+    // Check if we need to filter accessories (use translated keywords)
+    const filterAccessories = shouldFilterAccessories(searchKeywords);
+    console.log("[search-ali-products] Filter accessories:", filterAccessories, "for keyword:", searchKeywords);
 
     let products: Product[] = rawProducts.map((p: any) => {
       // Rating comes as percentage string like "95.2" meaning 95.2%
@@ -207,6 +241,7 @@ serve(async (req) => {
       success: true,
       products,
       total: parseInt(result?.total_record_count || "0"),
+      translatedKeywords,
     };
 
     return new Response(JSON.stringify(payload), {
