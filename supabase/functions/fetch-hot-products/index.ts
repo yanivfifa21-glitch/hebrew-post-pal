@@ -6,8 +6,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Popular category IDs for Israel market
-const POPULAR_CATEGORIES = ["509", "15", "34", "44", "7"];
+// Top-selling categories for Israel market
+const POPULAR_CATEGORIES = ["509", "15", "44", "34"];
+
+// Quality filters
+const MIN_RATING = 4.5;
+const MIN_SALES = 50;
+const MAX_DELIVERY_DAYS = 15;
 
 type HotProduct = {
   product_id: string;
@@ -18,6 +23,7 @@ type HotProduct = {
   sales_count: number;
   rating: number;
   product_url: string;
+  delivery_days?: number;
 };
 
 type ApiOk = { success: true; products: HotProduct[]; total: number };
@@ -43,12 +49,12 @@ serve(async (req) => {
     const category = String(body?.category || "").trim();
     const keywords = String(body?.keywords || "").trim();
     const page = parseInt(body?.page) || 1;
-    const pageSize = Math.min(parseInt(body?.pageSize) || 20, 50);
+    const pageSize = Math.min(parseInt(body?.pageSize) || 30, 50);
     const sort = String(body?.sort || "LAST_VOLUME_DESC").trim();
 
     const appKey = Deno.env.get("ALIEXPRESS_APP_KEY")?.trim();
     const appSecret = Deno.env.get("ALIEXPRESS_APP_SECRET")?.trim();
-    const trackingId = (Deno.env.get("ALIEXPRESS_TRACKING_ID") || "TELEGRAM").trim();
+    const trackingId = (Deno.env.get("ALIEXPRESS_TRACKING_ID") || "default").trim();
 
     if (!appKey || !appSecret) {
       const payload: ApiErr = { success: false, error: "AliExpress API not configured" };
@@ -58,12 +64,11 @@ serve(async (req) => {
     // Use specified category or cycle through popular categories
     let categoryIds = category;
     if (!categoryIds) {
-      // Pick a random popular category for variety
       const randomIndex = Math.floor(Math.random() * POPULAR_CATEGORIES.length);
       categoryIds = POPULAR_CATEGORIES[randomIndex];
     }
 
-    // Build API params for hot products
+    // Build API params for hot products with Israel market focus
     const params: Record<string, string> = {
       app_key: appKey,
       method: "aliexpress.affiliate.hotproduct.query",
@@ -72,14 +77,15 @@ serve(async (req) => {
       sign_method: "md5",
       tracking_id: trackingId,
       target_language: "EN",
-      target_currency: "USD",
+      target_currency: "ILS",
+      ship_to_country: "IL",
       page_no: page.toString(),
       page_size: pageSize.toString(),
       sort: sort,
       category_ids: categoryIds,
+      delivery_days: MAX_DELIVERY_DAYS.toString(),
     };
 
-    // Add optional keywords filter
     if (keywords) {
       params.keywords = keywords;
     }
@@ -119,21 +125,34 @@ serve(async (req) => {
     }
 
     const rawProducts = result?.products?.product || [];
-    const products: HotProduct[] = rawProducts.map((p: any) => ({
-      product_id: String(p.product_id || ""),
-      title: String(p.product_title || ""),
-      price: parseFloat(p.target_sale_price || p.target_original_price || "0"),
-      original_price: parseFloat(p.target_original_price || "0"),
-      image_url: String(p.product_main_image_url || ""),
-      sales_count: parseInt(p.lastest_volume || "0") || 0,
-      rating: parseFloat(p.evaluate_rate || "0") || 0,
-      product_url: `https://www.aliexpress.com/item/${p.product_id}.html`,
-    }));
+    
+    // Map and apply quality filters: 4.5+ rating, 50+ sales
+    const products: HotProduct[] = rawProducts
+      .map((p: any) => {
+        // Rating comes as percentage string like "95.2" meaning 95.2%
+        const ratingPercent = parseFloat(p.evaluate_rate || "0");
+        // Convert to 5-star scale (95.2% = 4.76 stars)
+        const ratingStars = (ratingPercent / 100) * 5;
+        
+        return {
+          product_id: String(p.product_id || ""),
+          title: String(p.product_title || ""),
+          price: parseFloat(p.target_sale_price || p.target_original_price || "0"),
+          original_price: parseFloat(p.target_original_price || "0"),
+          image_url: String(p.product_main_image_url || ""),
+          sales_count: parseInt(p.lastest_volume || "0") || 0,
+          rating: ratingStars,
+          product_url: `https://www.aliexpress.com/item/${p.product_id}.html`,
+        };
+      })
+      .filter((p: HotProduct) => p.rating >= MIN_RATING && p.sales_count >= MIN_SALES);
+
+    console.log(`[fetch-hot-products] Filtered ${rawProducts.length} -> ${products.length} products (min rating: ${MIN_RATING}, min sales: ${MIN_SALES})`);
 
     const payload: ApiOk = { 
       success: true, 
       products, 
-      total: parseInt(result?.total_record_count || "0") 
+      total: products.length 
     };
     
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
