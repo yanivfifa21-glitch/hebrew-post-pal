@@ -6,6 +6,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Israel market settings
+const MIN_PRICE_USD = "5";
+const MAX_DELIVERY_DAYS = 15;
+
 type Product = {
   product_id: string;
   title: string;
@@ -45,12 +49,12 @@ serve(async (req) => {
     const keywords = String(body?.keywords || "").trim();
     const page = parseInt(body?.page) || 1;
     const pageSize = Math.min(parseInt(body?.pageSize) || 20, 50);
-    // Default sort by volume (sales) for most relevant deals
-    const sort = String(body?.sort || "VOLUME_DESC").trim();
+    // Force sort by sales volume
+    const sort = "VOLUME_DESC";
 
     const appKey = Deno.env.get("ALIEXPRESS_APP_KEY")?.trim();
     const appSecret = Deno.env.get("ALIEXPRESS_APP_SECRET")?.trim();
-    const trackingId = (Deno.env.get("ALIEXPRESS_TRACKING_ID") || "TELEGRAM").trim();
+    const trackingId = (Deno.env.get("ALIEXPRESS_TRACKING_ID") || "default").trim();
 
     if (!appKey || !appSecret) {
       const payload: ApiErr = { success: false, error: "AliExpress API not configured" };
@@ -69,7 +73,7 @@ serve(async (req) => {
       });
     }
 
-    // Use aliexpress.affiliate.product.query for better keyword relevance
+    // Build params with Israel market focus
     const params: Record<string, string> = {
       app_key: appKey,
       method: "aliexpress.affiliate.product.query",
@@ -78,18 +82,19 @@ serve(async (req) => {
       sign_method: "md5",
       tracking_id: trackingId,
       target_language: "EN",
-      target_currency: "USD",
+      target_currency: "ILS",
+      ship_to_country: "IL",
       page_no: page.toString(),
       page_size: pageSize.toString(),
       sort: sort,
+      min_sale_price: MIN_PRICE_USD,
+      delivery_days: MAX_DELIVERY_DAYS.toString(),
     };
 
-    // Add keywords - this is the main search parameter
     if (keywords) {
       params.keywords = keywords;
     }
     
-    // Add category filter if provided
     if (category) {
       params.category_ids = category;
     }
@@ -134,17 +139,23 @@ serve(async (req) => {
 
     const rawProducts = result?.products?.product || [];
 
-    const products: Product[] = rawProducts.map((p: any) => ({
-      product_id: String(p.product_id || ""),
-      title: String(p.product_title || ""),
-      price: parseFloat(p.target_sale_price || p.target_original_price || "0"),
-      original_price: parseFloat(p.target_original_price || "0"),
-      image_url: String(p.product_main_image_url || ""),
-      sales_count:
-        parseInt(p.lastest_volume || p.volume || p.total_sold || "0") || 0,
-      rating: parseFloat(p.evaluate_rate || "0") || 0,
-      product_url: `https://www.aliexpress.com/item/${p.product_id}.html`,
-    }));
+    const products: Product[] = rawProducts.map((p: any) => {
+      // Rating comes as percentage string like "95.2" meaning 95.2%
+      const ratingPercent = parseFloat(p.evaluate_rate || "0");
+      // Convert to 5-star scale
+      const ratingStars = (ratingPercent / 100) * 5;
+      
+      return {
+        product_id: String(p.product_id || ""),
+        title: String(p.product_title || ""),
+        price: parseFloat(p.target_sale_price || p.target_original_price || "0"),
+        original_price: parseFloat(p.target_original_price || "0"),
+        image_url: String(p.product_main_image_url || ""),
+        sales_count: parseInt(p.lastest_volume || p.volume || p.total_sold || "0") || 0,
+        rating: ratingStars,
+        product_url: `https://www.aliexpress.com/item/${p.product_id}.html`,
+      };
+    });
 
     const payload: ApiOk = {
       success: true,
