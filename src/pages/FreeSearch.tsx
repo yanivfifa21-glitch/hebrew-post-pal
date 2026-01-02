@@ -38,7 +38,9 @@ const FreeSearch = () => {
   const [hasSearched, setHasSearched] = useState(false);
 
   const handleSearch = async () => {
-    if (!searchQuery.trim()) {
+    const trimmedQuery = searchQuery.trim();
+    
+    if (!trimmedQuery) {
       toast({
         title: "נא להזין מילות חיפוש",
         variant: "destructive",
@@ -46,35 +48,55 @@ const FreeSearch = () => {
       return;
     }
 
+    // Clear previous results immediately
+    setProducts([]);
     setIsSearching(true);
     setHasSearched(true);
     setSelectedProducts(new Set());
 
+    console.log("[FreeSearch] Starting search for:", trimmedQuery);
+
     try {
+      // DIRECT API call - no local filtering, await response fully
       const { data, error } = await supabase.functions.invoke("search-ali-products", {
         body: {
-          keywords: searchQuery.trim(),
+          keywords: trimmedQuery,
           pageSize: 40,
           sort: "VOLUME_DESC",
         },
       });
 
-      if (error) throw error;
+      console.log("[FreeSearch] API Response received:", data);
+
+      if (error) {
+        console.error("[FreeSearch] Supabase invoke error:", error);
+        throw error;
+      }
 
       if (!data.success) {
+        console.error("[FreeSearch] API returned error:", data.error);
         throw new Error(data.error || "Search failed");
       }
 
-      setProducts(data.products || []);
+      // Only set products AFTER we have the full response
+      const receivedProducts = data.products || [];
+      console.log("[FreeSearch] Products received:", receivedProducts.length);
+      
+      setProducts(receivedProducts);
 
-      if (data.products?.length === 0) {
+      if (receivedProducts.length === 0) {
         toast({
           title: "לא נמצאו מוצרים",
           description: "נסה מילות חיפוש אחרות",
         });
+      } else {
+        toast({
+          title: `נמצאו ${receivedProducts.length} מוצרים`,
+          description: "ממוין לפי מספר מכירות",
+        });
       }
     } catch (error) {
-      console.error("Search error:", error);
+      console.error("[FreeSearch] Search error:", error);
       toast({
         title: "שגיאה בחיפוש",
         description: error instanceof Error ? error.message : "אירעה שגיאה",
