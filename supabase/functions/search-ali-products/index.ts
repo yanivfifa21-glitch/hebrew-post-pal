@@ -10,6 +10,10 @@ const corsHeaders = {
 const MIN_PRICE_USD = "5";
 const MAX_DELIVERY_DAYS = 15;
 
+// Accessory keywords to filter out for certain searches
+const ACCESSORY_KEYWORDS = ["strap", "band", "case", "cover", "film", "protector", "cable", "charger", "holder", "stand", "dock"];
+const PRODUCT_KEYWORDS_TO_FILTER = ["watch", "phone", "tablet", "laptop", "earbuds", "headphones"];
+
 type Product = {
   product_id: string;
   title: string;
@@ -39,6 +43,16 @@ async function generateMd5Signature(
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
 }
 
+function shouldFilterAccessories(searchKeyword: string): boolean {
+  const lowerKeyword = searchKeyword.toLowerCase();
+  return PRODUCT_KEYWORDS_TO_FILTER.some(k => lowerKeyword.includes(k));
+}
+
+function isAccessory(title: string): boolean {
+  const lowerTitle = title.toLowerCase();
+  return ACCESSORY_KEYWORDS.some(acc => lowerTitle.includes(acc));
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -48,15 +62,20 @@ serve(async (req) => {
     const category = String(body?.category || "").trim();
     const keywords = String(body?.keywords || "").trim();
     const page = parseInt(body?.page) || 1;
-    const pageSize = Math.min(parseInt(body?.pageSize) || 20, 50);
-    // Force sort by sales volume
+    const pageSize = Math.min(parseInt(body?.pageSize) || 40, 50);
+    
+    // FORCE sort by sales volume - never use any other sort
     const sort = "VOLUME_DESC";
 
     const appKey = Deno.env.get("ALIEXPRESS_APP_KEY")?.trim();
     const appSecret = Deno.env.get("ALIEXPRESS_APP_SECRET")?.trim();
     const trackingId = (Deno.env.get("ALIEXPRESS_TRACKING_ID") || "default").trim();
 
+    console.log("[search-ali-products] ===== NEW SEARCH REQUEST =====");
+    console.log("[search-ali-products] Input - keywords:", keywords, "| category:", category, "| page:", page);
+
     if (!appKey || !appSecret) {
+      console.error("[search-ali-products] Missing API credentials");
       const payload: ApiErr = { success: false, error: "AliExpress API not configured" };
       return new Response(JSON.stringify(payload), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -64,6 +83,7 @@ serve(async (req) => {
     }
 
     if (!keywords && !category) {
+      console.error("[search-ali-products] Missing search input");
       const payload: ApiErr = {
         success: false,
         error: "Missing search input (keywords or category)",
@@ -73,7 +93,7 @@ serve(async (req) => {
       });
     }
 
-    // Build params with Israel market focus
+    // Build params - DIRECT API CALL to AliExpress
     const params: Record<string, string> = {
       app_key: appKey,
       method: "aliexpress.affiliate.product.query",
@@ -91,6 +111,7 @@ serve(async (req) => {
       delivery_days: MAX_DELIVERY_DAYS.toString(),
     };
 
+    // Explicitly set keywords - this is the search term
     if (keywords) {
       params.keywords = keywords;
     }
@@ -99,21 +120,31 @@ serve(async (req) => {
       params.category_ids = category;
     }
 
-    console.log("[search-ali-products] API params:", JSON.stringify(params));
-
+    // Generate signature
     const sign = await generateMd5Signature(params, appSecret);
+    
+    // Build query string
     const qs = Object.entries({ ...params, sign })
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
       .join("&");
 
     const apiUrl = `https://api-sg.aliexpress.com/sync?${qs}`;
+    
+    // DEBUG: Log exact URL and params being sent
+    console.log("[search-ali-products] ===== API REQUEST =====");
+    console.log("[search-ali-products] Full API URL:", apiUrl);
+    console.log("[search-ali-products] Params sent:", JSON.stringify(params, null, 2));
+
     const resp = await fetch(apiUrl, { method: "GET" });
     const data = await resp.json().catch(() => ({}));
 
-    console.log("[search-ali-products] API response:", JSON.stringify(data).substring(0, 500));
+    console.log("[search-ali-products] ===== API RESPONSE =====");
+    console.log("[search-ali-products] Response status:", resp.status);
+    console.log("[search-ali-products] Response preview:", JSON.stringify(data).substring(0, 800));
 
     const err = data?.error_response;
     if (err?.msg || err?.code) {
+      console.error("[search-ali-products] API Error:", err);
       const payload: ApiErr = {
         success: false,
         error: String(err?.msg || "AliExpress API error"),
@@ -128,6 +159,7 @@ serve(async (req) => {
     const result = rr?.result;
 
     if (!rr || rr?.resp_code !== 200) {
+      console.error("[search-ali-products] API resp_code error:", rr?.resp_code);
       const payload: ApiErr = {
         success: false,
         error: `API error (resp_code: ${rr?.resp_code})`,
@@ -138,8 +170,13 @@ serve(async (req) => {
     }
 
     const rawProducts = result?.products?.product || [];
+    console.log("[search-ali-products] Raw products count:", rawProducts.length);
 
-    const products: Product[] = rawProducts.map((p: any) => {
+    // Check if we need to filter accessories
+    const filterAccessories = shouldFilterAccessories(keywords);
+    console.log("[search-ali-products] Filter accessories:", filterAccessories, "for keyword:", keywords);
+
+    let products: Product[] = rawProducts.map((p: any) => {
       // Rating comes as percentage string like "95.2" meaning 95.2%
       const ratingPercent = parseFloat(p.evaluate_rate || "0");
       // Convert to 5-star scale
@@ -157,6 +194,15 @@ serve(async (req) => {
       };
     });
 
+    // Filter out accessories if searching for main products like Watch, Phone
+    if (filterAccessories) {
+      const beforeFilter = products.length;
+      products = products.filter(p => !isAccessory(p.title));
+      console.log(`[search-ali-products] Filtered accessories: ${beforeFilter} -> ${products.length} products`);
+    }
+
+    console.log("[search-ali-products] Final products count:", products.length);
+
     const payload: ApiOk = {
       success: true,
       products,
@@ -167,7 +213,7 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: unknown) {
-    console.error("[search-ali-products] Error:", e);
+    console.error("[search-ali-products] Exception:", e);
     const payload: ApiErr = {
       success: false,
       error: e instanceof Error ? e.message : "Unknown error",
