@@ -26,8 +26,12 @@ export type Database = {
           greenapi_chat_id: string | null
           greenapi_instance_id: string | null
           id: string
+          posting_interval_hours: number | null
           posting_times: string[] | null
           publishing_days: number[] | null
+          shabbat_end_time: string | null
+          shabbat_mode_enabled: boolean | null
+          shabbat_start_time: string | null
           telegram_bot_token: string | null
           telegram_chat_id: string | null
           telegram_enabled: boolean | null
@@ -46,8 +50,12 @@ export type Database = {
           greenapi_chat_id?: string | null
           greenapi_instance_id?: string | null
           id?: string
+          posting_interval_hours?: number | null
           posting_times?: string[] | null
           publishing_days?: number[] | null
+          shabbat_end_time?: string | null
+          shabbat_mode_enabled?: boolean | null
+          shabbat_start_time?: string | null
           telegram_bot_token?: string | null
           telegram_chat_id?: string | null
           telegram_enabled?: boolean | null
@@ -66,8 +74,12 @@ export type Database = {
           greenapi_chat_id?: string | null
           greenapi_instance_id?: string | null
           id?: string
+          posting_interval_hours?: number | null
           posting_times?: string[] | null
           publishing_days?: number[] | null
+          shabbat_end_time?: string | null
+          shabbat_mode_enabled?: boolean | null
+          shabbat_start_time?: string | null
           telegram_bot_token?: string | null
           telegram_chat_id?: string | null
           telegram_enabled?: boolean | null
@@ -261,6 +273,7 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: never; Returns: boolean }
+      is_email_authorized: { Args: { check_email: string }; Returns: boolean }
     }
     Enums: {
       app_role: "admin" | "user"

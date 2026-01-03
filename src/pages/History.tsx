@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ProductCard } from "@/components/products/ProductCard";
+import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { Product } from "@/types/product";
 import { toast } from "@/hooks/use-toast";
-import { History as HistoryIcon } from "lucide-react";
+import { History as HistoryIcon, RotateCcw, Loader2 } from "lucide-react";
 
 const History = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [resendingId, setResendingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -41,6 +43,29 @@ const History = () => {
     }
   };
 
+  const handleSendToQueue = async (product: Product) => {
+    setResendingId(product.id);
+    try {
+      const { error } = await supabase
+        .from('products')
+        .update({ status: 'Scheduled' })
+        .eq('id', product.id);
+
+      if (error) throw error;
+      
+      toast({ 
+        title: "חזר לתור!",
+        description: "המוצר הועבר בחזרה לתור השליחה"
+      });
+      fetchData();
+    } catch (error) {
+      console.error('Error moving to queue:', error);
+      toast({ title: "Failed to move to queue", variant: "destructive" });
+    } finally {
+      setResendingId(null);
+    }
+  };
+
   return (
     <MainLayout>
       <div className="space-y-8">
@@ -67,11 +92,31 @@ const History = () => {
         ) : products.length > 0 ? (
           <div className="space-y-4">
             {products.map((product) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                onDelete={handleDelete}
-              />
+              <div key={product.id} className="relative">
+                <ProductCard
+                  product={product}
+                  onDelete={handleDelete}
+                />
+                {/* Send to Queue Button */}
+                <div className="absolute top-3 left-3 z-10">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleSendToQueue(product)}
+                    disabled={resendingId === product.id}
+                    className="bg-background/80 backdrop-blur-sm border-primary/50 text-primary hover:bg-primary/10"
+                  >
+                    {resendingId === product.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <RotateCcw className="h-4 w-4 mr-1" />
+                        החזר לתור
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
             ))}
           </div>
         ) : (

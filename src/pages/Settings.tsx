@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Slider } from "@/components/ui/slider";
 import { 
   Settings as SettingsIcon, 
   Clock, 
@@ -25,7 +26,9 @@ import {
   Power,
   Trash2,
   Calendar,
-  RotateCcw
+  RotateCcw,
+  Moon,
+  Timer
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -169,6 +172,15 @@ const Settings = () => {
   const [postingTimes, setPostingTimes] = useState<string[]>(['10:00', '14:00', '20:00']);
   const [newTime, setNewTime] = useState('');
   
+  // Interval posting (new)
+  const [postingIntervalHours, setPostingIntervalHours] = useState<number | null>(null);
+  const [useIntervalPosting, setUseIntervalPosting] = useState(false);
+  
+  // Shabbat mode (new)
+  const [shabbatModeEnabled, setShabbatModeEnabled] = useState(false);
+  const [shabbatStartTime, setShabbatStartTime] = useState('14:00');
+  const [shabbatEndTime, setShabbatEndTime] = useState('20:00');
+  
   // Publishing days (0=Sunday, 6=Saturday)
   const [publishingDays, setPublishingDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
 
@@ -248,6 +260,24 @@ const Settings = () => {
         setAliexpressAppSecret(data.aliexpress_app_secret || '');
         setAliexpressTrackingId(data.aliexpress_tracking_id || '');
         setCustomAiPrompt(data.custom_ai_prompt || '');
+        
+        // New settings
+        const intervalHours = (data as any).posting_interval_hours;
+        setPostingIntervalHours(intervalHours || null);
+        setUseIntervalPosting(!!intervalHours);
+        setShabbatModeEnabled((data as any).shabbat_mode_enabled || false);
+        setShabbatStartTime((data as any).shabbat_start_time || '14:00');
+        setShabbatEndTime((data as any).shabbat_end_time || '20:00');
+        
+        // Detect which prompt template is selected
+        if (data.custom_ai_prompt) {
+          const matchedTemplate = Object.entries(PROMPT_TEMPLATES).find(
+            ([_, template]) => template.prompt === data.custom_ai_prompt
+          );
+          if (matchedTemplate) {
+            setSelectedPromptType(matchedTemplate[0]);
+          }
+        }
       }
 
       // Fetch messaging accounts
@@ -278,7 +308,7 @@ const Settings = () => {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const updateData = {
+      const updateData: any = {
         automation_enabled: automationEnabled,
         posting_times: postingTimes,
         publishing_days: publishingDays,
@@ -286,6 +316,11 @@ const Settings = () => {
         aliexpress_app_secret: aliexpressAppSecret || null,
         aliexpress_tracking_id: aliexpressTrackingId || null,
         custom_ai_prompt: customAiPrompt || null,
+        // New fields
+        posting_interval_hours: useIntervalPosting ? postingIntervalHours : null,
+        shabbat_mode_enabled: shabbatModeEnabled,
+        shabbat_start_time: shabbatStartTime,
+        shabbat_end_time: shabbatEndTime,
       };
 
       if (settingsId) {
@@ -523,44 +558,159 @@ const Settings = () => {
               />
             </div>
 
-            {/* Posting Times */}
+            {/* Interval vs Fixed Times Toggle */}
             <div className="space-y-3">
-              <Label className="text-sm font-medium">Posting Times</Label>
-              <div className="flex flex-wrap gap-2">
-                {postingTimes.map((time) => (
-                  <Badge
-                    key={time}
-                    variant="outline"
-                    className={`px-3 py-1.5 text-sm transition-all ${
-                      automationEnabled 
-                        ? 'border-primary/50 text-primary bg-primary/10' 
-                        : 'border-border text-muted-foreground'
-                    }`}
-                  >
-                    <Clock className="h-3 w-3 mr-1" />
-                    {time}
-                    <button
-                      onClick={() => removePostingTime(time)}
-                      className="ml-2 hover:text-destructive transition-colors"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
+              <Label className="text-sm font-medium flex items-center gap-2">
+                <Timer className="h-4 w-4" />
+                Posting Mode
+              </Label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setUseIntervalPosting(false)}
+                  className={`p-4 rounded-xl border-2 text-left transition-all ${
+                    !useIntervalPosting
+                      ? 'border-primary bg-primary/10 shadow-lg'
+                      : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Clock className="h-4 w-4" />
+                    <span className="font-semibold text-foreground">שעות קבועות</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">שלח בשעות שהגדרת</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUseIntervalPosting(true)}
+                  className={`p-4 rounded-xl border-2 text-left transition-all ${
+                    useIntervalPosting
+                      ? 'border-primary bg-primary/10 shadow-lg'
+                      : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Timer className="h-4 w-4" />
+                    <span className="font-semibold text-foreground">כל X שעות</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">שלח במרווחים קבועים</p>
+                </button>
+              </div>
+            </div>
+
+            {/* Interval Hours Slider (if interval mode) */}
+            {useIntervalPosting && (
+              <div className="space-y-4 p-4 rounded-lg border border-primary/30 bg-primary/5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">שלח כל</Label>
+                  <Badge variant="outline" className="text-lg font-bold">
+                    {postingIntervalHours || 2} שעות
                   </Badge>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <Input
-                    type="time"
-                    value={newTime}
-                    onChange={(e) => setNewTime(e.target.value)}
-                  />
                 </div>
-                <Button onClick={addPostingTime} variant="outline">
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add
-                </Button>
+                <Slider
+                  value={[postingIntervalHours || 2]}
+                  onValueChange={([val]) => setPostingIntervalHours(val)}
+                  min={1}
+                  max={12}
+                  step={1}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>כל שעה</span>
+                  <span>כל 12 שעות</span>
+                </div>
               </div>
+            )}
+
+            {/* Posting Times (if fixed times mode) */}
+            {!useIntervalPosting && (
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">Posting Times</Label>
+                <div className="flex flex-wrap gap-2">
+                  {postingTimes.map((time) => (
+                    <Badge
+                      key={time}
+                      variant="outline"
+                      className={`px-3 py-1.5 text-sm transition-all ${
+                        automationEnabled 
+                          ? 'border-primary/50 text-primary bg-primary/10' 
+                          : 'border-border text-muted-foreground'
+                      }`}
+                    >
+                      <Clock className="h-3 w-3 mr-1" />
+                      {time}
+                      <button
+                        onClick={() => removePostingTime(time)}
+                        className="ml-2 hover:text-destructive transition-colors"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <Input
+                      type="time"
+                      value={newTime}
+                      onChange={(e) => setNewTime(e.target.value)}
+                    />
+                  </div>
+                  <Button onClick={addPostingTime} variant="outline">
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Shabbat Mode */}
+            <div className="space-y-4">
+              <div className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all ${
+                shabbatModeEnabled 
+                  ? 'bg-purple-500/10 border-purple-500/50' 
+                  : 'bg-muted/30 border-border'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${shabbatModeEnabled ? 'bg-purple-500/20' : 'bg-muted'}`}>
+                    <Moon className={`h-5 w-5 ${shabbatModeEnabled ? 'text-purple-500' : 'text-muted-foreground'}`} />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-foreground">מצב שבת 🕯️</p>
+                    <p className="text-sm text-muted-foreground">
+                      עצור שליחה אוטומטית בשבת
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={shabbatModeEnabled}
+                  onCheckedChange={setShabbatModeEnabled}
+                  className={shabbatModeEnabled ? 'data-[state=checked]:bg-purple-500' : ''}
+                />
+              </div>
+
+              {shabbatModeEnabled && (
+                <div className="grid grid-cols-2 gap-4 p-4 rounded-lg border border-purple-500/30 bg-purple-500/5">
+                  <div className="space-y-2">
+                    <Label className="text-sm">יום שישי - התחלה</Label>
+                    <Input
+                      type="time"
+                      value={shabbatStartTime}
+                      onChange={(e) => setShabbatStartTime(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">עצור שליחה מ-</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm">מוצאי שבת - סיום</Label>
+                    <Input
+                      type="time"
+                      value={shabbatEndTime}
+                      onChange={(e) => setShabbatEndTime(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">המשך שליחה מ-</p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Publishing Days */}
@@ -610,6 +760,25 @@ const Settings = () => {
               </div>
             </div>
 
+            {/* Reset Stuck Posts */}
+            <div className="pt-4 border-t border-border">
+              <Button
+                variant="outline"
+                onClick={handleResetStuckPosts}
+                disabled={isResettingStuck}
+                className="w-full"
+              >
+                {isResettingStuck ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                )}
+                Reset Stuck Posts
+              </Button>
+              <p className="text-xs text-muted-foreground mt-2 text-center">
+                Reset products stuck in 'processing' status back to 'Scheduled'
+              </p>
+            </div>
           </CardContent>
         </Card>
 

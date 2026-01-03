@@ -16,6 +16,9 @@ export interface ExcelProduct {
   category?: string;
   codeName?: string;
   codeValue?: string;
+  // New fields from AliExpress API
+  sales180Day?: number;
+  positiveFeedback?: number;
 }
 
 interface ExcelImporterProps {
@@ -138,17 +141,20 @@ export const ExcelImporter = ({ onProductsLoaded, onClearAll, hasProducts, isLoa
       // Flexible column mapping with partial keyword matching - ENHANCED with all fields
       const columnMap = {
         imageUrl: findColumn(headers, ["imageurl", "image", "photo", "picture"]),
-        title: findColumn(headers, ["productdescription", "description", "title", "name", "productname"]),
+        title: findColumn(headers, ["productdescription", "productdesc", "description", "title", "name", "productname"]),
         originalPrice: findColumn(headers, ["originpric", "originalprice", "origin", "baseprice"]),
         discountPrice: findColumn(headers, ["discountprice", "discountf", "price", "finalprice", "saleprice"]),
         discount: findColumn(headers, ["discount", "percent", "off"]),
         originalLink: findColumn(headers, ["originallink", "originalurl", "producturl", "productlink", "sourceurl"]),
-        promotionLink: findColumn(headers, ["promotionlink", "promotion", "promolink"]),
+        promotionLink: findColumn(headers, ["promotionlink", "promotionurl", "promotion", "promolink"]),
         affiliateLink: findColumn(headers, ["affiliatelink", "affiliate", "afflink", "trackinglink"]),
         hebrewDescription: findColumn(headers, ["hebrewdescription", "hebrew", "תיאור", "description_he"]),
         category: findColumn(headers, ["category", "cat", "קטגוריה", "type"]),
         codeName: findColumn(headers, ["codename", "couponcode", "code", "coupon"]),
         codeValue: findColumn(headers, ["codevalue", "couponvalue", "value", "discount_value"]),
+        // New AliExpress fields
+        sales180Day: findColumn(headers, ["sales180day", "sales180", "180day", "sales"]),
+        positiveFeedback: findColumn(headers, ["positivefeedback", "feedback", "positive", "rating"]),
       };
 
       console.log("Column mapping:", columnMap);
@@ -178,6 +184,8 @@ export const ExcelImporter = ({ onProductsLoaded, onClearAll, hasProducts, isLoa
         const category = columnMap.category ? String(row[columnMap.category] || "").trim() : "";
         const codeName = columnMap.codeName ? String(row[columnMap.codeName] || "").trim() : "";
         const codeValue = columnMap.codeValue ? String(row[columnMap.codeValue] || "").trim() : "";
+        const sales180Day = columnMap.sales180Day ? cleanPrice(row[columnMap.sales180Day]) : 0;
+        const positiveFeedback = columnMap.positiveFeedback ? cleanDiscount(row[columnMap.positiveFeedback]) : 0;
 
         // Validate row - must have at least title OR image
         if (!title && !imageUrl) {
@@ -198,6 +206,8 @@ export const ExcelImporter = ({ onProductsLoaded, onClearAll, hasProducts, isLoa
           category: category || undefined,
           codeName: codeName || undefined,
           codeValue: codeValue || undefined,
+          sales180Day: sales180Day || undefined,
+          positiveFeedback: positiveFeedback || undefined,
         });
       });
 
