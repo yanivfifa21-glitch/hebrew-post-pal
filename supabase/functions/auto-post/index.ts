@@ -39,6 +39,55 @@ function getIsraelTimeInfo(): { hours: number; minutes: number; dayOfWeek: numbe
 function isPostingTime(currentTimeStr: string, postingTimes: string[]): boolean {
   return postingTimes.includes(currentTimeStr);
 }
+
+// Convert time string to minutes since midnight
+function timeToMinutes(timeStr: string): number {
+  const [h, m] = timeStr.split(':').map(Number);
+  return h * 60 + m;
+}
+
+// Check if we're in Shabbat mode
+function isInShabbatMode(
+  dayOfWeek: number,
+  currentTimeStr: string,
+  shabbatEnabled: boolean,
+  shabbatStartTime: string,
+  shabbatEndTime: string
+): boolean {
+  if (!shabbatEnabled) return false;
+  
+  const currentMinutes = timeToMinutes(currentTimeStr);
+  const startMinutes = timeToMinutes(shabbatStartTime);
+  const endMinutes = timeToMinutes(shabbatEndTime);
+  
+  // Friday (day 5) after start time
+  if (dayOfWeek === 5 && currentMinutes >= startMinutes) {
+    return true;
+  }
+  
+  // Saturday (day 6) before end time
+  if (dayOfWeek === 6 && currentMinutes < endMinutes) {
+    return true;
+  }
+  
+  return false;
+}
+
+// Check if interval posting should trigger
+function shouldPostByInterval(
+  intervalHours: number | null,
+  lastSentTime: string | null
+): boolean {
+  if (!intervalHours) return false;
+  if (!lastSentTime) return true; // No previous send, go ahead
+  
+  const lastSent = new Date(lastSentTime);
+  const now = new Date();
+  const diffMs = now.getTime() - lastSent.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  
+  return diffHours >= intervalHours;
+}
 // -------------------------
 
 serve(async (req) => {
@@ -77,24 +126,57 @@ serve(async (req) => {
       const userId = userSettings.user_id;
       const postingTimes: string[] = userSettings.posting_times || [];
       const publishingDays: number[] = userSettings.publishing_days || [0, 1, 2, 3, 4, 5, 6];
+      const intervalHours: number | null = userSettings.posting_interval_hours || null;
+      const shabbatEnabled: boolean = userSettings.shabbat_mode_enabled || false;
+      const shabbatStartTime: string = userSettings.shabbat_start_time || '14:00';
+      const shabbatEndTime: string = userSettings.shabbat_end_time || '20:00';
 
-      console.log(`[auto-post] User ${userId}: Configured times: [${postingTimes.join(", ")}], days: [${publishingDays.join(", ")}]`);
+      console.log(`[auto-post] User ${userId}: Interval: ${intervalHours}h, Shabbat: ${shabbatEnabled}, times: [${postingTimes.join(", ")}]`);
 
-      // Step A: Check if today is a publishing day
+      // Step A: Check Shabbat mode first
+      if (isInShabbatMode(currentDayOfWeek, currentTimeStr, shabbatEnabled, shabbatStartTime, shabbatEndTime)) {
+        console.log(`[auto-post] User ${userId}: Skipping - Shabbat mode active`);
+        results.push({ userId, status: "shabbat_mode" });
+        continue;
+      }
+
+      // Step B: Check if today is a publishing day
       if (!publishingDays.includes(currentDayOfWeek)) {
         console.log(`[auto-post] User ${userId}: Skipping - Day ${currentDayOfWeek} not in publishing days`);
         results.push({ userId, status: "skipped_day" });
         continue;
       }
 
-      // Step B: Check if current time matches ANY of the user's posting times
-      if (!isPostingTime(currentTimeStr, postingTimes)) {
-        // Don't log every minute to reduce noise - only log occasionally
-        results.push({ userId, status: "not_posting_time" });
-        continue;
+      // Step C: Determine if we should post (fixed times OR interval)
+      let shouldPost = false;
+      
+      if (intervalHours) {
+        // Interval mode: check if enough time passed since last send
+        const { data: lastSent } = await supabase
+          .from("products")
+          .select("updated_at")
+          .eq("user_id", userId)
+          .eq("status", "Sent")
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        shouldPost = shouldPostByInterval(intervalHours, lastSent?.updated_at || null);
+        if (!shouldPost) {
+          results.push({ userId, status: "interval_not_reached" });
+          continue;
+        }
+        console.log(`[auto-post] User ${userId}: ✓ Interval ${intervalHours}h reached!`);
+      } else {
+        // Fixed times mode: check if current time matches
+        if (!isPostingTime(currentTimeStr, postingTimes)) {
+          results.push({ userId, status: "not_posting_time" });
+          continue;
+        }
+        console.log(`[auto-post] User ${userId}: ✓ Time ${currentTimeStr} matches!`);
       }
 
-      // Step B.5: 15-MINUTE LOCKOUT - Check if we already sent in the last 15 minutes (prevents duplicates)
+      // Step D: 15-MINUTE LOCKOUT - Check if we already sent in the last 15 minutes (prevents duplicates)
       const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
       const { data: recentSent, error: recentError } = await supabase
         .from("products")
@@ -114,9 +196,9 @@ serve(async (req) => {
         continue;
       }
 
-      console.log(`[auto-post] User ${userId}: ✓ Time ${currentTimeStr} matches! No recent sends. Searching for scheduled product...`);
+      console.log(`[auto-post] User ${userId}: No recent sends. Searching for scheduled product...`);
 
-      // Step C: Fetch the OLDEST product with status 'Scheduled' (processing already handled above)
+      // Step E: Fetch the OLDEST product with status 'Scheduled'
       const { data: product, error: fetchError } = await supabase
         .from("products")
         .select("*")
@@ -140,7 +222,7 @@ serve(async (req) => {
 
       console.log(`[auto-post] User ${userId}: Found product ${product.id}. Locking...`);
 
-      // Step D: LOCK IT - Update status to 'processing' to prevent double-send
+      // Step F: LOCK IT - Update status to 'processing' to prevent double-send
       const { error: lockError, count } = await supabase
         .from("products")
         .update({ status: "processing" })
@@ -153,7 +235,7 @@ serve(async (req) => {
         continue;
       }
 
-      // Step E: Build message and send
+      // Step G: Build message and send
       const message = buildMessage(product);
       let sendSuccess = false;
       let sentTo: string[] = [];
@@ -188,13 +270,11 @@ serve(async (req) => {
         }
       }
 
-      // Step F: Final Status Update
-      // If BOTH channels failed, reset to 'Scheduled' for retry
+      // Step H: Final Status Update
       let finalStatus: string;
       if (sendSuccess) {
         finalStatus = "Sent";
       } else {
-        // No channel succeeded - reset to Scheduled for retry
         finalStatus = "Scheduled";
         console.log(`[auto-post] User ${userId}: Both channels failed - resetting product to 'Scheduled' for retry`);
       }

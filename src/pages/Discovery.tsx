@@ -273,11 +273,12 @@ const Discovery = () => {
       let hebrewDescription = product.hebrewDescription || "";
       
       if (!hebrewDescription) {
+        // Build description from Excel data including sales and feedback
         const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
           body: { 
             title: product.title,
-            ordersCount: 0,
-            rating: 0,
+            ordersCount: product.sales180Day || 0,
+            rating: product.positiveFeedback ? product.positiveFeedback / 20 : 0, // Convert percentage to 5-star scale
             originalPrice: product.originalPrice,
             discountPrice: product.discountPrice,
             discountPercent: product.discountPercent,
@@ -292,19 +293,30 @@ const Discovery = () => {
         hebrewDescription = hebResp.hebrewDescription;
       }
 
-      // Store clean AI description - auto-post will append the link when sending
-      // This keeps the stored content clean and lets the delivery logic handle formatting
-      
+      // Add sales and feedback info to description if available from Excel
+      let finalDescription = hebrewDescription;
+      if (product.sales180Day || product.positiveFeedback) {
+        const stats: string[] = [];
+        if (product.sales180Day) stats.push(`📦 ${product.sales180Day.toLocaleString()} הזמנות`);
+        if (product.positiveFeedback) stats.push(`⭐ ${product.positiveFeedback}% חיובי`);
+        if (stats.length > 0 && !finalDescription.includes('הזמנות')) {
+          finalDescription = `${finalDescription}\n\n${stats.join(' | ')}`;
+        }
+      }
+
+      // Add affiliate link at the end
+      finalDescription = `${finalDescription}\n\n👉 להזמנה: ${affiliateLink}`;
+
       // Save to queue
       const { error: saveErr } = await supabase.from("products").insert({
         original_url: product.promotionLink,
         title: product.title,
         price: product.discountPrice,
         image_url: product.imageUrl,
-        orders_count: 0,
-        rating: 0,
+        orders_count: product.sales180Day || 0,
+        rating: product.positiveFeedback ? product.positiveFeedback / 20 : 0,
         affiliate_link: affiliateLink,
-        hebrew_description: hebrewDescription,
+        hebrew_description: finalDescription,
         status: "Scheduled",
         channels: [],
         user_id: userId,
