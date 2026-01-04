@@ -265,6 +265,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_my_access_status: { Args: never; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -274,6 +275,7 @@ export type Database = {
       }
       is_admin: { Args: never; Returns: boolean }
       is_email_authorized: { Args: { check_email: string }; Returns: boolean }
+      is_me_authorized: { Args: never; Returns: boolean }
     }
     Enums: {
       app_role: "admin" | "user"

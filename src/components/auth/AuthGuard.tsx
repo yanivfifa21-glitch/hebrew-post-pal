@@ -15,41 +15,46 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
   const [loading, setLoading] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
 
-  const checkAuthorization = async (userEmail: string | undefined) => {
-    if (!userEmail) return { authorized: false, status: null, exists: false };
+  // Use RPC functions instead of direct table queries (RLS blocks direct SELECT)
+  const checkAuthorization = async (): Promise<{ authorized: boolean; status: string | null }> => {
+    // First check if user is authorized
+    const { data: isAuthorized, error: authError } = await supabase.rpc("is_me_authorized");
     
-    const { data, error } = await supabase
-      .from("authorized_users")
-      .select("email, status")
-      .eq("email", userEmail.toLowerCase())
-      .maybeSingle();
+    if (authError) {
+      console.error("Auth check error:", authError);
+      return { authorized: false, status: null };
+    }
     
-    if (error) return { authorized: false, status: null, exists: false };
-    if (!data) return { authorized: false, status: null, exists: false };
+    if (isAuthorized) {
+      return { authorized: true, status: "approved" };
+    }
     
-    // Accept both 'approved' and 'active' as valid statuses
-    const isApproved = data.status === "approved" || data.status === "active";
-    return { authorized: isApproved, status: data.status, exists: true };
+    // Get status to show appropriate message
+    const { data: status, error: statusError } = await supabase.rpc("get_my_access_status");
+    
+    if (statusError) {
+      // No record exists
+      return { authorized: false, status: null };
+    }
+    
+    return { authorized: false, status: status || null };
   };
 
   const createPendingRequest = async (email: string) => {
-    // First check if already exists to avoid duplicate key error
-    const { data: existing } = await supabase
-      .from("authorized_users")
-      .select("id, status")
-      .eq("email", email.toLowerCase())
-      .maybeSingle();
-    
-    if (existing) {
-      // Already exists - don't try to insert again
-      return { created: false, alreadyExists: true, status: existing.status };
-    }
-    
+    // Insert request - RLS only allows inserting own email with pending status
     const { error } = await supabase
       .from("authorized_users")
       .insert({ email: email.toLowerCase(), status: "pending" });
     
-    return { created: !error, alreadyExists: false, status: "pending" };
+    if (error) {
+      // Unique constraint = already exists
+      if (error.code === "23505") {
+        return { created: false, alreadyExists: true };
+      }
+      return { created: false, alreadyExists: false };
+    }
+    
+    return { created: true, alreadyExists: false };
   };
 
   const checkIsAdmin = async (): Promise<boolean> => {
@@ -59,6 +64,7 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
   };
 
   const checkPendingRequests = async () => {
+    // Only admins can see this (RLS enforced)
     const { data } = await supabase
       .from("authorized_users")
       .select("id")
@@ -67,13 +73,13 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
     return data?.length || 0;
   };
 
-  const handleUnauthorized = async (status: string | null, email: string, exists: boolean) => {
+  const handleUnauthorized = async (status: string | null, email: string) => {
     if (status === "pending") {
       toast({
         title: "Access Pending",
         description: "Your access request is pending approval.",
       });
-    } else if (!exists) {
+    } else if (status === null) {
       // User not in list, create pending request
       const result = await createPendingRequest(email);
       if (result.created) {
@@ -83,8 +89,8 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
         });
       } else if (result.alreadyExists) {
         toast({
-          title: "Access Status",
-          description: `Your status is: ${result.status}. Contact admin if needed.`,
+          title: "Access Pending",
+          description: "Your access request already exists. Please wait for admin approval.",
         });
       } else {
         toast({
@@ -132,7 +138,7 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
         navigate("/auth");
       } else {
         setTimeout(async () => {
-          const { authorized, status, exists } = await checkAuthorization(session.user.email);
+          const { authorized, status } = await checkAuthorization();
           if (authorized) {
             setIsAuthorized(true);
             setLoading(false);
@@ -144,7 +150,7 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
               notifyAdminOfPendingRequests(pendingCount);
             }
           } else {
-            handleUnauthorized(status, session.user.email || "", exists);
+            handleUnauthorized(status, session.user.email || "");
           }
         }, 0);
       }
@@ -157,7 +163,7 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
         setLoading(false);
         navigate("/auth");
       } else {
-        const { authorized, status, exists } = await checkAuthorization(session.user.email);
+        const { authorized, status } = await checkAuthorization();
         if (authorized) {
           setIsAuthorized(true);
           setLoading(false);
@@ -169,7 +175,7 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
             notifyAdminOfPendingRequests(pendingCount);
           }
         } else {
-          handleUnauthorized(status, session.user.email || "", exists);
+          handleUnauthorized(status, session.user.email || "");
         }
       }
     });
