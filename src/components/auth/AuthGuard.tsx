@@ -16,7 +16,7 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
   const [isAuthorized, setIsAuthorized] = useState(false);
 
   const checkAuthorization = async (userEmail: string | undefined) => {
-    if (!userEmail) return { authorized: false, status: null };
+    if (!userEmail) return { authorized: false, status: null, exists: false };
     
     const { data, error } = await supabase
       .from("authorized_users")
@@ -24,18 +24,32 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
       .eq("email", userEmail.toLowerCase())
       .maybeSingle();
     
-    if (error) return { authorized: false, status: null };
-    if (!data) return { authorized: false, status: null };
+    if (error) return { authorized: false, status: null, exists: false };
+    if (!data) return { authorized: false, status: null, exists: false };
     
-    return { authorized: data.status === "approved", status: data.status };
+    // Accept both 'approved' and 'active' as valid statuses
+    const isApproved = data.status === "approved" || data.status === "active";
+    return { authorized: isApproved, status: data.status, exists: true };
   };
 
   const createPendingRequest = async (email: string) => {
+    // First check if already exists to avoid duplicate key error
+    const { data: existing } = await supabase
+      .from("authorized_users")
+      .select("id, status")
+      .eq("email", email.toLowerCase())
+      .maybeSingle();
+    
+    if (existing) {
+      // Already exists - don't try to insert again
+      return { created: false, alreadyExists: true, status: existing.status };
+    }
+    
     const { error } = await supabase
       .from("authorized_users")
       .insert({ email: email.toLowerCase(), status: "pending" });
     
-    return !error;
+    return { created: !error, alreadyExists: false, status: "pending" };
   };
 
   const checkIsAdmin = async (): Promise<boolean> => {
@@ -53,19 +67,24 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
     return data?.length || 0;
   };
 
-  const handleUnauthorized = async (status: string | null, email: string) => {
+  const handleUnauthorized = async (status: string | null, email: string, exists: boolean) => {
     if (status === "pending") {
       toast({
         title: "Access Pending",
         description: "Your access request is pending approval.",
       });
-    } else {
+    } else if (!exists) {
       // User not in list, create pending request
-      const created = await createPendingRequest(email);
-      if (created) {
+      const result = await createPendingRequest(email);
+      if (result.created) {
         toast({
           title: "Access Requested",
           description: "Your access request is pending approval.",
+        });
+      } else if (result.alreadyExists) {
+        toast({
+          title: "Access Status",
+          description: `Your status is: ${result.status}. Contact admin if needed.`,
         });
       } else {
         toast({
@@ -74,6 +93,13 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
           variant: "destructive",
         });
       }
+    } else {
+      // User exists but not approved
+      toast({
+        title: "Access Denied",
+        description: `Your current status is: ${status}. Contact the administrator.`,
+        variant: "destructive",
+      });
     }
     await supabase.auth.signOut();
     navigate("/auth");
@@ -106,7 +132,7 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
         navigate("/auth");
       } else {
         setTimeout(async () => {
-          const { authorized, status } = await checkAuthorization(session.user.email);
+          const { authorized, status, exists } = await checkAuthorization(session.user.email);
           if (authorized) {
             setIsAuthorized(true);
             setLoading(false);
@@ -118,7 +144,7 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
               notifyAdminOfPendingRequests(pendingCount);
             }
           } else {
-            handleUnauthorized(status, session.user.email || "");
+            handleUnauthorized(status, session.user.email || "", exists);
           }
         }, 0);
       }
@@ -131,7 +157,7 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
         setLoading(false);
         navigate("/auth");
       } else {
-        const { authorized, status } = await checkAuthorization(session.user.email);
+        const { authorized, status, exists } = await checkAuthorization(session.user.email);
         if (authorized) {
           setIsAuthorized(true);
           setLoading(false);
@@ -143,7 +169,7 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
             notifyAdminOfPendingRequests(pendingCount);
           }
         } else {
-          handleUnauthorized(status, session.user.email || "");
+          handleUnauthorized(status, session.user.email || "", exists);
         }
       }
     });
