@@ -72,6 +72,30 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    // SECURITY: Verify the user from JWT token
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      console.error("[generate-affiliate-link] Missing authorization header");
+      const payload: ApiErr = { success: false, error: "Unauthorized" };
+      return new Response(JSON.stringify(payload), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    
+    // Verify user with anon key
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(
+      authHeader.replace("Bearer ", "")
+    );
+
+    if (authError || !user) {
+      console.error("[generate-affiliate-link] Auth verification failed:", authError);
+      const payload: ApiErr = { success: false, error: "Unauthorized" };
+      return new Response(JSON.stringify(payload), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const body = await req.json().catch(() => ({}));
     const productUrl = String(body?.productUrl || "").trim();
     const userId = String(body?.userId || "").trim();
@@ -83,21 +107,21 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    if (!userId) {
-      const payload: ApiErr = { success: false, error: "User ID is required" };
-      return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    // SECURITY: Verify the userId matches the authenticated user
+    if (userId && userId !== user.id) {
+      console.error("[generate-affiliate-link] User ID mismatch - potential attack");
+      const payload: ApiErr = { success: false, error: "Forbidden: Cannot access other users' data" };
+      return new Response(JSON.stringify(payload), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Create Supabase client with service role to fetch user credentials
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    // Use service role to fetch settings (after security verification)
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch user's credentials from app_settings
+    // Fetch user's credentials from app_settings using verified user.id
     const { data: settings, error: settingsError } = await supabase
       .from("app_settings")
       .select("aliexpress_app_key, aliexpress_app_secret, aliexpress_tracking_id")
-      .eq("user_id", userId)
+      .eq("user_id", user.id) // Use verified user.id
       .maybeSingle();
 
     if (settingsError) {
@@ -114,6 +138,8 @@ serve(async (req) => {
       const payload: ApiErr = { success: false, error: "Please configure your AliExpress API credentials in Settings" };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+
+    console.log("[generate-affiliate-link] Processing for user:", user.email);
 
     const expanded = await expandShortUrl(productUrl);
     console.log("[generate-affiliate-link] Expanded URL:", expanded);
