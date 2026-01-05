@@ -36,7 +36,7 @@ export type Database = {
           telegram_chat_id: string | null
           telegram_enabled: boolean | null
           updated_at: string
-          user_id: string | null
+          user_id: string
           whatsapp_enabled: boolean | null
         }
         Insert: {
@@ -60,7 +60,7 @@ export type Database = {
           telegram_chat_id?: string | null
           telegram_enabled?: boolean | null
           updated_at?: string
-          user_id?: string | null
+          user_id: string
           whatsapp_enabled?: boolean | null
         }
         Update: {
@@ -84,7 +84,7 @@ export type Database = {
           telegram_chat_id?: string | null
           telegram_enabled?: boolean | null
           updated_at?: string
-          user_id?: string | null
+          user_id?: string
           whatsapp_enabled?: boolean | null
         }
         Relationships: []
@@ -201,7 +201,7 @@ export type Database = {
           status: string
           title: string
           updated_at: string
-          user_id: string | null
+          user_id: string
         }
         Insert: {
           affiliate_link?: string | null
@@ -218,7 +218,7 @@ export type Database = {
           status?: string
           title: string
           updated_at?: string
-          user_id?: string | null
+          user_id: string
         }
         Update: {
           affiliate_link?: string | null
@@ -235,7 +235,7 @@ export type Database = {
           status?: string
           title?: string
           updated_at?: string
-          user_id?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -274,6 +274,7 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: never; Returns: boolean }
+      is_admin_email: { Args: never; Returns: boolean }
       is_email_authorized: { Args: { check_email: string }; Returns: boolean }
       is_me_authorized: { Args: never; Returns: boolean }
     }

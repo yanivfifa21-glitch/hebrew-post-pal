@@ -28,6 +28,30 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    // SECURITY: Verify the user from JWT token
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      console.error("[generate-hebrew-post] Missing authorization header");
+      const payload: ApiErr = { success: false, error: "Unauthorized" };
+      return new Response(JSON.stringify(payload), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    
+    // Verify user with anon key
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(
+      authHeader.replace("Bearer ", "")
+    );
+
+    if (authError || !user) {
+      console.error("[generate-hebrew-post] Auth verification failed:", authError);
+      const payload: ApiErr = { success: false, error: "Unauthorized" };
+      return new Response(JSON.stringify(payload), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const body = await req.json();
     const { 
       title, 
@@ -45,30 +69,33 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // SECURITY: Verify the userId matches the authenticated user
+    if (userId && userId !== user.id) {
+      console.error("[generate-hebrew-post] User ID mismatch - potential attack");
+      const payload: ApiErr = { success: false, error: "Forbidden: Cannot access other users' data" };
+      return new Response(JSON.stringify(payload), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       const payload: ApiErr = { success: false, error: "AI is not configured" };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Fetch user's custom prompt if userId provided
+    // Fetch user's custom prompt using verified user.id
     let systemPrompt = DEFAULT_SYSTEM_PROMPT;
     
-    if (userId) {
-      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-      const { data: settings } = await supabase
-        .from("app_settings")
-        .select("custom_ai_prompt")
-        .eq("user_id", userId)
-        .maybeSingle();
+    const { data: settings } = await supabase
+      .from("app_settings")
+      .select("custom_ai_prompt")
+      .eq("user_id", user.id) // Use verified user.id
+      .maybeSingle();
 
-      if (settings?.custom_ai_prompt?.trim()) {
-        systemPrompt = settings.custom_ai_prompt.trim();
-        console.log("[generate-hebrew-post] Using custom prompt for user:", userId);
-      }
+    if (settings?.custom_ai_prompt?.trim()) {
+      systemPrompt = settings.custom_ai_prompt.trim();
+      console.log("[generate-hebrew-post] Using custom prompt for user:", user.email);
     }
 
     // Build product context - only title, orders, and rating
@@ -89,12 +116,7 @@ ${productDetails.length > 0 ? `\nנתונים מה-API:\n${productDetails.join("
 
 כתוב תיאור מוצר קצר. בלי מחיר, בלי קופון, בלי קישור.`;
 
-    console.log("[generate-hebrew-post] Generating description:", {
-      title: t,
-      ordersCount: orders,
-      rating: rate,
-      userId: userId || "none"
-    });
+    console.log("[generate-hebrew-post] Generating for user:", user.email);
 
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",

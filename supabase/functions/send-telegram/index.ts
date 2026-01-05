@@ -21,26 +21,53 @@ serve(async (req) => {
   }
 
   try {
-    const { title, hebrewDescription, price, imageUrl, affiliateLink, userId }: TelegramRequest = await req.json();
-
-    if (!userId) {
-      console.error("[send-telegram] Missing userId");
+    // SECURITY: Verify the user from JWT token
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      console.error("[send-telegram] Missing authorization header");
       return new Response(
-        JSON.stringify({ success: false, error: "User ID is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Create Supabase client with service role to fetch user credentials
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    
+    // Verify user with anon key
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(
+      authHeader.replace("Bearer ", "")
+    );
+
+    if (authError || !user) {
+      console.error("[send-telegram] Auth verification failed:", authError);
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { title, hebrewDescription, price, imageUrl, affiliateLink, userId }: TelegramRequest = await req.json();
+
+    // SECURITY: Verify the userId matches the authenticated user
+    if (userId !== user.id) {
+      console.error("[send-telegram] User ID mismatch - potential attack");
+      return new Response(
+        JSON.stringify({ success: false, error: "Forbidden: Cannot access other users' data" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Use service role to fetch settings (after security verification)
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Fetch user's credentials from app_settings
     const { data: settings, error: settingsError } = await supabase
       .from("app_settings")
       .select("telegram_bot_token, telegram_chat_id")
-      .eq("user_id", userId)
+      .eq("user_id", user.id) // Use verified user.id
       .maybeSingle();
 
     if (settingsError) {
@@ -65,7 +92,7 @@ serve(async (req) => {
     // Use hebrewDescription as-is (it already contains the affiliate link)
     const caption = hebrewDescription;
 
-    console.log("[send-telegram] Sending to chat:", chatId);
+    console.log("[send-telegram] Sending for user:", user.email);
     console.log("[send-telegram] Caption preview:", caption.substring(0, 100) + "...");
 
     let result;

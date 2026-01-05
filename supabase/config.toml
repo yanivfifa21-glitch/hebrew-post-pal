@@ -1,18 +1,20 @@
 project_id = "bisxrtkervvyoqtyrnxt"
 
+# Functions that require authentication (sensitive user data)
 [functions.send-whatsapp]
-verify_jwt = false
-
-[functions.generate-affiliate-link]
-verify_jwt = false
-
-[functions.fetch-ali-product]
-verify_jwt = false
-
-[functions.generate-hebrew-post]
-verify_jwt = false
+verify_jwt = true
 
 [functions.send-telegram]
+verify_jwt = true
+
+[functions.generate-affiliate-link]
+verify_jwt = true
+
+[functions.generate-hebrew-post]
+verify_jwt = true
+
+# Functions that can be public (data fetching only)
+[functions.fetch-ali-product]
 verify_jwt = false
 
 [functions.fetch-hot-products]
@@ -21,8 +23,9 @@ verify_jwt = false
 [functions.scrape-ali-deals]
 verify_jwt = false
 
-[functions.auto-post]
+[functions.search-ali-products]
 verify_jwt = false
 
-[functions.search-ali-products]
+# Cron job - uses service role internally
+[functions.auto-post]
 verify_jwt = false
