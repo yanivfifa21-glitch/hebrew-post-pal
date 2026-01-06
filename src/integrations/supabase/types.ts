@@ -16,15 +16,10 @@ export type Database = {
     Tables: {
       app_settings: {
         Row: {
-          aliexpress_app_key: string | null
-          aliexpress_app_secret: string | null
           aliexpress_tracking_id: string | null
           automation_enabled: boolean | null
           created_at: string
           custom_ai_prompt: string | null
-          greenapi_api_token: string | null
-          greenapi_chat_id: string | null
-          greenapi_instance_id: string | null
           id: string
           posting_interval_hours: number | null
           posting_times: string[] | null
@@ -32,7 +27,6 @@ export type Database = {
           shabbat_end_time: string | null
           shabbat_mode_enabled: boolean | null
           shabbat_start_time: string | null
-          telegram_bot_token: string | null
           telegram_chat_id: string | null
           telegram_enabled: boolean | null
           updated_at: string
@@ -40,15 +34,10 @@ export type Database = {
           whatsapp_enabled: boolean | null
         }
         Insert: {
-          aliexpress_app_key?: string | null
-          aliexpress_app_secret?: string | null
           aliexpress_tracking_id?: string | null
           automation_enabled?: boolean | null
           created_at?: string
           custom_ai_prompt?: string | null
-          greenapi_api_token?: string | null
-          greenapi_chat_id?: string | null
-          greenapi_instance_id?: string | null
           id?: string
           posting_interval_hours?: number | null
           posting_times?: string[] | null
@@ -56,7 +45,6 @@ export type Database = {
           shabbat_end_time?: string | null
           shabbat_mode_enabled?: boolean | null
           shabbat_start_time?: string | null
-          telegram_bot_token?: string | null
           telegram_chat_id?: string | null
           telegram_enabled?: boolean | null
           updated_at?: string
@@ -64,15 +52,10 @@ export type Database = {
           whatsapp_enabled?: boolean | null
         }
         Update: {
-          aliexpress_app_key?: string | null
-          aliexpress_app_secret?: string | null
           aliexpress_tracking_id?: string | null
           automation_enabled?: boolean | null
           created_at?: string
           custom_ai_prompt?: string | null
-          greenapi_api_token?: string | null
-          greenapi_chat_id?: string | null
-          greenapi_instance_id?: string | null
           id?: string
           posting_interval_hours?: number | null
           posting_times?: string[] | null
@@ -80,7 +63,6 @@ export type Database = {
           shabbat_end_time?: string | null
           shabbat_mode_enabled?: boolean | null
           shabbat_start_time?: string | null
-          telegram_bot_token?: string | null
           telegram_chat_id?: string | null
           telegram_enabled?: boolean | null
           updated_at?: string
@@ -145,12 +127,8 @@ export type Database = {
           account_name: string
           account_type: string
           created_at: string
-          greenapi_api_token: string | null
-          greenapi_chat_id: string | null
-          greenapi_instance_id: string | null
           id: string
           is_active: boolean
-          telegram_bot_token: string | null
           telegram_chat_id: string | null
           updated_at: string
           user_id: string
@@ -159,12 +137,8 @@ export type Database = {
           account_name: string
           account_type: string
           created_at?: string
-          greenapi_api_token?: string | null
-          greenapi_chat_id?: string | null
-          greenapi_instance_id?: string | null
           id?: string
           is_active?: boolean
-          telegram_bot_token?: string | null
           telegram_chat_id?: string | null
           updated_at?: string
           user_id: string
@@ -173,12 +147,8 @@ export type Database = {
           account_name?: string
           account_type?: string
           created_at?: string
-          greenapi_api_token?: string | null
-          greenapi_chat_id?: string | null
-          greenapi_instance_id?: string | null
           id?: string
           is_active?: boolean
-          telegram_bot_token?: string | null
           telegram_chat_id?: string | null
           updated_at?: string
           user_id?: string
@@ -239,6 +209,48 @@ export type Database = {
         }
         Relationships: []
       }
+      user_credentials: {
+        Row: {
+          aliexpress_app_key: string | null
+          aliexpress_app_secret: string | null
+          created_at: string | null
+          greenapi_api_token: string | null
+          greenapi_chat_id: string | null
+          greenapi_instance_id: string | null
+          id: string
+          telegram_bot_token: string | null
+          telegram_chat_id: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          aliexpress_app_key?: string | null
+          aliexpress_app_secret?: string | null
+          created_at?: string | null
+          greenapi_api_token?: string | null
+          greenapi_chat_id?: string | null
+          greenapi_instance_id?: string | null
+          id?: string
+          telegram_bot_token?: string | null
+          telegram_chat_id?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          aliexpress_app_key?: string | null
+          aliexpress_app_secret?: string | null
+          created_at?: string | null
+          greenapi_api_token?: string | null
+          greenapi_chat_id?: string | null
+          greenapi_instance_id?: string | null
+          id?: string
+          telegram_bot_token?: string | null
+          telegram_chat_id?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -266,6 +278,7 @@ export type Database = {
     }
     Functions: {
       get_my_access_status: { Args: never; Returns: string }
+      get_my_credentials_status: { Args: never; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -277,6 +290,18 @@ export type Database = {
       is_admin_email: { Args: never; Returns: boolean }
       is_email_authorized: { Args: { check_email: string }; Returns: boolean }
       is_me_authorized: { Args: never; Returns: boolean }
+      update_my_credentials: {
+        Args: {
+          p_aliexpress_app_key?: string
+          p_aliexpress_app_secret?: string
+          p_greenapi_api_token?: string
+          p_greenapi_chat_id?: string
+          p_greenapi_instance_id?: string
+          p_telegram_bot_token?: string
+          p_telegram_chat_id?: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "admin" | "user"

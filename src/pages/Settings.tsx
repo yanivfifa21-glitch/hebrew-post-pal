@@ -28,44 +28,89 @@ import {
   Calendar,
   RotateCcw,
   Moon,
-  Timer
+  Timer,
+  Check,
+  AlertCircle
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
-interface MaskedInputProps {
+// Write-only credential input component - never shows actual values
+interface SecureCredentialInputProps {
   label: string;
-  value: string;
-  onChange: (value: string) => void;
   placeholder?: string;
   description?: string;
+  isConfigured: boolean;
+  onUpdate: (value: string) => void;
+  value: string;
 }
 
-const MaskedInput = ({ label, value, onChange, placeholder, description }: MaskedInputProps) => {
-  const [isVisible, setIsVisible] = useState(false);
+const SecureCredentialInput = ({ 
+  label, 
+  placeholder, 
+  description, 
+  isConfigured, 
+  onUpdate, 
+  value 
+}: SecureCredentialInputProps) => {
+  const [isEditing, setIsEditing] = useState(false);
 
   return (
     <div className="space-y-2">
-      <Label className="text-sm font-medium">{label}</Label>
-      {description && <p className="text-xs text-muted-foreground">{description}</p>}
-      <div className="relative">
-        <Input
-          type={isVisible ? "text" : "password"}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          className="pr-10"
-        />
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
-          onClick={() => setIsVisible(!isVisible)}
-        >
-          {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-        </Button>
+      <div className="flex items-center justify-between">
+        <Label className="text-sm font-medium">{label}</Label>
+        {isConfigured && !isEditing && (
+          <Badge variant="outline" className="text-green-600 border-green-600/50 bg-green-50">
+            <Check className="h-3 w-3 mr-1" />
+            Configured
+          </Badge>
+        )}
+        {!isConfigured && !isEditing && (
+          <Badge variant="outline" className="text-amber-600 border-amber-600/50 bg-amber-50">
+            <AlertCircle className="h-3 w-3 mr-1" />
+            Not Set
+          </Badge>
+        )}
       </div>
+      {description && <p className="text-xs text-muted-foreground">{description}</p>}
+      
+      {isEditing ? (
+        <div className="space-y-2">
+          <div className="relative">
+            <Input
+              type="password"
+              value={value}
+              onChange={(e) => onUpdate(e.target.value)}
+              placeholder={placeholder}
+              className="pr-10"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Enter a new value to update. Leave empty to keep current.
+          </p>
+          <Button 
+            type="button" 
+            variant="ghost" 
+            size="sm"
+            onClick={() => {
+              setIsEditing(false);
+              onUpdate('');
+            }}
+          >
+            Cancel
+          </Button>
+        </div>
+      ) : (
+        <Button 
+          type="button" 
+          variant="outline" 
+          className="w-full justify-start text-muted-foreground"
+          onClick={() => setIsEditing(true)}
+        >
+          <Eye className="h-4 w-4 mr-2" />
+          {isConfigured ? "Update credential..." : "Set credential..."}
+        </Button>
+      )}
     </div>
   );
 };
@@ -75,11 +120,7 @@ interface MessagingAccount {
   account_type: string;
   account_name: string;
   is_active: boolean;
-  telegram_bot_token?: string | null;
   telegram_chat_id?: string | null;
-  greenapi_instance_id?: string | null;
-  greenapi_api_token?: string | null;
-  greenapi_chat_id?: string | null;
 }
 
 interface AutomationLogRow {
@@ -88,6 +129,16 @@ interface AutomationLogRow {
   level: string;
   message: string;
   context: any;
+}
+
+interface CredentialsStatus {
+  has_telegram_token: boolean;
+  has_telegram_chat_id: boolean;
+  has_greenapi_token: boolean;
+  has_greenapi_instance: boolean;
+  has_greenapi_chat_id: boolean;
+  has_aliexpress_secret: boolean;
+  has_aliexpress_key: boolean;
 }
 
 // Pre-defined prompt templates - description only, no prices/coupons/links
@@ -165,6 +216,26 @@ const Settings = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   
+  // Credentials status (boolean flags, not actual values)
+  const [credentialsStatus, setCredentialsStatus] = useState<CredentialsStatus>({
+    has_telegram_token: false,
+    has_telegram_chat_id: false,
+    has_greenapi_token: false,
+    has_greenapi_instance: false,
+    has_greenapi_chat_id: false,
+    has_aliexpress_secret: false,
+    has_aliexpress_key: false,
+  });
+  
+  // New credential values to save (write-only)
+  const [newTelegramBotToken, setNewTelegramBotToken] = useState('');
+  const [newTelegramChatId, setNewTelegramChatId] = useState('');
+  const [newGreenApiToken, setNewGreenApiToken] = useState('');
+  const [newGreenApiInstance, setNewGreenApiInstance] = useState('');
+  const [newGreenApiChatId, setNewGreenApiChatId] = useState('');
+  const [newAliexpressKey, setNewAliexpressKey] = useState('');
+  const [newAliexpressSecret, setNewAliexpressSecret] = useState('');
+  
   // Master automation toggle
   const [automationEnabled, setAutomationEnabled] = useState(false);
   
@@ -184,24 +255,22 @@ const Settings = () => {
   // Publishing days (0=Sunday, 6=Saturday)
   const [publishingDays, setPublishingDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
 
-  // AliExpress credentials
-  const [aliexpressAppKey, setAliexpressAppKey] = useState('');
-  const [aliexpressAppSecret, setAliexpressAppSecret] = useState('');
+  // AliExpress tracking ID (non-sensitive)
   const [aliexpressTrackingId, setAliexpressTrackingId] = useState('');
 
   // Custom AI prompt
   const [customAiPrompt, setCustomAiPrompt] = useState('');
   const [selectedPromptType, setSelectedPromptType] = useState<string | null>(null);
 
-  // Multi-account management
+  // Multi-account management (simplified - no sensitive data)
   const [messagingAccounts, setMessagingAccounts] = useState<MessagingAccount[]>([]);
   const [showAddAccount, setShowAddAccount] = useState<'telegram' | 'whatsapp' | null>(null);
   const [newAccountName, setNewAccountName] = useState('');
-  const [newTelegramToken, setNewTelegramToken] = useState('');
-  const [newTelegramChatId, setNewTelegramChatId] = useState('');
-  const [newGreenApiInstanceId, setNewGreenApiInstanceId] = useState('');
-  const [newGreenApiToken, setNewGreenApiToken] = useState('');
-  const [newGreenApiChatId, setNewGreenApiChatId] = useState('');
+  const [newAccountTelegramToken, setNewAccountTelegramToken] = useState('');
+  const [newAccountTelegramChatId, setNewAccountTelegramChatId] = useState('');
+  const [newAccountGreenApiInstanceId, setNewAccountGreenApiInstanceId] = useState('');
+  const [newAccountGreenApiToken, setNewAccountGreenApiToken] = useState('');
+  const [newAccountGreenApiChatId, setNewAccountGreenApiChatId] = useState('');
 
   // System logs
   const [systemLogs, setSystemLogs] = useState<AutomationLogRow[]>([]);
@@ -242,10 +311,10 @@ const Settings = () => {
       if (!user) throw new Error("Not authenticated");
       setUserId(user.id);
 
-      // Fetch app settings
+      // Fetch app settings (non-sensitive data only)
       const { data, error } = await supabase
         .from('app_settings')
-        .select('*')
+        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, posting_interval_hours, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, telegram_enabled, whatsapp_enabled, telegram_chat_id')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -256,18 +325,15 @@ const Settings = () => {
         setAutomationEnabled(data.automation_enabled || false);
         setPostingTimes(data.posting_times || ['10:00', '14:00', '20:00']);
         setPublishingDays(data.publishing_days || [0, 1, 2, 3, 4, 5, 6]);
-        setAliexpressAppKey(data.aliexpress_app_key || '');
-        setAliexpressAppSecret(data.aliexpress_app_secret || '');
         setAliexpressTrackingId(data.aliexpress_tracking_id || '');
         setCustomAiPrompt(data.custom_ai_prompt || '');
         
         // New settings
-        const intervalHours = (data as any).posting_interval_hours;
-        setPostingIntervalHours(intervalHours || null);
-        setUseIntervalPosting(!!intervalHours);
-        setShabbatModeEnabled((data as any).shabbat_mode_enabled || false);
-        setShabbatStartTime((data as any).shabbat_start_time || '14:00');
-        setShabbatEndTime((data as any).shabbat_end_time || '20:00');
+        setPostingIntervalHours(data.posting_interval_hours || null);
+        setUseIntervalPosting(!!data.posting_interval_hours);
+        setShabbatModeEnabled(data.shabbat_mode_enabled || false);
+        setShabbatStartTime(data.shabbat_start_time || '14:00');
+        setShabbatEndTime(data.shabbat_end_time || '20:00');
         
         // Detect which prompt template is selected
         if (data.custom_ai_prompt) {
@@ -280,10 +346,17 @@ const Settings = () => {
         }
       }
 
-      // Fetch messaging accounts
+      // Fetch credentials status (boolean flags only - never actual values)
+      const { data: credStatus, error: credError } = await supabase.rpc('get_my_credentials_status');
+      
+      if (!credError && credStatus && typeof credStatus === 'object' && !Array.isArray(credStatus)) {
+        setCredentialsStatus(credStatus as unknown as CredentialsStatus);
+      }
+
+      // Fetch messaging accounts (limited data - no tokens)
       const { data: accounts, error: accountsErr } = await supabase
         .from('messaging_accounts')
-        .select('*')
+        .select('id, account_type, account_name, is_active, telegram_chat_id')
         .eq('user_id', user.id)
         .order('created_at', { ascending: true });
 
@@ -308,15 +381,13 @@ const Settings = () => {
   const handleSave = async () => {
     setIsSaving(true);
     try {
+      // Update app_settings (non-sensitive settings)
       const updateData: any = {
         automation_enabled: automationEnabled,
         posting_times: postingTimes,
         publishing_days: publishingDays,
-        aliexpress_app_key: aliexpressAppKey || null,
-        aliexpress_app_secret: aliexpressAppSecret || null,
         aliexpress_tracking_id: aliexpressTrackingId || null,
         custom_ai_prompt: customAiPrompt || null,
-        // New fields
         posting_interval_hours: useIntervalPosting ? postingIntervalHours : null,
         shabbat_mode_enabled: shabbatModeEnabled,
         shabbat_start_time: shabbatStartTime,
@@ -338,6 +409,37 @@ const Settings = () => {
           .single();
         if (error) throw error;
         setSettingsId(data.id);
+      }
+
+      // Update credentials via secure RPC (write-only)
+      const credentialsToUpdate: Record<string, string | null> = {};
+      
+      if (newTelegramBotToken) credentialsToUpdate.p_telegram_bot_token = newTelegramBotToken;
+      if (newTelegramChatId) credentialsToUpdate.p_telegram_chat_id = newTelegramChatId;
+      if (newGreenApiToken) credentialsToUpdate.p_greenapi_api_token = newGreenApiToken;
+      if (newGreenApiInstance) credentialsToUpdate.p_greenapi_instance_id = newGreenApiInstance;
+      if (newGreenApiChatId) credentialsToUpdate.p_greenapi_chat_id = newGreenApiChatId;
+      if (newAliexpressKey) credentialsToUpdate.p_aliexpress_app_key = newAliexpressKey;
+      if (newAliexpressSecret) credentialsToUpdate.p_aliexpress_app_secret = newAliexpressSecret;
+
+      if (Object.keys(credentialsToUpdate).length > 0) {
+        const { error: credError } = await supabase.rpc('update_my_credentials', credentialsToUpdate);
+        if (credError) throw credError;
+        
+        // Clear the input fields after save
+        setNewTelegramBotToken('');
+        setNewTelegramChatId('');
+        setNewGreenApiToken('');
+        setNewGreenApiInstance('');
+        setNewGreenApiChatId('');
+        setNewAliexpressKey('');
+        setNewAliexpressSecret('');
+        
+        // Refresh credentials status
+        const { data: credStatus } = await supabase.rpc('get_my_credentials_status');
+        if (credStatus && typeof credStatus === 'object' && !Array.isArray(credStatus)) {
+          setCredentialsStatus(credStatus as unknown as CredentialsStatus);
+        }
       }
 
       toast({
@@ -410,13 +512,9 @@ const Settings = () => {
         is_active: true,
       };
 
+      // Store chat ID in messaging_accounts (non-sensitive reference)
       if (showAddAccount === 'telegram') {
-        accountData.telegram_bot_token = newTelegramToken;
-        accountData.telegram_chat_id = newTelegramChatId;
-      } else {
-        accountData.greenapi_instance_id = newGreenApiInstanceId;
-        accountData.greenapi_api_token = newGreenApiToken;
-        accountData.greenapi_chat_id = newGreenApiChatId;
+        accountData.telegram_chat_id = newAccountTelegramChatId;
       }
 
       const { data, error } = await supabase
@@ -427,14 +525,36 @@ const Settings = () => {
 
       if (error) throw error;
 
+      // Save credentials to secure table via RPC
+      const credentialsToUpdate: Record<string, string | null> = {};
+      
+      if (showAddAccount === 'telegram') {
+        if (newAccountTelegramToken) credentialsToUpdate.p_telegram_bot_token = newAccountTelegramToken;
+        if (newAccountTelegramChatId) credentialsToUpdate.p_telegram_chat_id = newAccountTelegramChatId;
+      } else {
+        if (newAccountGreenApiToken) credentialsToUpdate.p_greenapi_api_token = newAccountGreenApiToken;
+        if (newAccountGreenApiInstanceId) credentialsToUpdate.p_greenapi_instance_id = newAccountGreenApiInstanceId;
+        if (newAccountGreenApiChatId) credentialsToUpdate.p_greenapi_chat_id = newAccountGreenApiChatId;
+      }
+
+      if (Object.keys(credentialsToUpdate).length > 0) {
+        await supabase.rpc('update_my_credentials', credentialsToUpdate);
+        
+        // Refresh credentials status
+        const { data: credStatus } = await supabase.rpc('get_my_credentials_status');
+        if (credStatus && typeof credStatus === 'object' && !Array.isArray(credStatus)) {
+          setCredentialsStatus(credStatus as unknown as CredentialsStatus);
+        }
+      }
+
       setMessagingAccounts([...messagingAccounts, data]);
       setShowAddAccount(null);
       setNewAccountName('');
-      setNewTelegramToken('');
-      setNewTelegramChatId('');
-      setNewGreenApiInstanceId('');
-      setNewGreenApiToken('');
-      setNewGreenApiChatId('');
+      setNewAccountTelegramToken('');
+      setNewAccountTelegramChatId('');
+      setNewAccountGreenApiInstanceId('');
+      setNewAccountGreenApiToken('');
+      setNewAccountGreenApiChatId('');
 
       toast({ title: "Account Added", description: `${newAccountName} has been added.` });
     } catch (error) {
@@ -782,7 +902,7 @@ const Settings = () => {
           </CardContent>
         </Card>
 
-        {/* Telegram Accounts */}
+        {/* Telegram Credentials */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -791,88 +911,31 @@ const Settings = () => {
                   <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
                 </svg>
               </div>
-              Telegram Accounts
-              <Badge variant="secondary">{telegramAccounts.length}</Badge>
+              Telegram Configuration
             </CardTitle>
             <CardDescription>
-              Manage your Telegram bot destinations
+              Configure your Telegram bot credentials (stored securely, never sent to browser)
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {telegramAccounts.map((account) => (
-              <div key={account.id} className={`p-4 rounded-lg border transition-all ${
-                account.is_active ? 'bg-[#229ED9]/10 border-[#229ED9]/30' : 'bg-muted/30 border-border'
-              }`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${account.is_active ? 'bg-[#229ED9]/20' : 'bg-muted'}`}>
-                      <svg viewBox="0 0 24 24" className={`h-4 w-4 ${account.is_active ? 'text-[#229ED9]' : 'text-muted-foreground'}`} fill="currentColor">
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="font-medium text-foreground">{account.account_name}</p>
-                      <p className="text-xs text-muted-foreground">Chat: {account.telegram_chat_id}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      checked={account.is_active}
-                      onCheckedChange={(checked) => handleToggleAccount(account.id, checked)}
-                      className={account.is_active ? 'data-[state=checked]:bg-[#229ED9]' : ''}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDeleteAccount(account.id)}
-                      className="h-8 w-8 text-destructive hover:bg-destructive/10"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {showAddAccount === 'telegram' ? (
-              <div className="p-4 rounded-lg border border-dashed border-[#229ED9]/50 bg-[#229ED9]/5 space-y-3">
-                <Input
-                  placeholder="Account Name (e.g., Main Channel)"
-                  value={newAccountName}
-                  onChange={(e) => setNewAccountName(e.target.value)}
-                />
-                <MaskedInput
-                  label="Bot Token"
-                  value={newTelegramToken}
-                  onChange={setNewTelegramToken}
-                  placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
-                />
-                <Input
-                  placeholder="Chat ID (e.g., -1001234567890)"
-                  value={newTelegramChatId}
-                  onChange={(e) => setNewTelegramChatId(e.target.value)}
-                />
-                <div className="flex gap-2">
-                  <Button onClick={handleAddAccount} className="flex-1">
-                    <Plus className="h-4 w-4 mr-1" /> Add Account
-                  </Button>
-                  <Button variant="outline" onClick={() => setShowAddAccount(null)}>Cancel</Button>
-                </div>
-              </div>
-            ) : (
-              <Button
-                variant="outline"
-                className="w-full border-dashed border-[#229ED9]/50 text-[#229ED9] hover:bg-[#229ED9]/10"
-                onClick={() => setShowAddAccount('telegram')}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Telegram Account
-              </Button>
-            )}
+            <SecureCredentialInput
+              label="Bot Token"
+              placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+              isConfigured={credentialsStatus.has_telegram_token}
+              value={newTelegramBotToken}
+              onUpdate={setNewTelegramBotToken}
+            />
+            <SecureCredentialInput
+              label="Chat ID"
+              placeholder="-1001234567890"
+              isConfigured={credentialsStatus.has_telegram_chat_id}
+              value={newTelegramChatId}
+              onUpdate={setNewTelegramChatId}
+            />
           </CardContent>
         </Card>
 
-        {/* WhatsApp Accounts */}
+        {/* WhatsApp Credentials */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -881,90 +944,34 @@ const Settings = () => {
                   <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
                 </svg>
               </div>
-              WhatsApp Accounts (GreenAPI)
-              <Badge variant="secondary">{whatsappAccounts.length}</Badge>
+              WhatsApp Configuration (GreenAPI)
             </CardTitle>
             <CardDescription>
-              Manage your WhatsApp destinations via GreenAPI
+              Configure your WhatsApp credentials (stored securely, never sent to browser)
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {whatsappAccounts.map((account) => (
-              <div key={account.id} className={`p-4 rounded-lg border transition-all ${
-                account.is_active ? 'bg-[#25D366]/10 border-[#25D366]/30' : 'bg-muted/30 border-border'
-              }`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${account.is_active ? 'bg-[#25D366]/20' : 'bg-muted'}`}>
-                      <svg viewBox="0 0 24 24" className={`h-4 w-4 ${account.is_active ? 'text-[#25D366]' : 'text-muted-foreground'}`} fill="currentColor">
-                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="font-medium text-foreground">{account.account_name}</p>
-                      <p className="text-xs text-muted-foreground">Instance: {account.greenapi_instance_id}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      checked={account.is_active}
-                      onCheckedChange={(checked) => handleToggleAccount(account.id, checked)}
-                      className={account.is_active ? 'data-[state=checked]:bg-[#25D366]' : ''}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDeleteAccount(account.id)}
-                      className="h-8 w-8 text-destructive hover:bg-destructive/10"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {showAddAccount === 'whatsapp' ? (
-              <div className="p-4 rounded-lg border border-dashed border-[#25D366]/50 bg-[#25D366]/5 space-y-3">
-                <Input
-                  placeholder="Account Name (e.g., Group 1)"
-                  value={newAccountName}
-                  onChange={(e) => setNewAccountName(e.target.value)}
-                />
-                <MaskedInput
-                  label="Instance ID"
-                  value={newGreenApiInstanceId}
-                  onChange={setNewGreenApiInstanceId}
-                  placeholder="1234567890"
-                />
-                <MaskedInput
-                  label="API Token"
-                  value={newGreenApiToken}
-                  onChange={setNewGreenApiToken}
-                  placeholder="your-api-token-here"
-                />
-                <Input
-                  placeholder="Chat ID (e.g., 972501234567)"
-                  value={newGreenApiChatId}
-                  onChange={(e) => setNewGreenApiChatId(e.target.value)}
-                />
-                <div className="flex gap-2">
-                  <Button onClick={handleAddAccount} className="flex-1 bg-[#25D366] hover:bg-[#25D366]/90">
-                    <Plus className="h-4 w-4 mr-1" /> Add Account
-                  </Button>
-                  <Button variant="outline" onClick={() => setShowAddAccount(null)}>Cancel</Button>
-                </div>
-              </div>
-            ) : (
-              <Button
-                variant="outline"
-                className="w-full border-dashed border-[#25D366]/50 text-[#25D366] hover:bg-[#25D366]/10"
-                onClick={() => setShowAddAccount('whatsapp')}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add WhatsApp Account
-              </Button>
-            )}
+            <SecureCredentialInput
+              label="Instance ID"
+              placeholder="1234567890"
+              isConfigured={credentialsStatus.has_greenapi_instance}
+              value={newGreenApiInstance}
+              onUpdate={setNewGreenApiInstance}
+            />
+            <SecureCredentialInput
+              label="API Token"
+              placeholder="your-api-token-here"
+              isConfigured={credentialsStatus.has_greenapi_token}
+              value={newGreenApiToken}
+              onUpdate={setNewGreenApiToken}
+            />
+            <SecureCredentialInput
+              label="Chat ID"
+              placeholder="972501234567"
+              isConfigured={credentialsStatus.has_greenapi_chat_id}
+              value={newGreenApiChatId}
+              onUpdate={setNewGreenApiChatId}
+            />
           </CardContent>
         </Card>
 
@@ -976,28 +983,33 @@ const Settings = () => {
               AliExpress Affiliate API
             </CardTitle>
             <CardDescription>
-              Configure your AliExpress API credentials for generating affiliate links
+              Configure your AliExpress API credentials for generating affiliate links (stored securely)
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <MaskedInput
+            <SecureCredentialInput
               label="App Key"
-              value={aliexpressAppKey}
-              onChange={setAliexpressAppKey}
               placeholder="Enter your AliExpress App Key"
+              isConfigured={credentialsStatus.has_aliexpress_key}
+              value={newAliexpressKey}
+              onUpdate={setNewAliexpressKey}
             />
-            <MaskedInput
+            <SecureCredentialInput
               label="App Secret"
-              value={aliexpressAppSecret}
-              onChange={setAliexpressAppSecret}
               placeholder="Enter your AliExpress App Secret"
+              isConfigured={credentialsStatus.has_aliexpress_secret}
+              value={newAliexpressSecret}
+              onUpdate={setNewAliexpressSecret}
             />
-            <MaskedInput
-              label="Tracking ID"
-              value={aliexpressTrackingId}
-              onChange={setAliexpressTrackingId}
-              placeholder="Enter your Tracking ID"
-            />
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Tracking ID</Label>
+              <p className="text-xs text-muted-foreground">This is not a secret and can be displayed</p>
+              <Input
+                value={aliexpressTrackingId}
+                onChange={(e) => setAliexpressTrackingId(e.target.value)}
+                placeholder="Enter your Tracking ID (e.g., TELEGRAM)"
+              />
+            </div>
           </CardContent>
         </Card>
 

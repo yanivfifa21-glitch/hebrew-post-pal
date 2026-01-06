@@ -114,24 +114,31 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Use service role to fetch settings (after security verification)
+    // Use service role to fetch credentials from secure table (after security verification)
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch user's credentials from app_settings using verified user.id
-    const { data: settings, error: settingsError } = await supabase
-      .from("app_settings")
-      .select("aliexpress_app_key, aliexpress_app_secret, aliexpress_tracking_id")
-      .eq("user_id", user.id) // Use verified user.id
+    // Fetch user's credentials from user_credentials table (server-side only)
+    const { data: credentials, error: credentialsError } = await supabase
+      .from("user_credentials")
+      .select("aliexpress_app_key, aliexpress_app_secret")
+      .eq("user_id", user.id)
       .maybeSingle();
 
-    if (settingsError) {
-      console.error("[generate-affiliate-link] Error fetching settings:", settingsError);
-      const payload: ApiErr = { success: false, error: "Failed to fetch user settings" };
+    if (credentialsError) {
+      console.error("[generate-affiliate-link] Error fetching credentials:", credentialsError);
+      const payload: ApiErr = { success: false, error: "Failed to fetch user credentials" };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const appKey = settings?.aliexpress_app_key?.trim();
-    const appSecret = settings?.aliexpress_app_secret?.trim();
+    // Fetch tracking ID from app_settings (non-sensitive setting)
+    const { data: settings } = await supabase
+      .from("app_settings")
+      .select("aliexpress_tracking_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const appKey = credentials?.aliexpress_app_key?.trim();
+    const appSecret = credentials?.aliexpress_app_secret?.trim();
     const trackingId = settings?.aliexpress_tracking_id?.trim() || "TELEGRAM";
 
     if (!appKey || !appSecret) {
@@ -216,21 +223,26 @@ serve(async (req) => {
 
     const err = data?.error_response;
     if (err?.msg || err?.code) {
-      const payload: ApiErr = {
-        success: false,
-        error: String(err?.msg || "AliExpress API error"),
+      // Log details server-side for debugging
+      console.error("[generate-affiliate-link] AliExpress API Error:", {
         code: err?.code,
         request_id: err?.request_id,
         trace_id: err?._trace_id_,
+        message: err?.msg,
         raw: data,
+      });
+      
+      // Return generic message to client (avoid exposing internal details)
+      const payload: ApiErr = {
+        success: false,
+        error: "AliExpress API error - please verify your credentials",
       };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const payload: ApiErr = { 
       success: false, 
-      error: `Unexpected AliExpress response (resp_code: ${result?.resp_code})`, 
-      raw: data 
+      error: "Unexpected response from AliExpress API", 
     };
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: unknown) {

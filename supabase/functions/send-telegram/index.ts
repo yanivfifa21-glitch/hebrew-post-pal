@@ -60,26 +60,26 @@ serve(async (req) => {
       );
     }
 
-    // Use service role to fetch settings (after security verification)
+    // Use service role to fetch credentials from secure table (after security verification)
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch user's credentials from app_settings
-    const { data: settings, error: settingsError } = await supabase
-      .from("app_settings")
+    // Fetch user's credentials from user_credentials table (server-side only)
+    const { data: credentials, error: credentialsError } = await supabase
+      .from("user_credentials")
       .select("telegram_bot_token, telegram_chat_id")
-      .eq("user_id", user.id) // Use verified user.id
+      .eq("user_id", user.id)
       .maybeSingle();
 
-    if (settingsError) {
-      console.error("[send-telegram] Error fetching settings:", settingsError);
+    if (credentialsError) {
+      console.error("[send-telegram] Error fetching credentials:", credentialsError);
       return new Response(
-        JSON.stringify({ success: false, error: "Failed to fetch user settings" }),
+        JSON.stringify({ success: false, error: "Failed to fetch user credentials" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const botToken = settings?.telegram_bot_token?.trim();
-    const chatId = settings?.telegram_chat_id?.trim();
+    const botToken = credentials?.telegram_bot_token?.trim();
+    const chatId = credentials?.telegram_chat_id?.trim();
 
     if (!botToken || !chatId) {
       console.error("[send-telegram] Missing user credentials");
