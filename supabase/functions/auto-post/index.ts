@@ -235,15 +235,22 @@ serve(async (req) => {
         continue;
       }
 
+      // Fetch user credentials from secure table
+      const { data: credentials } = await supabase
+        .from("user_credentials")
+        .select("telegram_bot_token, telegram_chat_id, greenapi_instance_id, greenapi_api_token, greenapi_chat_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+
       // Step G: Build message and send
       const message = buildMessage(product);
       let sendSuccess = false;
       let sentTo: string[] = [];
 
       // Try Telegram
-      if (userSettings.telegram_enabled && userSettings.telegram_bot_token && userSettings.telegram_chat_id) {
+      if (userSettings.telegram_enabled && credentials?.telegram_bot_token && credentials?.telegram_chat_id) {
         try {
-          await sendToTelegram(userSettings.telegram_bot_token, userSettings.telegram_chat_id, product, message);
+          await sendToTelegram(credentials.telegram_bot_token, credentials.telegram_chat_id, product, message);
           sendSuccess = true;
           sentTo.push("telegram");
           console.log(`[auto-post] User ${userId}: ✓ Sent to Telegram`);
@@ -253,12 +260,12 @@ serve(async (req) => {
       }
 
       // Try WhatsApp (GreenAPI)
-      if (userSettings.whatsapp_enabled && userSettings.greenapi_instance_id && userSettings.greenapi_api_token && userSettings.greenapi_chat_id) {
+      if (userSettings.whatsapp_enabled && credentials?.greenapi_instance_id && credentials?.greenapi_api_token && credentials?.greenapi_chat_id) {
         try {
           await sendToWhatsApp(
-            userSettings.greenapi_instance_id,
-            userSettings.greenapi_api_token,
-            userSettings.greenapi_chat_id,
+            credentials.greenapi_instance_id,
+            credentials.greenapi_api_token,
+            credentials.greenapi_chat_id,
             product,
             message,
           );
