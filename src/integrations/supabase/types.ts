@@ -127,31 +127,43 @@ export type Database = {
           account_name: string
           account_type: string
           created_at: string
+          encrypted_api_token: string | null
+          encrypted_bot_token: string | null
+          encrypted_instance_id: string | null
           id: string
           is_active: boolean
           telegram_chat_id: string | null
           updated_at: string
           user_id: string
+          whatsapp_chat_id: string | null
         }
         Insert: {
           account_name: string
           account_type: string
           created_at?: string
+          encrypted_api_token?: string | null
+          encrypted_bot_token?: string | null
+          encrypted_instance_id?: string | null
           id?: string
           is_active?: boolean
           telegram_chat_id?: string | null
           updated_at?: string
           user_id: string
+          whatsapp_chat_id?: string | null
         }
         Update: {
           account_name?: string
           account_type?: string
           created_at?: string
+          encrypted_api_token?: string | null
+          encrypted_bot_token?: string | null
+          encrypted_instance_id?: string | null
           id?: string
           is_active?: boolean
           telegram_chat_id?: string | null
           updated_at?: string
           user_id?: string
+          whatsapp_chat_id?: string | null
         }
         Relationships: []
       }
@@ -277,6 +289,12 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      decrypt_credential: { Args: { encrypted_data: string }; Returns: string }
+      encrypt_credential: { Args: { plain_text: string }; Returns: string }
+      get_account_credentials_status: {
+        Args: { p_account_id: string }
+        Returns: Json
+      }
       get_my_access_status: { Args: never; Returns: string }
       get_my_credentials_status: { Args: never; Returns: Json }
       has_role: {
@@ -290,6 +308,17 @@ export type Database = {
       is_admin_email: { Args: never; Returns: boolean }
       is_email_authorized: { Args: { check_email: string }; Returns: boolean }
       is_me_authorized: { Args: never; Returns: boolean }
+      update_account_credentials: {
+        Args: {
+          p_account_id: string
+          p_greenapi_api_token?: string
+          p_greenapi_chat_id?: string
+          p_greenapi_instance_id?: string
+          p_telegram_bot_token?: string
+          p_telegram_chat_id?: string
+        }
+        Returns: Json
+      }
       update_my_credentials: {
         Args: {
           p_aliexpress_app_key?: string

@@ -7,10 +7,9 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { 
   Settings as SettingsIcon, 
   Clock, 
@@ -18,8 +17,6 @@ import {
   Loader2, 
   Plus, 
   X, 
-  Eye, 
-  EyeOff,
   Sparkles,
   ShoppingBag,
   Zap,
@@ -30,7 +27,9 @@ import {
   Moon,
   Timer,
   Check,
-  AlertCircle
+  AlertCircle,
+  Edit,
+  MessageSquare
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -76,15 +75,12 @@ const SecureCredentialInput = ({
       
       {isEditing ? (
         <div className="space-y-2">
-          <div className="relative">
-            <Input
-              type="password"
-              value={value}
-              onChange={(e) => onUpdate(e.target.value)}
-              placeholder={placeholder}
-              className="pr-10"
-            />
-          </div>
+          <Input
+            type="password"
+            value={value}
+            onChange={(e) => onUpdate(e.target.value)}
+            placeholder={placeholder}
+          />
           <p className="text-xs text-muted-foreground">
             Enter a new value to update. Leave empty to keep current.
           </p>
@@ -107,7 +103,7 @@ const SecureCredentialInput = ({
           className="w-full justify-start text-muted-foreground"
           onClick={() => setIsEditing(true)}
         >
-          <Eye className="h-4 w-4 mr-2" />
+          <Edit className="h-4 w-4 mr-2" />
           {isConfigured ? "Update credential..." : "Set credential..."}
         </Button>
       )}
@@ -121,14 +117,7 @@ interface MessagingAccount {
   account_name: string;
   is_active: boolean;
   telegram_chat_id?: string | null;
-}
-
-interface AutomationLogRow {
-  id: string;
-  created_at: string;
-  level: string;
-  message: string;
-  context: any;
+  whatsapp_chat_id?: string | null;
 }
 
 interface CredentialsStatus {
@@ -141,7 +130,15 @@ interface CredentialsStatus {
   has_aliexpress_key: boolean;
 }
 
-// Pre-defined prompt templates - description only, no prices/coupons/links
+interface AccountCredentialsStatus {
+  has_bot_token?: boolean;
+  has_telegram_chat_id?: boolean;
+  has_api_token?: boolean;
+  has_instance_id?: boolean;
+  has_whatsapp_chat_id?: boolean;
+}
+
+// Pre-defined prompt templates
 const PROMPT_TEMPLATES: Record<string, { name: string; nameHe: string; icon: string; prompt: string }> = {
   sales: {
     name: 'Sales',
@@ -243,11 +240,11 @@ const Settings = () => {
   const [postingTimes, setPostingTimes] = useState<string[]>(['10:00', '14:00', '20:00']);
   const [newTime, setNewTime] = useState('');
   
-  // Interval posting (new)
+  // Interval posting
   const [postingIntervalHours, setPostingIntervalHours] = useState<number | null>(null);
   const [useIntervalPosting, setUseIntervalPosting] = useState(false);
   
-  // Shabbat mode (new)
+  // Shabbat mode
   const [shabbatModeEnabled, setShabbatModeEnabled] = useState(false);
   const [shabbatStartTime, setShabbatStartTime] = useState('14:00');
   const [shabbatEndTime, setShabbatEndTime] = useState('20:00');
@@ -262,48 +259,23 @@ const Settings = () => {
   const [customAiPrompt, setCustomAiPrompt] = useState('');
   const [selectedPromptType, setSelectedPromptType] = useState<string | null>(null);
 
-  // Multi-account management (simplified - no sensitive data)
+  // Multi-account management
   const [messagingAccounts, setMessagingAccounts] = useState<MessagingAccount[]>([]);
-  const [showAddAccount, setShowAddAccount] = useState<'telegram' | 'whatsapp' | null>(null);
+  const [showAddAccountDialog, setShowAddAccountDialog] = useState<'telegram' | 'whatsapp' | null>(null);
+  const [editingAccount, setEditingAccount] = useState<MessagingAccount | null>(null);
   const [newAccountName, setNewAccountName] = useState('');
   const [newAccountTelegramToken, setNewAccountTelegramToken] = useState('');
   const [newAccountTelegramChatId, setNewAccountTelegramChatId] = useState('');
   const [newAccountGreenApiInstanceId, setNewAccountGreenApiInstanceId] = useState('');
   const [newAccountGreenApiToken, setNewAccountGreenApiToken] = useState('');
   const [newAccountGreenApiChatId, setNewAccountGreenApiChatId] = useState('');
+  const [isSavingAccount, setIsSavingAccount] = useState(false);
 
-  // System logs
-  const [systemLogs, setSystemLogs] = useState<AutomationLogRow[]>([]);
-  const [logsLoading, setLogsLoading] = useState(false);
   const [isResettingStuck, setIsResettingStuck] = useState(false);
 
   useEffect(() => {
     fetchSettings();
   }, []);
-
-  const fetchSystemLogs = async (uid: string) => {
-    setLogsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('automation_logs')
-        .select('id, created_at, level, message, context')
-        .eq('user_id', uid)
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (error) throw error;
-      setSystemLogs((data as any) || []);
-    } catch (error) {
-      console.error('Error fetching system logs:', error);
-      toast({
-        title: 'Failed to load logs',
-        description: 'Could not load server logs.',
-        variant: 'destructive',
-      });
-    } finally {
-      setLogsLoading(false);
-    }
-  };
 
   const fetchSettings = async () => {
     try {
@@ -314,7 +286,7 @@ const Settings = () => {
       // Fetch app settings (non-sensitive data only)
       const { data, error } = await supabase
         .from('app_settings')
-        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, posting_interval_hours, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, telegram_enabled, whatsapp_enabled, telegram_chat_id')
+        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, posting_interval_hours, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -327,8 +299,6 @@ const Settings = () => {
         setPublishingDays(data.publishing_days || [0, 1, 2, 3, 4, 5, 6]);
         setAliexpressTrackingId(data.aliexpress_tracking_id || '');
         setCustomAiPrompt(data.custom_ai_prompt || '');
-        
-        // New settings
         setPostingIntervalHours(data.posting_interval_hours || null);
         setUseIntervalPosting(!!data.posting_interval_hours);
         setShabbatModeEnabled(data.shabbat_mode_enabled || false);
@@ -346,7 +316,7 @@ const Settings = () => {
         }
       }
 
-      // Fetch credentials status (boolean flags only - never actual values)
+      // Fetch credentials status (boolean flags only)
       const { data: credStatus, error: credError } = await supabase.rpc('get_my_credentials_status');
       
       if (!credError && credStatus && typeof credStatus === 'object' && !Array.isArray(credStatus)) {
@@ -356,15 +326,12 @@ const Settings = () => {
       // Fetch messaging accounts (limited data - no tokens)
       const { data: accounts, error: accountsErr } = await supabase
         .from('messaging_accounts')
-        .select('id, account_type, account_name, is_active, telegram_chat_id')
+        .select('id, account_type, account_name, is_active, telegram_chat_id, whatsapp_chat_id')
         .eq('user_id', user.id)
         .order('created_at', { ascending: true });
 
       if (accountsErr) throw accountsErr;
       setMessagingAccounts(accounts || []);
-
-      // Fetch system logs
-      await fetchSystemLogs(user.id);
 
     } catch (error) {
       console.error('Error fetching settings:', error);
@@ -381,8 +348,8 @@ const Settings = () => {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Update app_settings (non-sensitive settings)
-      const updateData: any = {
+      // Update app_settings
+      const updateData: Record<string, unknown> = {
         automation_enabled: automationEnabled,
         posting_times: postingTimes,
         publishing_days: publishingDays,
@@ -426,7 +393,7 @@ const Settings = () => {
         const { error: credError } = await supabase.rpc('update_my_credentials', credentialsToUpdate);
         if (credError) throw credError;
         
-        // Clear the input fields after save
+        // Clear input fields
         setNewTelegramBotToken('');
         setNewTelegramChatId('');
         setNewGreenApiToken('');
@@ -501,34 +468,61 @@ const Settings = () => {
     }
   };
 
+  const clearAccountForm = () => {
+    setNewAccountName('');
+    setNewAccountTelegramToken('');
+    setNewAccountTelegramChatId('');
+    setNewAccountGreenApiInstanceId('');
+    setNewAccountGreenApiToken('');
+    setNewAccountGreenApiChatId('');
+  };
+
   const handleAddAccount = async () => {
-    if (!userId || !newAccountName) return;
+    if (!userId || !newAccountName) {
+      toast({ title: "נא להזין שם לחשבון", variant: "destructive" });
+      return;
+    }
 
+    setIsSavingAccount(true);
     try {
-      const accountData: any = {
-        user_id: userId,
-        account_type: showAddAccount,
-        account_name: newAccountName,
-        is_active: true,
-      };
-
-      // Store chat ID in messaging_accounts (non-sensitive reference)
-      if (showAddAccount === 'telegram') {
-        accountData.telegram_chat_id = newAccountTelegramChatId;
-      }
-
       const { data, error } = await supabase
         .from('messaging_accounts')
-        .insert(accountData)
-        .select()
+        .insert({
+          user_id: userId,
+          account_type: showAddAccountDialog || 'telegram',
+          account_name: newAccountName,
+          is_active: true,
+          telegram_chat_id: showAddAccountDialog === 'telegram' ? (newAccountTelegramChatId || null) : null,
+          whatsapp_chat_id: showAddAccountDialog === 'whatsapp' ? (newAccountGreenApiChatId || null) : null,
+        })
+        .select('id, account_type, account_name, is_active, telegram_chat_id, whatsapp_chat_id')
         .single();
 
       if (error) throw error;
 
-      // Save credentials to secure table via RPC
+      // Save credentials to secure table via RPC for account
+      if (showAddAccountDialog === 'telegram') {
+        if (newAccountTelegramToken || newAccountTelegramChatId) {
+          await supabase.rpc('update_account_credentials', {
+            p_account_id: data.id,
+            p_telegram_bot_token: newAccountTelegramToken || null,
+            p_telegram_chat_id: newAccountTelegramChatId || null,
+          });
+        }
+      } else {
+        if (newAccountGreenApiToken || newAccountGreenApiInstanceId || newAccountGreenApiChatId) {
+          await supabase.rpc('update_account_credentials', {
+            p_account_id: data.id,
+            p_greenapi_api_token: newAccountGreenApiToken || null,
+            p_greenapi_instance_id: newAccountGreenApiInstanceId || null,
+            p_greenapi_chat_id: newAccountGreenApiChatId || null,
+          });
+        }
+      }
+
+      // Also save to main credentials table for backward compatibility
       const credentialsToUpdate: Record<string, string | null> = {};
-      
-      if (showAddAccount === 'telegram') {
+      if (showAddAccountDialog === 'telegram') {
         if (newAccountTelegramToken) credentialsToUpdate.p_telegram_bot_token = newAccountTelegramToken;
         if (newAccountTelegramChatId) credentialsToUpdate.p_telegram_chat_id = newAccountTelegramChatId;
       } else {
@@ -548,18 +542,103 @@ const Settings = () => {
       }
 
       setMessagingAccounts([...messagingAccounts, data]);
-      setShowAddAccount(null);
-      setNewAccountName('');
-      setNewAccountTelegramToken('');
-      setNewAccountTelegramChatId('');
-      setNewAccountGreenApiInstanceId('');
-      setNewAccountGreenApiToken('');
-      setNewAccountGreenApiChatId('');
+      setShowAddAccountDialog(null);
+      clearAccountForm();
 
-      toast({ title: "Account Added", description: `${newAccountName} has been added.` });
+      toast({ title: "חשבון נוסף בהצלחה", description: `${newAccountName} נוסף לרשימה.` });
     } catch (error) {
       console.error('Add account error:', error);
       toast({ title: "Failed to add account", variant: "destructive" });
+    } finally {
+      setIsSavingAccount(false);
+    }
+  };
+
+  const handleEditAccount = async () => {
+    if (!editingAccount) return;
+
+    setIsSavingAccount(true);
+    try {
+      // Update account name and chat IDs
+      const updateData: Record<string, unknown> = {
+        account_name: newAccountName || editingAccount.account_name,
+      };
+
+      if (editingAccount.account_type === 'telegram') {
+        if (newAccountTelegramChatId) updateData.telegram_chat_id = newAccountTelegramChatId;
+      } else {
+        if (newAccountGreenApiChatId) updateData.whatsapp_chat_id = newAccountGreenApiChatId;
+      }
+
+      const { error } = await supabase
+        .from('messaging_accounts')
+        .update(updateData)
+        .eq('id', editingAccount.id);
+
+      if (error) throw error;
+
+      // Update encrypted credentials via RPC
+      if (editingAccount.account_type === 'telegram') {
+        if (newAccountTelegramToken || newAccountTelegramChatId) {
+          await supabase.rpc('update_account_credentials', {
+            p_account_id: editingAccount.id,
+            p_telegram_bot_token: newAccountTelegramToken || null,
+            p_telegram_chat_id: newAccountTelegramChatId || null,
+          });
+        }
+      } else {
+        if (newAccountGreenApiToken || newAccountGreenApiInstanceId || newAccountGreenApiChatId) {
+          await supabase.rpc('update_account_credentials', {
+            p_account_id: editingAccount.id,
+            p_greenapi_api_token: newAccountGreenApiToken || null,
+            p_greenapi_instance_id: newAccountGreenApiInstanceId || null,
+            p_greenapi_chat_id: newAccountGreenApiChatId || null,
+          });
+        }
+      }
+
+      // Also update main credentials for backward compatibility
+      const credentialsToUpdate: Record<string, string | null> = {};
+      if (editingAccount.account_type === 'telegram') {
+        if (newAccountTelegramToken) credentialsToUpdate.p_telegram_bot_token = newAccountTelegramToken;
+        if (newAccountTelegramChatId) credentialsToUpdate.p_telegram_chat_id = newAccountTelegramChatId;
+      } else {
+        if (newAccountGreenApiToken) credentialsToUpdate.p_greenapi_api_token = newAccountGreenApiToken;
+        if (newAccountGreenApiInstanceId) credentialsToUpdate.p_greenapi_instance_id = newAccountGreenApiInstanceId;
+        if (newAccountGreenApiChatId) credentialsToUpdate.p_greenapi_chat_id = newAccountGreenApiChatId;
+      }
+
+      if (Object.keys(credentialsToUpdate).length > 0) {
+        await supabase.rpc('update_my_credentials', credentialsToUpdate);
+        
+        const { data: credStatus } = await supabase.rpc('get_my_credentials_status');
+        if (credStatus && typeof credStatus === 'object' && !Array.isArray(credStatus)) {
+          setCredentialsStatus(credStatus as unknown as CredentialsStatus);
+        }
+      }
+
+      // Update local state
+      setMessagingAccounts(accounts =>
+        accounts.map(acc => acc.id === editingAccount.id 
+          ? { 
+              ...acc, 
+              account_name: newAccountName || acc.account_name,
+              telegram_chat_id: editingAccount.account_type === 'telegram' && newAccountTelegramChatId ? newAccountTelegramChatId : acc.telegram_chat_id,
+              whatsapp_chat_id: editingAccount.account_type === 'whatsapp' && newAccountGreenApiChatId ? newAccountGreenApiChatId : acc.whatsapp_chat_id,
+            } 
+          : acc
+        )
+      );
+
+      setEditingAccount(null);
+      clearAccountForm();
+
+      toast({ title: "חשבון עודכן בהצלחה" });
+    } catch (error) {
+      console.error('Edit account error:', error);
+      toast({ title: "Failed to update account", variant: "destructive" });
+    } finally {
+      setIsSavingAccount(false);
     }
   };
 
@@ -576,7 +655,7 @@ const Settings = () => {
         accounts.map(acc => acc.id === accountId ? { ...acc, is_active: isActive } : acc)
       );
 
-      toast({ title: isActive ? "Account Activated" : "Account Deactivated" });
+      toast({ title: isActive ? "חשבון הופעל" : "חשבון הושבת" });
     } catch (error) {
       toast({ title: "Failed to update account", variant: "destructive" });
     }
@@ -592,9 +671,19 @@ const Settings = () => {
       if (error) throw error;
 
       setMessagingAccounts(accounts => accounts.filter(acc => acc.id !== accountId));
-      toast({ title: "Account Deleted" });
+      toast({ title: "חשבון נמחק" });
     } catch (error) {
       toast({ title: "Failed to delete account", variant: "destructive" });
+    }
+  };
+
+  const openEditDialog = (account: MessagingAccount) => {
+    setEditingAccount(account);
+    setNewAccountName(account.account_name);
+    if (account.account_type === 'telegram') {
+      setNewAccountTelegramChatId(account.telegram_chat_id || '');
+    } else {
+      setNewAccountGreenApiChatId(account.whatsapp_chat_id || '');
     }
   };
 
@@ -647,9 +736,7 @@ const Settings = () => {
                 </Badge>
               )}
             </CardTitle>
-            <CardDescription>
-              Master control for automated posting
-            </CardDescription>
+            <CardDescription>Master control for automated posting</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Master Switch */}
@@ -718,7 +805,7 @@ const Settings = () => {
               </div>
             </div>
 
-            {/* Interval Hours Slider (if interval mode) */}
+            {/* Interval Hours Slider */}
             {useIntervalPosting && (
               <div className="space-y-4 p-4 rounded-lg border border-primary/30 bg-primary/5">
                 <div className="flex items-center justify-between">
@@ -742,7 +829,7 @@ const Settings = () => {
               </div>
             )}
 
-            {/* Posting Times (if fixed times mode) */}
+            {/* Posting Times */}
             {!useIntervalPosting && (
               <div className="space-y-3">
                 <Label className="text-sm font-medium">Posting Times</Label>
@@ -797,9 +884,7 @@ const Settings = () => {
                   </div>
                   <div>
                     <p className="font-semibold text-foreground">מצב שבת 🕯️</p>
-                    <p className="text-sm text-muted-foreground">
-                      עצור שליחה אוטומטית בשבת
-                    </p>
+                    <p className="text-sm text-muted-foreground">עצור שליחה אוטומטית בשבת</p>
                   </div>
                 </div>
                 <Switch
@@ -902,7 +987,7 @@ const Settings = () => {
           </CardContent>
         </Card>
 
-        {/* Telegram Credentials */}
+        {/* Telegram Accounts */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -911,31 +996,143 @@ const Settings = () => {
                   <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
                 </svg>
               </div>
-              Telegram Configuration
+              קבוצות טלגרם
             </CardTitle>
             <CardDescription>
-              Configure your Telegram bot credentials (stored securely, never sent to browser)
+              הוסף וערוך קבוצות טלגרם לפרסום אוטומטי
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <SecureCredentialInput
-              label="Bot Token"
-              placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
-              isConfigured={credentialsStatus.has_telegram_token}
-              value={newTelegramBotToken}
-              onUpdate={setNewTelegramBotToken}
-            />
-            <SecureCredentialInput
-              label="Chat ID"
-              placeholder="-1001234567890"
-              isConfigured={credentialsStatus.has_telegram_chat_id}
-              value={newTelegramChatId}
-              onUpdate={setNewTelegramChatId}
-            />
+            {/* Global Telegram Credentials */}
+            <div className="p-4 rounded-lg border border-border bg-muted/30 space-y-4">
+              <p className="text-sm font-medium text-foreground">הגדרות בסיסיות (משותף לכל הקבוצות)</p>
+              <SecureCredentialInput
+                label="Bot Token"
+                placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+                isConfigured={credentialsStatus.has_telegram_token}
+                value={newTelegramBotToken}
+                onUpdate={setNewTelegramBotToken}
+              />
+              <SecureCredentialInput
+                label="Chat ID (ברירת מחדל)"
+                placeholder="-1001234567890"
+                isConfigured={credentialsStatus.has_telegram_chat_id}
+                value={newTelegramChatId}
+                onUpdate={setNewTelegramChatId}
+              />
+            </div>
+
+            {/* Telegram Accounts List */}
+            {telegramAccounts.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">קבוצות טלגרם</Label>
+                {telegramAccounts.map((account) => (
+                  <div
+                    key={account.id}
+                    className={`flex items-center justify-between p-3 rounded-lg border transition-all ${
+                      account.is_active ? 'border-primary/50 bg-primary/5' : 'border-border bg-muted/30'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <MessageSquare className={`h-4 w-4 ${account.is_active ? 'text-primary' : 'text-muted-foreground'}`} />
+                      <div>
+                        <p className="font-medium text-sm">{account.account_name}</p>
+                        {account.telegram_chat_id && (
+                          <p className="text-xs text-muted-foreground">Chat ID: {account.telegram_chat_id}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={account.is_active}
+                        onCheckedChange={(checked) => handleToggleAccount(account.id, checked)}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEditDialog(account)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => handleDeleteAccount(account.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add Telegram Account Button */}
+            <Dialog open={showAddAccountDialog === 'telegram'} onOpenChange={(open) => {
+              if (!open) {
+                setShowAddAccountDialog(null);
+                clearAccountForm();
+              }
+            }}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setShowAddAccountDialog('telegram')}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  הוסף קבוצת טלגרם
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>הוסף קבוצת טלגרם חדשה</DialogTitle>
+                  <DialogDescription>
+                    הזן את פרטי הקבוצה. הנתונים מאובטחים ומוצפנים.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label>שם הקבוצה</Label>
+                    <Input
+                      value={newAccountName}
+                      onChange={(e) => setNewAccountName(e.target.value)}
+                      placeholder="למשל: קבוצת מבצעים"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Bot Token (אופציונלי - ישתמש בברירת מחדל)</Label>
+                    <Input
+                      type="password"
+                      value={newAccountTelegramToken}
+                      onChange={(e) => setNewAccountTelegramToken(e.target.value)}
+                      placeholder="השאר ריק לשימוש בטוקן הראשי"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Chat ID</Label>
+                    <Input
+                      value={newAccountTelegramChatId}
+                      onChange={(e) => setNewAccountTelegramChatId(e.target.value)}
+                      placeholder="-1001234567890"
+                    />
+                  </div>
+                  <Button 
+                    onClick={handleAddAccount} 
+                    className="w-full"
+                    disabled={isSavingAccount || !newAccountName}
+                  >
+                    {isSavingAccount ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+                    הוסף קבוצה
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </CardContent>
         </Card>
 
-        {/* WhatsApp Credentials */}
+        {/* WhatsApp Accounts */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -944,36 +1141,242 @@ const Settings = () => {
                   <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
                 </svg>
               </div>
-              WhatsApp Configuration (GreenAPI)
+              קבוצות וואטסאפ (GreenAPI)
             </CardTitle>
             <CardDescription>
-              Configure your WhatsApp credentials (stored securely, never sent to browser)
+              הוסף וערוך קבוצות וואטסאפ לפרסום אוטומטי
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <SecureCredentialInput
-              label="Instance ID"
-              placeholder="1234567890"
-              isConfigured={credentialsStatus.has_greenapi_instance}
-              value={newGreenApiInstance}
-              onUpdate={setNewGreenApiInstance}
-            />
-            <SecureCredentialInput
-              label="API Token"
-              placeholder="your-api-token-here"
-              isConfigured={credentialsStatus.has_greenapi_token}
-              value={newGreenApiToken}
-              onUpdate={setNewGreenApiToken}
-            />
-            <SecureCredentialInput
-              label="Chat ID"
-              placeholder="972501234567"
-              isConfigured={credentialsStatus.has_greenapi_chat_id}
-              value={newGreenApiChatId}
-              onUpdate={setNewGreenApiChatId}
-            />
+            {/* Global WhatsApp Credentials */}
+            <div className="p-4 rounded-lg border border-border bg-muted/30 space-y-4">
+              <p className="text-sm font-medium text-foreground">הגדרות בסיסיות (משותף לכל הקבוצות)</p>
+              <SecureCredentialInput
+                label="Instance ID"
+                placeholder="1234567890"
+                isConfigured={credentialsStatus.has_greenapi_instance}
+                value={newGreenApiInstance}
+                onUpdate={setNewGreenApiInstance}
+              />
+              <SecureCredentialInput
+                label="API Token"
+                placeholder="your-api-token-here"
+                isConfigured={credentialsStatus.has_greenapi_token}
+                value={newGreenApiToken}
+                onUpdate={setNewGreenApiToken}
+              />
+              <SecureCredentialInput
+                label="Chat ID (ברירת מחדל)"
+                placeholder="972501234567"
+                isConfigured={credentialsStatus.has_greenapi_chat_id}
+                value={newGreenApiChatId}
+                onUpdate={setNewGreenApiChatId}
+              />
+            </div>
+
+            {/* WhatsApp Accounts List */}
+            {whatsappAccounts.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">קבוצות וואטסאפ</Label>
+                {whatsappAccounts.map((account) => (
+                  <div
+                    key={account.id}
+                    className={`flex items-center justify-between p-3 rounded-lg border transition-all ${
+                      account.is_active ? 'border-[#25D366]/50 bg-[#25D366]/5' : 'border-border bg-muted/30'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <MessageSquare className={`h-4 w-4 ${account.is_active ? 'text-[#25D366]' : 'text-muted-foreground'}`} />
+                      <div>
+                        <p className="font-medium text-sm">{account.account_name}</p>
+                        {account.whatsapp_chat_id && (
+                          <p className="text-xs text-muted-foreground">Chat ID: {account.whatsapp_chat_id}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={account.is_active}
+                        onCheckedChange={(checked) => handleToggleAccount(account.id, checked)}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEditDialog(account)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => handleDeleteAccount(account.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add WhatsApp Account Button */}
+            <Dialog open={showAddAccountDialog === 'whatsapp'} onOpenChange={(open) => {
+              if (!open) {
+                setShowAddAccountDialog(null);
+                clearAccountForm();
+              }
+            }}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setShowAddAccountDialog('whatsapp')}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  הוסף קבוצת וואטסאפ
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>הוסף קבוצת וואטסאפ חדשה</DialogTitle>
+                  <DialogDescription>
+                    הזן את פרטי הקבוצה. הנתונים מאובטחים ומוצפנים.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label>שם הקבוצה</Label>
+                    <Input
+                      value={newAccountName}
+                      onChange={(e) => setNewAccountName(e.target.value)}
+                      placeholder="למשל: קבוצת דילים"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Instance ID (אופציונלי)</Label>
+                    <Input
+                      value={newAccountGreenApiInstanceId}
+                      onChange={(e) => setNewAccountGreenApiInstanceId(e.target.value)}
+                      placeholder="השאר ריק לשימוש בברירת מחדל"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>API Token (אופציונלי)</Label>
+                    <Input
+                      type="password"
+                      value={newAccountGreenApiToken}
+                      onChange={(e) => setNewAccountGreenApiToken(e.target.value)}
+                      placeholder="השאר ריק לשימוש בברירת מחדל"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Chat ID</Label>
+                    <Input
+                      value={newAccountGreenApiChatId}
+                      onChange={(e) => setNewAccountGreenApiChatId(e.target.value)}
+                      placeholder="972501234567@g.us"
+                    />
+                  </div>
+                  <Button 
+                    onClick={handleAddAccount} 
+                    className="w-full"
+                    disabled={isSavingAccount || !newAccountName}
+                  >
+                    {isSavingAccount ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+                    הוסף קבוצה
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </CardContent>
         </Card>
+
+        {/* Edit Account Dialog */}
+        <Dialog open={!!editingAccount} onOpenChange={(open) => {
+          if (!open) {
+            setEditingAccount(null);
+            clearAccountForm();
+          }
+        }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>ערוך {editingAccount?.account_type === 'telegram' ? 'קבוצת טלגרם' : 'קבוצת וואטסאפ'}</DialogTitle>
+              <DialogDescription>
+                עדכן את פרטי הקבוצה. הנתונים מאובטחים ומוצפנים.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>שם הקבוצה</Label>
+                <Input
+                  value={newAccountName}
+                  onChange={(e) => setNewAccountName(e.target.value)}
+                  placeholder={editingAccount?.account_name}
+                />
+              </div>
+              
+              {editingAccount?.account_type === 'telegram' ? (
+                <>
+                  <div className="space-y-2">
+                    <Label>Bot Token (השאר ריק לשמירת הקיים)</Label>
+                    <Input
+                      type="password"
+                      value={newAccountTelegramToken}
+                      onChange={(e) => setNewAccountTelegramToken(e.target.value)}
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Chat ID</Label>
+                    <Input
+                      value={newAccountTelegramChatId}
+                      onChange={(e) => setNewAccountTelegramChatId(e.target.value)}
+                      placeholder={editingAccount?.telegram_chat_id || "-1001234567890"}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label>Instance ID (השאר ריק לשמירת הקיים)</Label>
+                    <Input
+                      value={newAccountGreenApiInstanceId}
+                      onChange={(e) => setNewAccountGreenApiInstanceId(e.target.value)}
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>API Token (השאר ריק לשמירת הקיים)</Label>
+                    <Input
+                      type="password"
+                      value={newAccountGreenApiToken}
+                      onChange={(e) => setNewAccountGreenApiToken(e.target.value)}
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Chat ID</Label>
+                    <Input
+                      value={newAccountGreenApiChatId}
+                      onChange={(e) => setNewAccountGreenApiChatId(e.target.value)}
+                      placeholder={editingAccount?.whatsapp_chat_id || "972501234567@g.us"}
+                    />
+                  </div>
+                </>
+              )}
+              
+              <Button 
+                onClick={handleEditAccount} 
+                className="w-full"
+                disabled={isSavingAccount}
+              >
+                {isSavingAccount ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                שמור שינויים
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* AliExpress API */}
         <Card>
@@ -1021,7 +1424,7 @@ const Settings = () => {
               AI Prompt Templates
             </CardTitle>
             <CardDescription>
-              בחר סגנון מוכן או כתוב פרומפט מותאם אישית. המידע על קופונים וקישורים יילקח אוטומטית מהמוצר
+              בחר סגנון מוכן או כתוב פרומפט מותאם אישית
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1073,13 +1476,13 @@ const Settings = () => {
                 setCustomAiPrompt(e.target.value);
                 setSelectedPromptType(null);
               }}
-              placeholder="השאר ריק לשימוש בפרומפט ברירת מחדל. כתוב הוראות מותאמות אישית לAI כאן..."
+              placeholder="השאר ריק לשימוש בפרומפט ברירת מחדל..."
               className="min-h-[200px] font-mono text-sm"
               dir="rtl"
             />
             <div className="bg-muted/50 p-3 rounded-lg border border-border">
               <p className="text-xs text-muted-foreground" dir="rtl">
-                💡 <strong>טיפ:</strong> אל תכלול קישורים או קופונים בפרומפט - המידע הזה יילקח אוטומטית מהקישור שהוזן או מהקופון שהוספת ידנית למוצר
+                💡 <strong>טיפ:</strong> אל תכלול קישורים או קופונים בפרומפט - המידע הזה יילקח אוטומטית
               </p>
             </div>
           </CardContent>
