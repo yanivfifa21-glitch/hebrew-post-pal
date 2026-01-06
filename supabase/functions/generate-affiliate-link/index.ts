@@ -84,17 +84,21 @@ serve(async (req) => {
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
-    // Verify user with anon key
-    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
-    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(
-      authHeader.replace("Bearer ", "")
-    );
+    // Verify JWT using getClaims
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+    
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await supabaseAuth.auth.getClaims(token);
 
-    if (authError || !user) {
-      console.error("[generate-affiliate-link] Auth verification failed:", authError);
-      const payload: ApiErr = { success: false, error: "Unauthorized" };
+    if (claimsError || !claimsData?.claims) {
+      console.error("[generate-affiliate-link] JWT verification failed:", claimsError);
+      const payload: ApiErr = { success: false, error: "Invalid JWT" };
       return new Response(JSON.stringify(payload), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+    
+    const userId_from_jwt = claimsData.claims.sub as string;
 
     const body = await req.json().catch(() => ({}));
     const productUrl = String(body?.productUrl || "").trim();
@@ -108,7 +112,7 @@ serve(async (req) => {
     }
 
     // SECURITY: Verify the userId matches the authenticated user
-    if (userId && userId !== user.id) {
+    if (userId && userId !== userId_from_jwt) {
       console.error("[generate-affiliate-link] User ID mismatch - potential attack");
       const payload: ApiErr = { success: false, error: "Forbidden: Cannot access other users' data" };
       return new Response(JSON.stringify(payload), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -121,7 +125,7 @@ serve(async (req) => {
     const { data: credentials, error: credentialsError } = await supabase
       .from("user_credentials")
       .select("aliexpress_app_key, aliexpress_app_secret")
-      .eq("user_id", user.id)
+      .eq("user_id", userId_from_jwt)
       .maybeSingle();
 
     if (credentialsError) {
@@ -134,7 +138,7 @@ serve(async (req) => {
     const { data: settings } = await supabase
       .from("app_settings")
       .select("aliexpress_tracking_id")
-      .eq("user_id", user.id)
+      .eq("user_id", userId_from_jwt)
       .maybeSingle();
 
     const appKey = credentials?.aliexpress_app_key?.trim();
@@ -146,7 +150,7 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    console.log("[generate-affiliate-link] Processing for user:", user.email);
+    console.log("[generate-affiliate-link] Processing for user:", userId_from_jwt);
 
     const expanded = await expandShortUrl(productUrl);
     console.log("[generate-affiliate-link] Expanded URL:", expanded);
