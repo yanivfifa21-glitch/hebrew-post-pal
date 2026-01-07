@@ -87,8 +87,8 @@ serve(async (req) => {
     const page = parseInt(body?.page) || 1;
     const pageSize = Math.min(parseInt(body?.pageSize) || 40, 50);
     
-    // FORCE sort by sales volume - never use any other sort
-    const sort = "VOLUME_DESC";
+    // Use BEST_MATCH for more relevant products - better than volume-based
+    const sort = "BEST_MATCH";
 
     const appKey = Deno.env.get("ALIEXPRESS_APP_KEY")?.trim();
     const appSecret = Deno.env.get("ALIEXPRESS_APP_SECRET")?.trim();

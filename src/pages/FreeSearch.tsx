@@ -62,7 +62,7 @@ const FreeSearch = () => {
         body: {
           keywords: trimmedQuery,
           pageSize: 40,
-          sort: "VOLUME_DESC",
+          sort: "BEST_MATCH", // Use BEST_MATCH for more relevant results
         },
       });
 
@@ -154,31 +154,73 @@ const FreeSearch = () => {
 
       const selectedProductsList = products.filter(p => selectedProducts.has(p.product_id));
 
-      // Insert all selected products to queue
-      const productsToInsert = selectedProductsList.map(product => ({
-        user_id: user.id,
-        title: product.title,
-        original_url: product.product_url,
-        image_url: product.image_url,
-        price: product.price,
-        orders_count: product.sales_count,
-        rating: product.rating,
-        status: "Scheduled",
-        channels: [],
-      }));
+      let successCount = 0;
+      for (const product of selectedProductsList) {
+        try {
+          // 1. Generate affiliate link
+          const { data: affResp, error: affErr } = await supabase.functions.invoke("generate-affiliate-link", {
+            body: { productUrl: product.product_url, userId: user.id },
+          });
 
-      const { error } = await supabase
-        .from("products")
-        .insert(productsToInsert);
+          const affiliateLink = (!affErr && affResp?.success) ? affResp.affiliateLink : product.product_url;
 
-      if (error) throw error;
+          // 2. Generate Hebrew description with template
+          const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
+            body: { 
+              title: product.title,
+              ordersCount: product.sales_count || 0,
+              rating: product.rating || 0,
+              userId: user.id, // Pass userId to fetch custom prompt
+            },
+          });
 
-      toast({
-        title: "נוספו למחסנית!",
-        description: `${selectedProductsList.length} מוצרים נוספו בהצלחה`,
-      });
+          let hebrewDescription = "";
+          if (!hebErr && hebResp?.success) {
+            hebrewDescription = `${hebResp.hebrewDescription}\n\n👉 לרכישה: ${affiliateLink}`;
+          } else {
+            // Fallback template if generation fails
+            hebrewDescription = `🔥 ${product.title}\n\n💰 מחיר: ${product.price.toFixed(2)}₪\n📦 ${(product.sales_count || 0).toLocaleString()} הזמנות\n⭐ ${(product.rating || 0).toFixed(1)} כוכבים\n\n👉 לרכישה: ${affiliateLink}`;
+          }
 
-      setSelectedProducts(new Set());
+          // Normalize rating to 0-5 scale
+          let normalizedRating = product.rating ?? 0;
+          if (normalizedRating > 5) {
+            normalizedRating = normalizedRating / 20;
+          }
+          normalizedRating = Math.min(normalizedRating, 5);
+
+          // 3. Insert to queue with template
+          const { error: insertErr } = await supabase
+            .from("products")
+            .insert({
+              user_id: user.id,
+              title: product.title,
+              original_url: product.product_url,
+              image_url: product.image_url,
+              price: product.price,
+              orders_count: product.sales_count || 0,
+              rating: normalizedRating,
+              affiliate_link: affiliateLink,
+              hebrew_description: hebrewDescription,
+              status: "Scheduled",
+              channels: [],
+            });
+
+          if (!insertErr) successCount++;
+        } catch (productError) {
+          console.error("Error adding product:", product.product_id, productError);
+        }
+      }
+
+      if (successCount > 0) {
+        toast({
+          title: "נוספו למחסנית!",
+          description: `${successCount} מוצרים נוספו בהצלחה עם תבנית`,
+        });
+        setSelectedProducts(new Set());
+      } else {
+        throw new Error("Failed to add any products");
+      }
     } catch (error) {
       console.error("Add to queue error:", error);
       toast({
