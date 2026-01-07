@@ -121,7 +121,7 @@ const Discovery = () => {
           category,
           keywords: trimmedKeywords,
           pageSize: 30,
-          sort: trimmedKeywords ? "VOLUME_DESC" : "LAST_VOLUME_DESC",
+          sort: "BEST_MATCH", // Always use BEST_MATCH for more relevant products
         },
       });
 

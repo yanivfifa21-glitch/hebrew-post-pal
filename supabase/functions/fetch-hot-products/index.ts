@@ -45,12 +45,13 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const body = await req.json().catch(() => ({}));
+  const body = await req.json().catch(() => ({}));
     const category = String(body?.category || "").trim();
     const keywords = String(body?.keywords || "").trim();
     const page = parseInt(body?.page) || 1;
     const pageSize = Math.min(parseInt(body?.pageSize) || 30, 50);
-    const sort = String(body?.sort || "LAST_VOLUME_DESC").trim();
+    // Use BEST_MATCH for more relevant products - better quality than volume-based
+    const sort = String(body?.sort || "BEST_MATCH").trim();
 
     const appKey = Deno.env.get("ALIEXPRESS_APP_KEY")?.trim();
     const appSecret = Deno.env.get("ALIEXPRESS_APP_SECRET")?.trim();
