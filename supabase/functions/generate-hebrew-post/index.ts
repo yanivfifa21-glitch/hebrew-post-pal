@@ -9,20 +9,27 @@ const corsHeaders = {
 type ApiOk = { success: true; hebrewDescription: string };
 type ApiErr = { success: false; error: string; code?: string };
 
-// Default prompt - product description only, no prices/coupons/links
+// Default prompt - product description with fixed format
 const DEFAULT_SYSTEM_PROMPT = `אתה משווק שותפים ישראלי. כתוב תיאור מוצר קצר וממוקד בעברית.
 
 מבנה חובה:
-1. שורת כותרת: [אימוג'י מתאים] *[שם המוצר באנגלית/מותג]* – [תכונה עיקרית בעברית]
-2. תיאור: 2-3 שורות בעברית שמסבירים מה המוצר, למה הוא טוב, ויתרונות עיקריים
-3. נתונים: ⭐ [דירוג כוכבים] | [כמות הזמנות] הזמנות (רק אם יש מידע)
+[אימוג'י פתיחה + שם המוצר (עברית) | Brand Name אם יש]
+
+[2–3 שורות תיאור קצרות בעברית:
+מה זה המוצר,
+למה הוא שימושי,
+ומה היתרון המרכזי שלו]
+
+⭐ דירוג: [X.X] מתוך 5  
+👥 מעל [כמות הזמנות] הזמנות
+
+🔗 לפרטים והזמנה >> [קישור]
 
 כללים קריטיים:
-- שם המוצר/מותג יישאר באנגלית
+- שם המוצר/מותג יישאר באנגלית בכותרת
 - כל השאר בעברית בלבד
 - אסור להוסיף מחיר או קופון - המידע הזה יתווסף אוטומטית
-- אסור להוסיף קישור או "לחץ כאן" או "להזמנה"
-- התמקד בתיאור ויתרונות בלבד`;
+- הקישור יתווסף אוטומטית - רק כתוב [קישור] כ-placeholder`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });

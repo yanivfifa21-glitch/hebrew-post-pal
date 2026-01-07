@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Zap, Mail, Loader2 } from "lucide-react";
+import { Zap, Mail, Loader2, UserPlus } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 const Auth = () => {
@@ -13,6 +13,7 @@ const Auth = () => {
   const [isSendingReset, setIsSendingReset] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isSignUp, setIsSignUp] = useState(false);
 
   useEffect(() => {
     // Check if already logged in
@@ -50,6 +51,49 @@ const Auth = () => {
       toast({ 
         title: "Login Failed", 
         description: error.message || "Invalid credentials", 
+        variant: "destructive" 
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEmailSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) {
+      toast({ title: "Missing fields", description: "Please enter email and password", variant: "destructive" });
+      return;
+    }
+
+    if (password.length < 6) {
+      toast({ title: "Password too short", description: "Password must be at least 6 characters", variant: "destructive" });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.signUp({ 
+        email, 
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`
+        }
+      });
+      if (error) {
+        if (error.message.includes("already registered")) {
+          throw new Error("This email is already registered. Please login instead.");
+        }
+        throw error;
+      }
+      toast({ 
+        title: "Registration Successful!", 
+        description: "Your account has been created. An admin will review and approve your access." 
+      });
+      setIsSignUp(false);
+    } catch (error: any) {
+      toast({ 
+        title: "Registration Failed", 
+        description: error.message || "Could not create account", 
         variant: "destructive" 
       });
     } finally {
@@ -144,12 +188,14 @@ const Auth = () => {
               <span className="w-full border-t border-border" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">Or continue with email</span>
+              <span className="bg-card px-2 text-muted-foreground">
+                {isSignUp ? "Or create account with email" : "Or continue with email"}
+              </span>
             </div>
           </div>
 
-          {/* Email/Password Login Only */}
-          <form onSubmit={handleEmailLogin} className="space-y-4">
+          {/* Email/Password Form */}
+          <form onSubmit={isSignUp ? handleEmailSignUp : handleEmailLogin} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="login-email">Email</Label>
               <Input
@@ -171,21 +217,44 @@ const Auth = () => {
               />
             </div>
             <Button type="submit" className="w-full" variant="gradient" disabled={isLoading}>
-              {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Mail className="h-4 w-4 mr-2" />}
-              Login
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : isSignUp ? (
+                <UserPlus className="h-4 w-4 mr-2" />
+              ) : (
+                <Mail className="h-4 w-4 mr-2" />
+              )}
+              {isSignUp ? "Create Account" : "Login"}
             </Button>
-            <button
-              type="button"
-              onClick={handleForgotPassword}
-              disabled={isSendingReset}
-              className="w-full text-sm text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
-            >
-              {isSendingReset ? "Sending..." : "Forgot Password?"}
-            </button>
+            
+            {!isSignUp && (
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                disabled={isSendingReset}
+                className="w-full text-sm text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
+              >
+                {isSendingReset ? "Sending..." : "Forgot Password?"}
+              </button>
+            )}
           </form>
 
+          {/* Toggle between login and signup */}
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={() => setIsSignUp(!isSignUp)}
+              className="text-sm text-primary hover:underline"
+            >
+              {isSignUp ? "Already have an account? Login" : "Don't have an account? Register"}
+            </button>
+          </div>
+
           <p className="text-xs text-center text-muted-foreground">
-            This app is invite-only. Contact the administrator for access.
+            {isSignUp 
+              ? "After registration, an admin will review and approve your access."
+              : "This app is invite-only. Contact the administrator for access."
+            }
           </p>
         </div>
       </div>

@@ -138,74 +138,27 @@ interface AccountCredentialsStatus {
   has_whatsapp_chat_id?: boolean;
 }
 
-// Pre-defined prompt templates
-const PROMPT_TEMPLATES: Record<string, { name: string; nameHe: string; icon: string; prompt: string }> = {
-  sales: {
-    name: 'Sales',
-    nameHe: 'מכירתי',
-    icon: '💰',
-    prompt: `אתה משווק שותפים ישראלי. כתוב תיאור מוצר מכירתי בעברית.
+// Fixed default prompt template
+const DEFAULT_PROMPT = `אתה משווק שותפים ישראלי. כתוב תיאור מוצר קצר וממוקד בעברית.
 
 מבנה חובה:
-1. כותרת: [אימוג'י מתאים] *[שם המוצר באנגלית/מותג]* – [תכונה עיקרית בעברית]
-2. תיאור מכירתי: 2-3 שורות שמסבירים למה זה מוצר מעולה ולמה כדאי לקנות
-3. נתונים: ⭐ [דירוג] | [הזמנות] הזמנות (רק אם יש מידע מה-API)
+[אימוג'י פתיחה + שם המוצר (עברית) | Brand Name אם יש]
 
-כללים:
-- שם המוצר/מותג באנגלית, כל השאר בעברית
-- אסור להוסיף מחיר או קופון - יתווסף אוטומטית
-- אסור להוסיף קישור`
-  },
-  personal: {
-    name: 'Personal',
-    nameHe: 'אישי',
-    icon: '💬',
-    prompt: `אתה חבר שממליץ על מוצר טוב. כתוב תיאור אישי וחברי בעברית.
+[2–3 שורות תיאור קצרות בעברית:
+מה זה המוצר,
+למה הוא שימושי,
+ומה היתרון המרכזי שלו]
 
-מבנה חובה:
-1. פתיחה אישית: "מצאתי משהו מגניב" או "חייב לשתף אתכם"
-2. תיאור: 2-3 שורות בטון של שיחה עם חברים, למה אתה ממליץ
-3. נתונים: ⭐ [דירוג] | [הזמנות] הזמנות (רק אם יש)
+⭐ דירוג: [X.X] מתוך 5  
+👥 מעל [כמות הזמנות] הזמנות
 
-כללים:
-- שם המוצר/מותג באנגלית, כל השאר בעברית
-- אסור להוסיף מחיר או קופון - יתווסף אוטומטית
-- אסור להוסיף קישור`
-  },
-  urgent: {
-    name: 'Urgent',
-    nameHe: 'דחוף',
-    icon: '🔥',
-    prompt: `אתה משווק שותפים. כתוב תיאור מוצר דחוף עם תחושת מיידיות בעברית.
+🔗 לפרטים והזמנה >> [קישור]
 
-מבנה חובה:
-1. כותרת: 🔥 *[שם המוצר באנגלית]*
-2. תיאור דחוף: 2 שורות שמדגישות למה לקנות עכשיו
-3. נתונים: ⭐ [דירוג] | [הזמנות] הזמנות
-4. סיום: ⚡ מלאי מוגבל
-
-כללים:
-- שם המוצר/מותג באנגלית, כל השאר בעברית
-- אסור להוסיף מחיר או קופון - יתווסף אוטומטית
-- אסור להוסיף קישור`
-  },
-  professional: {
-    name: 'Professional',
-    nameHe: 'מקצועי',
-    icon: '📋',
-    prompt: `אתה כותב תוכן מקצועי. כתוב תיאור מוצר מפורט ומקצועי בעברית.
-
-מבנה חובה:
-1. כותרת: *[שם המוצר המלא באנגלית]*
-2. תיאור מקצועי: 3 שורות עם מידע ומפרט על המוצר
-3. נתונים: ⭐ [דירוג] | [הזמנות] הזמנות
-
-כללים:
-- שם המוצר/מותג באנגלית, כל השאר בעברית
-- אסור להוסיף מחיר או קופון - יתווסף אוטומטית
-- אסור להוסיף קישור`
-  }
-};
+כללים קריטיים:
+- שם המוצר/מותג יישאר באנגלית בכותרת
+- כל השאר בעברית בלבד
+- אסור להוסיף מחיר או קופון - המידע הזה יתווסף אוטומטית
+- הקישור יתווסף אוטומטית - רק כתוב [קישור] כ-placeholder`;
 
 const Settings = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -257,7 +210,6 @@ const Settings = () => {
 
   // Custom AI prompt
   const [customAiPrompt, setCustomAiPrompt] = useState('');
-  const [selectedPromptType, setSelectedPromptType] = useState<string | null>(null);
 
   // Multi-account management
   const [messagingAccounts, setMessagingAccounts] = useState<MessagingAccount[]>([]);
@@ -305,14 +257,9 @@ const Settings = () => {
         setShabbatStartTime(data.shabbat_start_time || '14:00');
         setShabbatEndTime(data.shabbat_end_time || '20:00');
         
-        // Detect which prompt template is selected
-        if (data.custom_ai_prompt) {
-          const matchedTemplate = Object.entries(PROMPT_TEMPLATES).find(
-            ([_, template]) => template.prompt === data.custom_ai_prompt
-          );
-          if (matchedTemplate) {
-            setSelectedPromptType(matchedTemplate[0]);
-          }
+        // Check if using custom prompt
+        if (data.custom_ai_prompt && data.custom_ai_prompt.trim() !== '') {
+          setCustomAiPrompt(data.custom_ai_prompt);
         }
       }
 
@@ -408,6 +355,16 @@ const Settings = () => {
           setCredentialsStatus(credStatus as unknown as CredentialsStatus);
         }
       }
+
+      // Clear any scroll lock that might have occurred
+      requestAnimationFrame(() => {
+        document.body.style.removeProperty("overflow");
+        document.body.style.removeProperty("padding-right");
+        document.body.removeAttribute("data-scroll-locked");
+        document.documentElement.style.removeProperty("overflow");
+        document.documentElement.style.removeProperty("padding-right");
+        document.documentElement.removeAttribute("data-scroll-locked");
+      });
 
       toast({
         title: "Settings Saved!",
@@ -1424,65 +1381,35 @@ const Settings = () => {
               AI Prompt Templates
             </CardTitle>
             <CardDescription>
-              בחר סגנון מוכן או כתוב פרומפט מותאם אישית
+              הפרומפט הקבוע שמשמש ליצירת תיאורים בעברית. ניתן לערוך אם רוצים שינויים.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Pre-defined prompt type selector */}
+            {/* Default prompt button */}
             <div className="space-y-3">
-              <Label className="text-sm font-medium">סגנון פוסט מוכן</Label>
-              <div className="grid grid-cols-2 gap-3">
-                {Object.entries(PROMPT_TEMPLATES).map(([key, template]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => {
-                      if (selectedPromptType === key) {
-                        setSelectedPromptType(null);
-                        setCustomAiPrompt('');
-                      } else {
-                        setSelectedPromptType(key);
-                        setCustomAiPrompt(template.prompt);
-                      }
-                    }}
-                    className={`p-4 rounded-xl border-2 text-right transition-all ${
-                      selectedPromptType === key
-                        ? 'border-primary bg-primary/10 shadow-lg'
-                        : 'border-border hover:border-primary/50 hover:bg-muted/50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xl">{template.icon}</span>
-                      <span className="font-semibold text-foreground">{template.nameHe}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{template.name}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">או כתוב פרומפט מותאם</span>
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">פרומפט נוכחי</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCustomAiPrompt(DEFAULT_PROMPT)}
+                >
+                  <RotateCcw className="h-4 w-4 mr-1" />
+                  אפס לברירת מחדל
+                </Button>
               </div>
             </div>
 
             <Textarea
-              value={customAiPrompt}
-              onChange={(e) => {
-                setCustomAiPrompt(e.target.value);
-                setSelectedPromptType(null);
-              }}
-              placeholder="השאר ריק לשימוש בפרומפט ברירת מחדל..."
-              className="min-h-[200px] font-mono text-sm"
+              value={customAiPrompt || DEFAULT_PROMPT}
+              onChange={(e) => setCustomAiPrompt(e.target.value)}
+              className="min-h-[300px] font-mono text-sm"
               dir="rtl"
             />
             <div className="bg-muted/50 p-3 rounded-lg border border-border">
               <p className="text-xs text-muted-foreground" dir="rtl">
-                💡 <strong>טיפ:</strong> אל תכלול קישורים או קופונים בפרומפט - המידע הזה יילקח אוטומטית
+                💡 <strong>טיפ:</strong> הקישור והמחיר יתווספו אוטומטית בסוף הפוסט
               </p>
             </div>
           </CardContent>
