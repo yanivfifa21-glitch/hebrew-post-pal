@@ -250,17 +250,19 @@ const Settings = () => {
         setPostingTimes(data.posting_times || ['10:00', '14:00', '20:00']);
         setPublishingDays(data.publishing_days || [0, 1, 2, 3, 4, 5, 6]);
         setAliexpressTrackingId(data.aliexpress_tracking_id || '');
-        setCustomAiPrompt(data.custom_ai_prompt || '');
         setPostingIntervalHours(data.posting_interval_hours || null);
         setUseIntervalPosting(!!data.posting_interval_hours);
         setShabbatModeEnabled(data.shabbat_mode_enabled || false);
         setShabbatStartTime(data.shabbat_start_time || '14:00');
         setShabbatEndTime(data.shabbat_end_time || '20:00');
         
-        // Check if using custom prompt
-        if (data.custom_ai_prompt && data.custom_ai_prompt.trim() !== '') {
-          setCustomAiPrompt(data.custom_ai_prompt);
-        }
+        // Set custom prompt - use saved value or default
+        setCustomAiPrompt(data.custom_ai_prompt && data.custom_ai_prompt.trim() !== '' 
+          ? data.custom_ai_prompt 
+          : DEFAULT_PROMPT);
+      } else {
+        // No settings yet - use default prompt
+        setCustomAiPrompt(DEFAULT_PROMPT);
       }
 
       // Fetch credentials status (boolean flags only)
