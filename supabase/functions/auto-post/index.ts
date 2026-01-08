@@ -73,6 +73,25 @@ function isInShabbatMode(
   return false;
 }
 
+// Check if current time is within interval posting range
+function isWithinIntervalTimeRange(
+  currentTimeStr: string,
+  intervalStartTime: string,
+  intervalEndTime: string
+): boolean {
+  const currentMinutes = timeToMinutes(currentTimeStr);
+  const startMinutes = timeToMinutes(intervalStartTime);
+  const endMinutes = timeToMinutes(intervalEndTime);
+  
+  // Handle normal range (start < end, e.g., 08:00 - 22:00)
+  if (startMinutes <= endMinutes) {
+    return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+  }
+  
+  // Handle overnight range (start > end, e.g., 22:00 - 06:00)
+  return currentMinutes >= startMinutes || currentMinutes <= endMinutes;
+}
+
 // Check if interval posting should trigger
 function shouldPostByInterval(
   intervalHours: number | null,
@@ -130,8 +149,10 @@ serve(async (req) => {
       const shabbatEnabled: boolean = userSettings.shabbat_mode_enabled || false;
       const shabbatStartTime: string = userSettings.shabbat_start_time || '14:00';
       const shabbatEndTime: string = userSettings.shabbat_end_time || '20:00';
+      const intervalStartTime: string = userSettings.interval_start_time || '08:00';
+      const intervalEndTime: string = userSettings.interval_end_time || '22:00';
 
-      console.log(`[auto-post] User ${userId}: Interval: ${intervalHours}h, Shabbat: ${shabbatEnabled}, times: [${postingTimes.join(", ")}]`);
+      console.log(`[auto-post] User ${userId}: Interval: ${intervalHours}h (${intervalStartTime}-${intervalEndTime}), Shabbat: ${shabbatEnabled}, times: [${postingTimes.join(", ")}]`);
 
       // Step A: Check Shabbat mode first
       if (isInShabbatMode(currentDayOfWeek, currentTimeStr, shabbatEnabled, shabbatStartTime, shabbatEndTime)) {
@@ -151,7 +172,14 @@ serve(async (req) => {
       let shouldPost = false;
       
       if (intervalHours) {
-        // Interval mode: check if enough time passed since last send
+        // Interval mode: first check if we're within the allowed time range
+        if (!isWithinIntervalTimeRange(currentTimeStr, intervalStartTime, intervalEndTime)) {
+          console.log(`[auto-post] User ${userId}: Skipping - Current time ${currentTimeStr} outside interval range ${intervalStartTime}-${intervalEndTime}`);
+          results.push({ userId, status: "outside_interval_range" });
+          continue;
+        }
+        
+        // Then check if enough time passed since last send
         const { data: lastSent } = await supabase
           .from("products")
           .select("updated_at")
@@ -166,7 +194,7 @@ serve(async (req) => {
           results.push({ userId, status: "interval_not_reached" });
           continue;
         }
-        console.log(`[auto-post] User ${userId}: ✓ Interval ${intervalHours}h reached!`);
+        console.log(`[auto-post] User ${userId}: ✓ Interval ${intervalHours}h reached (in range ${intervalStartTime}-${intervalEndTime})!`);
       } else {
         // Fixed times mode: check if current time matches
         if (!isPostingTime(currentTimeStr, postingTimes)) {

@@ -196,6 +196,8 @@ const Settings = () => {
   // Interval posting
   const [postingIntervalHours, setPostingIntervalHours] = useState<number | null>(null);
   const [useIntervalPosting, setUseIntervalPosting] = useState(false);
+  const [intervalStartTime, setIntervalStartTime] = useState('08:00');
+  const [intervalEndTime, setIntervalEndTime] = useState('22:00');
   
   // Shabbat mode
   const [shabbatModeEnabled, setShabbatModeEnabled] = useState(false);
@@ -238,7 +240,7 @@ const Settings = () => {
       // Fetch app settings (non-sensitive data only)
       const { data, error } = await supabase
         .from('app_settings')
-        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, posting_interval_hours, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time')
+        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, posting_interval_hours, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, interval_start_time, interval_end_time')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -255,6 +257,8 @@ const Settings = () => {
         setShabbatModeEnabled(data.shabbat_mode_enabled || false);
         setShabbatStartTime(data.shabbat_start_time || '14:00');
         setShabbatEndTime(data.shabbat_end_time || '20:00');
+        setIntervalStartTime((data as any).interval_start_time || '08:00');
+        setIntervalEndTime((data as any).interval_end_time || '22:00');
         
         // Set custom prompt - use saved value or default
         setCustomAiPrompt(data.custom_ai_prompt && data.custom_ai_prompt.trim() !== '' 
@@ -308,6 +312,8 @@ const Settings = () => {
         shabbat_mode_enabled: shabbatModeEnabled,
         shabbat_start_time: shabbatStartTime,
         shabbat_end_time: shabbatEndTime,
+        interval_start_time: intervalStartTime,
+        interval_end_time: intervalEndTime,
       };
 
       if (settingsId) {
@@ -784,6 +790,30 @@ const Settings = () => {
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span>כל שעה</span>
                   <span>כל 12 שעות</span>
+                </div>
+
+                {/* Time Range for Interval Posting */}
+                <div className="pt-4 border-t border-primary/20">
+                  <Label className="text-sm font-medium mb-3 block">טווח שעות לפרסום</Label>
+                  <p className="text-xs text-muted-foreground mb-3">פרסם רק בין השעות הללו</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">משעה</Label>
+                      <Input
+                        type="time"
+                        value={intervalStartTime}
+                        onChange={(e) => setIntervalStartTime(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">עד שעה</Label>
+                      <Input
+                        type="time"
+                        value={intervalEndTime}
+                        onChange={(e) => setIntervalEndTime(e.target.value)}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
