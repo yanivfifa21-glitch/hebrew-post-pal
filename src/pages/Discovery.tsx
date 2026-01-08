@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import { 
   Search, Loader2, Sparkles, TrendingUp, Flame, Star, 
   ShoppingBag, RefreshCw, Zap, AlertCircle, Link as LinkIcon,
-  FileSpreadsheet
+  FileSpreadsheet, CheckCircle2, ListPlus
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -66,6 +67,10 @@ const Discovery = () => {
   });
   const [addingProductId, setAddingProductId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  
+  // Multi-select state
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+  const [isAddingSelected, setIsAddingSelected] = useState(false);
 
   // Get current user ID on mount
   useEffect(() => {
@@ -238,11 +243,134 @@ const Discovery = () => {
 
   const handleClearAll = () => {
     setImportedProducts([]);
+    setSelectedProductIds(new Set());
     localStorage.removeItem(STORAGE_KEY);
     toast({
       title: "נמחקו",
       description: "כל המוצרים המיובאים נמחקו",
     });
+  };
+
+  // Toggle product selection
+  const toggleProductSelection = (productId: string) => {
+    setSelectedProductIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(productId)) {
+        newSet.delete(productId);
+      } else {
+        newSet.add(productId);
+      }
+      return newSet;
+    });
+  };
+
+  // Select/deselect all
+  const toggleSelectAll = () => {
+    if (selectedProductIds.size === importedProducts.length) {
+      setSelectedProductIds(new Set());
+    } else {
+      setSelectedProductIds(new Set(importedProducts.map(p => p.id)));
+    }
+  };
+
+  // Add selected products to queue
+  const handleAddSelectedToQueue = async () => {
+    if (!userId || selectedProductIds.size === 0) return;
+
+    setIsAddingSelected(true);
+    const selectedProducts = importedProducts.filter(p => selectedProductIds.has(p.id));
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const product of selectedProducts) {
+      try {
+        // Use existing affiliate link from Excel if available
+        let affiliateLink = product.affiliateLink || product.promotionLink;
+        
+        if (!product.affiliateLink) {
+          const { data: affResp } = await supabase.functions.invoke("generate-affiliate-link", {
+            body: { productUrl: product.promotionLink, userId },
+          });
+          affiliateLink = affResp?.success ? affResp.affiliateLink : product.promotionLink;
+        }
+
+        // Use existing Hebrew description or generate
+        let hebrewDescription = product.hebrewDescription || "";
+        
+        if (!hebrewDescription) {
+          const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
+            body: { 
+              title: product.title,
+              ordersCount: product.sales180Day || 0,
+              rating: product.positiveFeedback ? product.positiveFeedback / 20 : 0,
+              originalPrice: product.originalPrice,
+              discountPrice: product.discountPrice,
+              discountPercent: product.discountPercent,
+              couponCode: product.codeName,
+              couponValue: product.codeValue,
+              userId,
+            },
+          });
+
+          if (hebErr) throw hebErr;
+          if (!hebResp?.success) throw new Error(hebResp?.error || "Failed to generate Hebrew content");
+          hebrewDescription = hebResp.hebrewDescription;
+        }
+
+        // Add stats if available
+        let finalDescription = hebrewDescription;
+        if (product.sales180Day || product.positiveFeedback) {
+          const stats: string[] = [];
+          if (product.sales180Day) stats.push(`📦 ${product.sales180Day.toLocaleString()} הזמנות`);
+          if (product.positiveFeedback) stats.push(`⭐ ${product.positiveFeedback}% חיובי`);
+          if (stats.length > 0 && !finalDescription.includes('הזמנות')) {
+            finalDescription = `${finalDescription}\n\n${stats.join(' | ')}`;
+          }
+        }
+
+        finalDescription = `${finalDescription}\n\n👉 להזמנה: ${affiliateLink}`;
+
+        // Save to queue
+        const { error: saveErr } = await supabase.from("products").insert({
+          original_url: product.promotionLink,
+          title: product.title,
+          price: product.discountPrice,
+          image_url: product.imageUrl,
+          orders_count: product.sales180Day || 0,
+          rating: product.positiveFeedback ? product.positiveFeedback / 20 : 0,
+          affiliate_link: affiliateLink,
+          hebrew_description: finalDescription,
+          status: "Scheduled",
+          channels: [],
+          user_id: userId,
+        });
+
+        if (saveErr) throw saveErr;
+        successCount++;
+      } catch (e) {
+        console.error(`Failed to add product ${product.title}:`, e);
+        failCount++;
+      }
+    }
+
+    // Remove successfully added products
+    const addedIds = new Set(
+      selectedProducts
+        .filter((_, i) => i < successCount)
+        .map(p => p.id)
+    );
+    
+    // Actually remove all selected since we processed them
+    setImportedProducts(prev => prev.filter(p => !selectedProductIds.has(p.id)));
+    setSelectedProductIds(new Set());
+
+    toast({
+      title: `✨ נוספו ${successCount} מוצרים לתור!`,
+      description: failCount > 0 ? `${failCount} נכשלו` : "כל המוצרים נוספו בהצלחה",
+      variant: failCount > 0 ? "default" : "default",
+    });
+
+    setIsAddingSelected(false);
   };
 
   const handleQuickAddFromExcel = async (product: ImportedProduct) => {
@@ -628,24 +756,96 @@ const Discovery = () => {
             {/* Imported Products Grid */}
             {importedProducts.length > 0 && (
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <h3 className="font-semibold text-foreground flex items-center gap-2">
                     <span className="text-success">●</span>
                     מוצרים מיובאים ({importedProducts.length})
                   </h3>
-                  <Badge variant="outline" className="border-success/30 text-success">
-                    שמורים מקומית
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="border-success/30 text-success">
+                      שמורים מקומית
+                    </Badge>
+                  </div>
                 </div>
+
+                {/* Selection Controls */}
+                <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/30 border border-border/50">
+                  <div className="flex items-center gap-3">
+                    <Checkbox
+                      checked={selectedProductIds.size === importedProducts.length && importedProducts.length > 0}
+                      onCheckedChange={toggleSelectAll}
+                      id="select-all"
+                    />
+                    <label htmlFor="select-all" className="text-sm cursor-pointer">
+                      {selectedProductIds.size === importedProducts.length ? 'בטל הכל' : 'בחר הכל'}
+                    </label>
+                    {selectedProductIds.size > 0 && (
+                      <Badge variant="secondary" className="text-xs">
+                        {selectedProductIds.size} נבחרו
+                      </Badge>
+                    )}
+                  </div>
+                  {selectedProductIds.size > 0 && (
+                    <Button
+                      onClick={handleAddSelectedToQueue}
+                      disabled={isAddingSelected}
+                      variant="gradient"
+                      size="sm"
+                      className="gap-2"
+                    >
+                      {isAddingSelected ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          מוסיף {selectedProductIds.size}...
+                        </>
+                      ) : (
+                        <>
+                          <ListPlus className="h-4 w-4" />
+                          הוסף {selectedProductIds.size} לתור
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                   {importedProducts.map((product) => (
-                    <ExcelProductCard
-                      key={product.id}
-                      product={product}
-                      onQuickAdd={() => handleQuickAddFromExcel(product)}
-                      onEdit={() => handleEditFromExcel(product)}
-                      isAdding={addingProductId === product.id}
-                    />
+                    <div key={product.id} className="relative">
+                      {/* Selection Checkbox Overlay */}
+                      <div 
+                        className={`absolute top-2 left-2 z-10 transition-all ${
+                          selectedProductIds.has(product.id) 
+                            ? 'opacity-100' 
+                            : 'opacity-0 group-hover:opacity-100'
+                        }`}
+                      >
+                        <div 
+                          className={`p-1 rounded-md backdrop-blur-sm cursor-pointer ${
+                            selectedProductIds.has(product.id) 
+                              ? 'bg-primary/90' 
+                              : 'bg-background/80 hover:bg-background'
+                          }`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleProductSelection(product.id);
+                          }}
+                        >
+                          {selectedProductIds.has(product.id) ? (
+                            <CheckCircle2 className="h-5 w-5 text-primary-foreground" />
+                          ) : (
+                            <div className="h-5 w-5 border-2 border-muted-foreground rounded-md" />
+                          )}
+                        </div>
+                      </div>
+                      <div className={`group ${selectedProductIds.has(product.id) ? 'ring-2 ring-primary ring-offset-2 ring-offset-background rounded-xl' : ''}`}>
+                        <ExcelProductCard
+                          product={product}
+                          onQuickAdd={() => handleQuickAddFromExcel(product)}
+                          onEdit={() => handleEditFromExcel(product)}
+                          isAdding={addingProductId === product.id}
+                        />
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>

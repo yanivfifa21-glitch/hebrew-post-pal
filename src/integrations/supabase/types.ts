@@ -21,6 +21,8 @@ export type Database = {
           created_at: string
           custom_ai_prompt: string | null
           id: string
+          interval_end_time: string | null
+          interval_start_time: string | null
           posting_interval_hours: number | null
           posting_times: string[] | null
           publishing_days: number[] | null
@@ -39,6 +41,8 @@ export type Database = {
           created_at?: string
           custom_ai_prompt?: string | null
           id?: string
+          interval_end_time?: string | null
+          interval_start_time?: string | null
           posting_interval_hours?: number | null
           posting_times?: string[] | null
           publishing_days?: number[] | null
@@ -57,6 +61,8 @@ export type Database = {
           created_at?: string
           custom_ai_prompt?: string | null
           id?: string
+          interval_end_time?: string | null
+          interval_start_time?: string | null
           posting_interval_hours?: number | null
           posting_times?: string[] | null
           publishing_days?: number[] | null
