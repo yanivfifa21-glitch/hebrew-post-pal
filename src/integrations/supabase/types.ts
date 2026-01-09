@@ -292,7 +292,51 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      messaging_accounts_safe: {
+        Row: {
+          account_name: string | null
+          account_type: string | null
+          created_at: string | null
+          has_api_token: boolean | null
+          has_bot_token: boolean | null
+          has_instance_id: boolean | null
+          id: string | null
+          is_active: boolean | null
+          telegram_chat_id: string | null
+          updated_at: string | null
+          user_id: string | null
+          whatsapp_chat_id: string | null
+        }
+        Insert: {
+          account_name?: string | null
+          account_type?: string | null
+          created_at?: string | null
+          has_api_token?: never
+          has_bot_token?: never
+          has_instance_id?: never
+          id?: string | null
+          is_active?: boolean | null
+          telegram_chat_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          whatsapp_chat_id?: string | null
+        }
+        Update: {
+          account_name?: string | null
+          account_type?: string | null
+          created_at?: string | null
+          has_api_token?: never
+          has_bot_token?: never
+          has_instance_id?: never
+          id?: string | null
+          is_active?: boolean | null
+          telegram_chat_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          whatsapp_chat_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       decrypt_credential: { Args: { encrypted_data: string }; Returns: string }
@@ -303,6 +347,29 @@ export type Database = {
       }
       get_my_access_status: { Args: never; Returns: string }
       get_my_credentials_status: { Args: never; Returns: Json }
+      get_my_messaging_accounts: {
+        Args: never
+        Returns: {
+          account_name: string | null
+          account_type: string | null
+          created_at: string | null
+          has_api_token: boolean | null
+          has_bot_token: boolean | null
+          has_instance_id: boolean | null
+          id: string | null
+          is_active: boolean | null
+          telegram_chat_id: string | null
+          updated_at: string | null
+          user_id: string | null
+          whatsapp_chat_id: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "messaging_accounts_safe"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
