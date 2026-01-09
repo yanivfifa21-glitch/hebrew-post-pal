@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
 import { crypto } from "https://deno.land/std@0.168.0/crypto/mod.ts";
 
 const corsHeaders = {
@@ -43,14 +44,13 @@ async function expandShortUrl(url: string): Promise<string> {
 }
 
 function parseProductId(url: string): string | undefined {
-  // Multiple patterns to extract numeric product ID
   const patterns = [
     /\/item\/(\d+)\.html/i,
     /\/(\d{10,})\.html/i,
     /productId[=:](\d+)/i,
     /product\/(\d+)/i,
     /item\/(\d+)/i,
-    /\/(\d{10,})/,  // Just a long numeric ID in path
+    /\/(\d{10,})/,
   ];
   
   for (const pattern of patterns) {
@@ -104,23 +104,68 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    // SECURITY: Verify the user from JWT token
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      console.error("[fetch-ali-product] Missing authorization header");
+      const payload: ApiErr = { success: false, error: "Unauthorized" };
+      return new Response(JSON.stringify(payload), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    
+    // Verify user with anon key
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(
+      authHeader.replace("Bearer ", "")
+    );
+
+    if (authError || !user) {
+      console.error("[fetch-ali-product] Auth verification failed:", authError);
+      const payload: ApiErr = { success: false, error: "Unauthorized" };
+      return new Response(JSON.stringify(payload), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const body = await req.json().catch(() => ({}));
     const productUrl = String(body?.productUrl || "").trim();
 
-    console.log("[fetch-ali-product] Input URL:", productUrl);
+    console.log("[fetch-ali-product] Input URL:", productUrl, "for user:", user.id);
 
     if (!productUrl) {
       const payload: ApiErr = { success: false, error: "Product URL is required" };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const appKey = Deno.env.get("ALIEXPRESS_APP_KEY")?.trim();
-    const appSecret = Deno.env.get("ALIEXPRESS_APP_SECRET")?.trim();
-    // Use TELEGRAM as the default tracking ID
-    const trackingId = "TELEGRAM";
+    // Use service role to fetch user's credentials
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const { data: credentials, error: credentialsError } = await supabase
+      .from("user_credentials")
+      .select("aliexpress_app_key, aliexpress_app_secret")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (credentialsError) {
+      console.error("[fetch-ali-product] Error fetching credentials:", credentialsError);
+      const payload: ApiErr = { success: false, error: "Failed to fetch user credentials" };
+      return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Fetch tracking ID from app_settings
+    const { data: settings } = await supabase
+      .from("app_settings")
+      .select("aliexpress_tracking_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const appKey = credentials?.aliexpress_app_key?.trim();
+    const appSecret = credentials?.aliexpress_app_secret?.trim();
+    const trackingId = settings?.aliexpress_tracking_id?.trim() || "TELEGRAM";
 
     if (!appKey || !appSecret) {
-      const payload: ApiErr = { success: false, error: "AliExpress API is not configured (missing APP_KEY or APP_SECRET)" };
+      const payload: ApiErr = { success: false, error: "Please configure your AliExpress API credentials in Settings" };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
@@ -141,7 +186,6 @@ serve(async (req) => {
 
     const cleanUrl = cleanProductUrl(productId);
 
-    // AliExpress affiliate API product detail - use product_ids with just the numeric ID
     const params: Record<string, string> = {
       app_key: appKey,
       method: "aliexpress.affiliate.productdetail.get",
@@ -149,12 +193,12 @@ serve(async (req) => {
       v: "2.0",
       sign_method: "md5",
       tracking_id: trackingId,
-      product_ids: productId,  // Just the numeric ID, not the full URL
+      product_ids: productId,
       target_language: "EN",
       target_currency: "USD",
     };
 
-    console.log("[fetch-ali-product] API params:", JSON.stringify(params));
+    console.log("[fetch-ali-product] API params for user:", user.id);
 
     const sign = await generateMd5Signature(params, appSecret);
 
@@ -171,13 +215,17 @@ serve(async (req) => {
 
     const err = data?.error_response;
     if (err?.msg || err?.code) {
-      const payload: ApiErr = {
-        success: false,
-        error: String(err?.msg || "AliExpress API error"),
+      // Log details server-side for debugging
+      console.error("[fetch-ali-product] AliExpress API Error:", {
         code: err?.code,
         request_id: err?.request_id,
-        trace_id: err?._trace_id_,
-        raw: data,
+        message: err?.msg,
+      });
+      
+      // Return generic message to client (avoid exposing internal details)
+      const payload: ApiErr = {
+        success: false,
+        error: "AliExpress API error - please verify your credentials",
       };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -189,8 +237,7 @@ serve(async (req) => {
     if (!rr || rr?.resp_code !== 200 || !product) {
       const payload: ApiErr = { 
         success: false, 
-        error: `No product data returned (resp_code: ${rr?.resp_code})`, 
-        raw: data 
+        error: "No product data returned from AliExpress"
       };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
