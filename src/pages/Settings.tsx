@@ -276,15 +276,18 @@ const Settings = () => {
         setCredentialsStatus(credStatus as unknown as CredentialsStatus);
       }
 
-      // Fetch messaging accounts (limited data - no tokens)
-      const { data: accounts, error: accountsErr } = await supabase
-        .from('messaging_accounts')
-        .select('id, account_type, account_name, is_active, telegram_chat_id, whatsapp_chat_id')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true });
+      // Fetch messaging accounts via secure RPC (limited data - no tokens)
+      const { data: accounts, error: accountsErr } = await supabase.rpc('get_my_messaging_accounts_safe');
 
       if (accountsErr) throw accountsErr;
-      setMessagingAccounts(accounts || []);
+      setMessagingAccounts((accounts || []).map((acc: any) => ({
+        id: acc.id,
+        account_type: acc.account_type,
+        account_name: acc.account_name,
+        is_active: acc.is_active,
+        telegram_chat_id: acc.telegram_chat_id,
+        whatsapp_chat_id: acc.whatsapp_chat_id,
+      })));
 
     } catch (error) {
       console.error('Error fetching settings:', error);
