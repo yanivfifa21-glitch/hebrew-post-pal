@@ -118,18 +118,15 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Use service role to fetch credentials from secure table (after security verification)
+    // Use service role to fetch decrypted credentials via RPC
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch user's credentials from user_credentials table (server-side only)
+    // Fetch user's decrypted credentials via RPC (server-side only)
     const { data: credentials, error: credentialsError } = await supabase
-      .from("user_credentials")
-      .select("aliexpress_app_key, aliexpress_app_secret")
-      .eq("user_id", userId_from_jwt)
-      .maybeSingle();
+      .rpc("get_decrypted_user_credentials", { p_user_id: userId_from_jwt });
 
-    if (credentialsError) {
-      console.error("[generate-affiliate-link] Error fetching credentials:", credentialsError);
+    if (credentialsError || credentials?.error) {
+      console.error("[generate-affiliate-link] Error fetching credentials:", credentialsError || credentials?.error);
       const payload: ApiErr = { success: false, error: "Failed to fetch user credentials" };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }

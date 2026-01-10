@@ -60,18 +60,15 @@ serve(async (req) => {
       );
     }
 
-    // Use service role to fetch credentials from secure table (after security verification)
+    // Use service role to fetch decrypted credentials via RPC
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch user's credentials from user_credentials table (server-side only)
+    // Fetch user's decrypted credentials via RPC (server-side only)
     const { data: credentials, error: credentialsError } = await supabase
-      .from("user_credentials")
-      .select("greenapi_instance_id, greenapi_api_token, greenapi_chat_id")
-      .eq("user_id", user.id)
-      .maybeSingle();
+      .rpc("get_decrypted_user_credentials", { p_user_id: user.id });
 
-    if (credentialsError) {
-      console.error("[send-whatsapp] Error fetching credentials:", credentialsError);
+    if (credentialsError || credentials?.error) {
+      console.error("[send-whatsapp] Error fetching credentials:", credentialsError || credentials?.error);
       return new Response(
         JSON.stringify({ success: false, error: "Failed to fetch user credentials" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

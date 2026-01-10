@@ -263,12 +263,17 @@ serve(async (req) => {
         continue;
       }
 
-      // Fetch user credentials from secure table
-      const { data: credentials } = await supabase
-        .from("user_credentials")
-        .select("telegram_bot_token, telegram_chat_id, greenapi_instance_id, greenapi_api_token, greenapi_chat_id")
-        .eq("user_id", userId)
-        .maybeSingle();
+      // Fetch user decrypted credentials via RPC
+      const { data: credentials, error: credError } = await supabase
+        .rpc("get_decrypted_user_credentials", { p_user_id: userId });
+      
+      if (credError || credentials?.error) {
+        console.error(`[auto-post] User ${userId}: Failed to fetch credentials:`, credError || credentials?.error);
+        results.push({ userId, status: "credentials_error", productId: product.id });
+        // Reset product to Scheduled so it can be retried
+        await supabase.from("products").update({ status: "Scheduled" }).eq("id", product.id);
+        continue;
+      }
 
       // Step G: Build message and send
       const message = buildMessage(product);
