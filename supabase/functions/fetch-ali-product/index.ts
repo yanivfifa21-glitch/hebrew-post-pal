@@ -92,10 +92,12 @@ function normalizeMetaFromApi(raw: any): ProductMeta {
 
   const price = typeof priceStr === "number" ? priceStr : parseFloat(String(priceStr)) || 0;
 
-  const orders_count =
-    (typeof p?.sales_count === "number" ? p.sales_count : parseInt(String(p?.sales_count || p?.salesCount || 0))) || 0;
+  // Use lastest_volume directly from AliExpress API for actual sales count
+  const orders_count = parseInt(String(p?.lastest_volume || p?.lastestVolume || 0)) || 0;
 
-  const rating = typeof p?.evaluate_rate === "number" ? p.evaluate_rate : parseFloat(String(p?.evaluate_rate || p?.evaluateRate || 0)) || 0;
+  // Use evaluate_rate directly from AliExpress API for actual user rating (percentage)
+  const ratingPercent = parseFloat(String(p?.evaluate_rate || p?.evaluateRate || 0)) || 0;
+  const rating = (ratingPercent / 100) * 5; // Convert percentage to 5-star scale
 
   return { title, price, image_url, orders_count, rating };
 }
