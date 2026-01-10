@@ -229,40 +229,40 @@ export type Database = {
       }
       user_credentials: {
         Row: {
-          aliexpress_app_key: string | null
-          aliexpress_app_secret: string | null
           created_at: string | null
-          greenapi_api_token: string | null
+          encrypted_aliexpress_app_key: string | null
+          encrypted_aliexpress_app_secret: string | null
+          encrypted_greenapi_api_token: string | null
+          encrypted_telegram_bot_token: string | null
           greenapi_chat_id: string | null
           greenapi_instance_id: string | null
           id: string
-          telegram_bot_token: string | null
           telegram_chat_id: string | null
           updated_at: string | null
           user_id: string
         }
         Insert: {
-          aliexpress_app_key?: string | null
-          aliexpress_app_secret?: string | null
           created_at?: string | null
-          greenapi_api_token?: string | null
+          encrypted_aliexpress_app_key?: string | null
+          encrypted_aliexpress_app_secret?: string | null
+          encrypted_greenapi_api_token?: string | null
+          encrypted_telegram_bot_token?: string | null
           greenapi_chat_id?: string | null
           greenapi_instance_id?: string | null
           id?: string
-          telegram_bot_token?: string | null
           telegram_chat_id?: string | null
           updated_at?: string | null
           user_id: string
         }
         Update: {
-          aliexpress_app_key?: string | null
-          aliexpress_app_secret?: string | null
           created_at?: string | null
-          greenapi_api_token?: string | null
+          encrypted_aliexpress_app_key?: string | null
+          encrypted_aliexpress_app_secret?: string | null
+          encrypted_greenapi_api_token?: string | null
+          encrypted_telegram_bot_token?: string | null
           greenapi_chat_id?: string | null
           greenapi_instance_id?: string | null
           id?: string
-          telegram_bot_token?: string | null
           telegram_chat_id?: string | null
           updated_at?: string | null
           user_id?: string
@@ -299,6 +299,10 @@ export type Database = {
       encrypt_credential: { Args: { plain_text: string }; Returns: string }
       get_account_credentials_status: {
         Args: { p_account_id: string }
+        Returns: Json
+      }
+      get_decrypted_user_credentials: {
+        Args: { p_user_id: string }
         Returns: Json
       }
       get_my_access_status: { Args: never; Returns: string }

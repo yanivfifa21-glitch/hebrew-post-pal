@@ -138,17 +138,14 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Use service role to fetch user's credentials
+    // Use service role to fetch user's decrypted credentials via RPC
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { data: credentials, error: credentialsError } = await supabase
-      .from("user_credentials")
-      .select("aliexpress_app_key, aliexpress_app_secret")
-      .eq("user_id", user.id)
-      .maybeSingle();
+      .rpc("get_decrypted_user_credentials", { p_user_id: user.id });
 
-    if (credentialsError) {
-      console.error("[fetch-ali-product] Error fetching credentials:", credentialsError);
+    if (credentialsError || credentials?.error) {
+      console.error("[fetch-ali-product] Error fetching credentials:", credentialsError || credentials?.error);
       const payload: ApiErr = { success: false, error: "Failed to fetch user credentials" };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
