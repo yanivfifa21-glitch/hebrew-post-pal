@@ -96,10 +96,10 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
     return `🎟️ קופון *${coupon.code}* נותן הנחה של *${coupon.amount}* דולר`;
   };
 
-  // Build price text: "$X כ-₪Y"
+  // Build price text: "💰 רק $X כ-₪Y"
   const buildPriceText = (): string => {
     if (!dollarPrice || dollarPrice === "0" || !ilsPrice) return "";
-    return `💰 *$${dollarPrice}* כ-*₪${ilsPrice}*`;
+    return `💰 רק *${dollarPrice}$* כ-*₪${ilsPrice}*`;
   };
 
   const handleGenerateHebrew = async () => {
@@ -231,7 +231,7 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
                 />
                 {dollarPrice && ilsPrice && (
                   <p className="text-xs text-primary mt-1 font-medium" dir="rtl">
-                    יופיע: ${dollarPrice} כ-₪{ilsPrice}
+                    יופיע: 💰 רק {dollarPrice}$ כ-₪{ilsPrice}
                   </p>
                 )}
               </div>

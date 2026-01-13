@@ -29,7 +29,8 @@ import {
   Check,
   AlertCircle,
   Edit,
-  MessageSquare
+  MessageSquare,
+  RefreshCw
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -229,6 +230,37 @@ const Settings = () => {
   const [isSavingAccount, setIsSavingAccount] = useState(false);
 
   const [isResettingStuck, setIsResettingStuck] = useState(false);
+  const [isFetchingRate, setIsFetchingRate] = useState(false);
+
+  const fetchBankIsraelRate = async () => {
+    setIsFetchingRate(true);
+    try {
+      // Bank of Israel API for USD exchange rate
+      const response = await fetch('https://www.boi.org.il/PublicApi/GetExchangeRates?asXml=false');
+      const data = await response.json();
+      
+      // Find USD rate
+      const usdRate = data.exchangeRates?.find((rate: any) => rate.key === 'USD');
+      if (usdRate?.currentExchangeRate) {
+        setUsdExchangeRate(parseFloat(usdRate.currentExchangeRate));
+        toast({
+          title: "שער עודכן!",
+          description: `שער דולר עודכן ל-₪${usdRate.currentExchangeRate}`,
+        });
+      } else {
+        throw new Error('Could not find USD rate');
+      }
+    } catch (error) {
+      console.error('Error fetching BOI rate:', error);
+      toast({
+        title: "שגיאה בעדכון שער",
+        description: "לא ניתן לקבל שער מבנק ישראל. נסה שוב מאוחר יותר.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsFetchingRate(false);
+    }
+  };
 
   useEffect(() => {
     fetchSettings();
@@ -1411,7 +1443,23 @@ const Settings = () => {
               />
             </div>
             <div className="space-y-2">
-              <Label className="text-sm font-medium">שער דולר (₪)</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">שער דולר (₪)</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchBankIsraelRate}
+                  disabled={isFetchingRate}
+                >
+                  {isFetchingRate ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4 mr-1" />
+                  )}
+                  עדכון מבנק ישראל
+                </Button>
+              </div>
               <p className="text-xs text-muted-foreground">שער חליפין להמרת מחירים מדולר לשקל</p>
               <Input
                 type="number"
