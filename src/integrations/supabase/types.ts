@@ -32,6 +32,7 @@ export type Database = {
           telegram_chat_id: string | null
           telegram_enabled: boolean | null
           updated_at: string
+          usd_exchange_rate: number | null
           user_id: string
           whatsapp_enabled: boolean | null
         }
@@ -52,6 +53,7 @@ export type Database = {
           telegram_chat_id?: string | null
           telegram_enabled?: boolean | null
           updated_at?: string
+          usd_exchange_rate?: number | null
           user_id: string
           whatsapp_enabled?: boolean | null
         }
@@ -72,6 +74,7 @@ export type Database = {
           telegram_chat_id?: string | null
           telegram_enabled?: boolean | null
           updated_at?: string
+          usd_exchange_rate?: number | null
           user_id?: string
           whatsapp_enabled?: boolean | null
         }

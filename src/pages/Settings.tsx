@@ -213,6 +213,9 @@ const Settings = () => {
   // Custom AI prompt
   const [customAiPrompt, setCustomAiPrompt] = useState('');
 
+  // USD Exchange rate
+  const [usdExchangeRate, setUsdExchangeRate] = useState<number>(3.7);
+
   // Multi-account management
   const [messagingAccounts, setMessagingAccounts] = useState<MessagingAccount[]>([]);
   const [showAddAccountDialog, setShowAddAccountDialog] = useState<'telegram' | 'whatsapp' | null>(null);
@@ -240,7 +243,7 @@ const Settings = () => {
       // Fetch app settings (non-sensitive data only)
       const { data, error } = await supabase
         .from('app_settings')
-        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, posting_interval_hours, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, interval_start_time, interval_end_time')
+        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, posting_interval_hours, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, interval_start_time, interval_end_time, usd_exchange_rate')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -259,6 +262,7 @@ const Settings = () => {
         setShabbatEndTime(data.shabbat_end_time || '20:00');
         setIntervalStartTime((data as any).interval_start_time || '08:00');
         setIntervalEndTime((data as any).interval_end_time || '22:00');
+        setUsdExchangeRate((data as any).usd_exchange_rate || 3.7);
         
         // Set custom prompt - use saved value or default
         setCustomAiPrompt(data.custom_ai_prompt && data.custom_ai_prompt.trim() !== '' 
@@ -317,6 +321,7 @@ const Settings = () => {
         shabbat_end_time: shabbatEndTime,
         interval_start_time: intervalStartTime,
         interval_end_time: intervalEndTime,
+        usd_exchange_rate: usdExchangeRate,
       };
 
       if (settingsId) {
@@ -1403,6 +1408,18 @@ const Settings = () => {
                 value={aliexpressTrackingId}
                 onChange={(e) => setAliexpressTrackingId(e.target.value)}
                 placeholder="Enter your Tracking ID (e.g., TELEGRAM)"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">שער דולר (₪)</Label>
+              <p className="text-xs text-muted-foreground">שער חליפין להמרת מחירים מדולר לשקל</p>
+              <Input
+                type="number"
+                step="0.01"
+                value={usdExchangeRate}
+                onChange={(e) => setUsdExchangeRate(parseFloat(e.target.value) || 3.7)}
+                placeholder="3.7"
+                className="w-32"
               />
             </div>
           </CardContent>

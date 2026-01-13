@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { FetchedProductData, Product } from "@/types/product";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,10 +25,34 @@ interface ProductEditorProps {
 export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostNow, isLoading, initialCoupons }: ProductEditorProps) => {
   const [title, setTitle] = useState(productData.title);
   const [price, setPrice] = useState(productData.price.toString());
+  const [dollarPrice, setDollarPrice] = useState<string>("");
+  const [usdExchangeRate, setUsdExchangeRate] = useState<number>(3.7);
   const [affiliateLink, setAffiliateLink] = useState(productData.affiliateLink || "");
   const [hebrewDescription, setHebrewDescription] = useState(productData.hebrewDescription || "");
   const [isGenerating, setIsGenerating] = useState(false);
   const [coupons, setCoupons] = useState<Coupon[]>(initialCoupons || [{ code: "", amount: "" }]);
+
+  // Fetch USD exchange rate from settings
+  useEffect(() => {
+    const fetchExchangeRate = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      
+      const { data } = await supabase
+        .from('app_settings')
+        .select('usd_exchange_rate')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (data?.usd_exchange_rate) {
+        setUsdExchangeRate(data.usd_exchange_rate);
+      }
+    };
+    fetchExchangeRate();
+  }, []);
+
+  // Calculate ILS price when dollar price changes
+  const ilsPrice = dollarPrice ? (parseFloat(dollarPrice) * usdExchangeRate).toFixed(0) : "";
 
   const addCoupon = () => {
     setCoupons([...coupons, { code: "", amount: "" }]);
@@ -72,6 +96,12 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
     return `🎟️ קופון *${coupon.code}* נותן הנחה של *${coupon.amount}* דולר`;
   };
 
+  // Build price text: "$X כ-₪Y"
+  const buildPriceText = (): string => {
+    if (!dollarPrice || dollarPrice === "0" || !ilsPrice) return "";
+    return `💰 *$${dollarPrice}* כ-*₪${ilsPrice}*`;
+  };
+
   const handleGenerateHebrew = async () => {
     setIsGenerating(true);
     try {
@@ -86,9 +116,11 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || "Failed to generate Hebrew post");
 
-      // Build final description with coupons and link
+      // Build final description with price, coupons and link
+      const priceText = buildPriceText();
       const couponText = buildCouponText();
       const parts = [data.hebrewDescription];
+      if (priceText) parts.push(priceText);
       if (couponText) parts.push(couponText);
       parts.push(`👉 לרכישה: ${affiliateLink}`);
       
@@ -187,14 +219,32 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
                 />
               </div>
               <div>
-                <Label htmlFor="affiliate">Affiliate Link</Label>
+                <Label htmlFor="dollarPrice">מחיר לפוסט ($)</Label>
                 <Input
-                  id="affiliate"
-                  value={affiliateLink}
-                  onChange={(e) => setAffiliateLink(e.target.value)}
-                  placeholder="Your affiliate link..."
+                  id="dollarPrice"
+                  type="number"
+                  step="0.01"
+                  value={dollarPrice}
+                  onChange={(e) => setDollarPrice(e.target.value)}
+                  placeholder="אופציונלי"
                   className="mt-1.5"
                 />
+                {dollarPrice && ilsPrice && (
+                  <p className="text-xs text-primary mt-1 font-medium" dir="rtl">
+                    יופיע: ${dollarPrice} כ-₪{ilsPrice}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="affiliate">Affiliate Link</Label>
+              <Input
+                id="affiliate"
+                value={affiliateLink}
+                onChange={(e) => setAffiliateLink(e.target.value)}
+                placeholder="Your affiliate link..."
+                className="mt-1.5"
+              />
             </div>
 
             {/* Coupons Section */}
@@ -241,7 +291,6 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
               )}
             </div>
           </div>
-        </div>
         </div>
 
         <div className="space-y-4">
