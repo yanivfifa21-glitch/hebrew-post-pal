@@ -13,6 +13,7 @@ interface WhatsAppRequest {
   imageUrl: string | null;
   affiliateLink: string | null;
   userId: string;
+  accountId?: string; // Optional: specific account to use
 }
 
 serve(async (req) => {
@@ -49,7 +50,7 @@ serve(async (req) => {
       );
     }
 
-    const { title, hebrewDescription, price, imageUrl, affiliateLink, userId }: WhatsAppRequest = await req.json();
+    const { title, hebrewDescription, price, imageUrl, affiliateLink, userId, accountId }: WhatsAppRequest = await req.json();
 
     // SECURITY: Verify the userId matches the authenticated user
     if (userId !== user.id) {
@@ -60,29 +61,73 @@ serve(async (req) => {
       );
     }
 
-    // Use service role to fetch decrypted credentials via RPC
+    // Use service role to fetch credentials
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch user's decrypted credentials via RPC (server-side only)
-    const { data: credentials, error: credentialsError } = await supabase
-      .rpc("get_decrypted_user_credentials", { p_user_id: user.id });
+    let instanceId: string | null = null;
+    let apiToken: string | null = null;
+    let chatId: string | null = null;
 
-    if (credentialsError || credentials?.error) {
-      console.error("[send-whatsapp] Error fetching credentials:", credentialsError || credentials?.error);
-      return new Response(
-        JSON.stringify({ success: false, error: "Failed to fetch user credentials" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // If accountId is provided, fetch from messaging_accounts
+    if (accountId) {
+      console.log("[send-whatsapp] Fetching credentials for account:", accountId);
+      
+      // First verify the account belongs to this user
+      const { data: account, error: accountError } = await supabase
+        .from("messaging_accounts")
+        .select("*")
+        .eq("id", accountId)
+        .eq("user_id", user.id)
+        .single();
+
+      if (accountError || !account) {
+        console.error("[send-whatsapp] Account not found or unauthorized:", accountError);
+        return new Response(
+          JSON.stringify({ success: false, error: "Account not found or unauthorized" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Decrypt credentials
+      if (account.encrypted_instance_id) {
+        const { data: decrypted } = await supabase.rpc("decrypt_credential", { 
+          encrypted_data: account.encrypted_instance_id 
+        });
+        instanceId = decrypted?.trim() || null;
+      }
+      
+      if (account.encrypted_api_token) {
+        const { data: decrypted } = await supabase.rpc("decrypt_credential", { 
+          encrypted_data: account.encrypted_api_token 
+        });
+        apiToken = decrypted?.trim() || null;
+      }
+      
+      chatId = account.whatsapp_chat_id?.trim() || null;
+
+    } else {
+      // Fallback: fetch from user_credentials (legacy)
+      console.log("[send-whatsapp] Using legacy user_credentials");
+      const { data: credentials, error: credentialsError } = await supabase
+        .rpc("get_decrypted_user_credentials", { p_user_id: user.id });
+
+      if (credentialsError || credentials?.error) {
+        console.error("[send-whatsapp] Error fetching credentials:", credentialsError || credentials?.error);
+        return new Response(
+          JSON.stringify({ success: false, error: "Failed to fetch user credentials" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      instanceId = credentials?.greenapi_instance_id?.trim() || null;
+      apiToken = credentials?.greenapi_api_token?.trim() || null;
+      chatId = credentials?.greenapi_chat_id?.trim() || null;
     }
 
-    const instanceId = credentials?.greenapi_instance_id?.trim();
-    const apiToken = credentials?.greenapi_api_token?.trim();
-    let chatId = credentials?.greenapi_chat_id?.trim();
-
     if (!instanceId || !apiToken || !chatId) {
-      console.error("[send-whatsapp] Missing user credentials");
+      console.error("[send-whatsapp] Missing credentials - instanceId:", !!instanceId, "apiToken:", !!apiToken, "chatId:", !!chatId);
       return new Response(
-        JSON.stringify({ success: false, error: "Please configure your WhatsApp (GreenAPI) credentials in Settings" }),
+        JSON.stringify({ success: false, error: "הגדר Instance ID, API Token ו-Chat ID בהגדרות WhatsApp" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

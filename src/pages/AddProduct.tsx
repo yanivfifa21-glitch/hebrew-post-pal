@@ -321,59 +321,76 @@ const AddProduct = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const { data: settings, error: settingsErr } = await supabase
-        .from("app_settings")
-        .select("*")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      // Get active messaging accounts (not app_settings)
+      const { data: accounts } = await supabase
+        .rpc("get_my_messaging_accounts_safe");
 
-      if (settingsErr) throw settingsErr;
+      const activeWhatsApp = accounts?.filter(
+        (acc: any) => acc.account_type === "whatsapp" && acc.is_active && acc.has_api_token && acc.has_instance_id
+      ) || [];
+      
+      const activeTelegram = accounts?.filter(
+        (acc: any) => acc.account_type === "telegram" && acc.is_active && acc.has_bot_token && acc.telegram_chat_id
+      ) || [];
 
       const channels: string[] = [];
+      const errors: string[] = [];
 
-      if (settings?.whatsapp_enabled) {
-        const { data, error } = await supabase.functions.invoke("send-whatsapp", {
-          body: {
-            title: product.title,
-            hebrewDescription: product.hebrew_description,
-            price: product.price,
-            imageUrl: product.image_url,
-            affiliateLink: product.affiliate_link,
-            userId: user.id,
-          },
-        });
-
-        if (error) throw new Error(`WhatsApp: ${error.message}`);
-        if (!data?.success) throw new Error(`WhatsApp: ${data?.error || "Failed to send"}`);
-
-        channels.push("whatsapp");
+      // Send to all active WhatsApp accounts
+      for (const acc of activeWhatsApp) {
+        try {
+          const { data, error } = await supabase.functions.invoke("send-whatsapp", {
+            body: {
+              title: product.title,
+              hebrewDescription: product.hebrew_description,
+              price: product.price,
+              imageUrl: product.image_url,
+              affiliateLink: product.affiliate_link,
+              userId: user.id,
+              accountId: acc.id,
+            },
+          });
+          if (error) throw new Error(error.message);
+          if (!data?.success) throw new Error(data?.error || "Failed");
+          if (!channels.includes("whatsapp")) channels.push("whatsapp");
+        } catch (e) {
+          errors.push(`WhatsApp (${acc.account_name}): ${e instanceof Error ? e.message : "Failed"}`);
+        }
       }
 
-      if (settings?.telegram_enabled) {
-        const { data, error } = await supabase.functions.invoke("send-telegram", {
-          body: {
-            title: product.title,
-            hebrewDescription: product.hebrew_description,
-            price: product.price,
-            imageUrl: product.image_url,
-            affiliateLink: product.affiliate_link,
-            userId: user.id,
-          },
-        });
-
-        if (error) throw new Error(`Telegram: ${error.message}`);
-        if (!data?.success) throw new Error(`Telegram: ${data?.error || "Failed to send"}`);
-
-        channels.push("telegram");
+      // Send to all active Telegram accounts
+      for (const acc of activeTelegram) {
+        try {
+          const { data, error } = await supabase.functions.invoke("send-telegram", {
+            body: {
+              title: product.title,
+              hebrewDescription: product.hebrew_description,
+              price: product.price,
+              imageUrl: product.image_url,
+              affiliateLink: product.affiliate_link,
+              userId: user.id,
+              accountId: acc.id,
+            },
+          });
+          if (error) throw new Error(error.message);
+          if (!data?.success) throw new Error(data?.error || "Failed");
+          if (!channels.includes("telegram")) channels.push("telegram");
+        } catch (e) {
+          errors.push(`Telegram (${acc.account_name}): ${e instanceof Error ? e.message : "Failed"}`);
+        }
       }
 
-      if (channels.length === 0) {
+      if (channels.length === 0 && activeWhatsApp.length === 0 && activeTelegram.length === 0) {
         toast({
-          title: "No Channels Enabled",
-          description: "Please enable WhatsApp or Telegram in Settings first.",
+          title: "אין ערוצים פעילים",
+          description: "הוסף חשבון WhatsApp או Telegram פעיל עם credentials בהגדרות.",
           variant: "destructive",
         });
         return;
+      }
+
+      if (channels.length === 0 && errors.length > 0) {
+        throw new Error(errors.join("; "));
       }
 
       if (draftProductId) {

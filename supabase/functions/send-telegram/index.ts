@@ -13,6 +13,7 @@ interface TelegramRequest {
   imageUrl: string | null;
   affiliateLink: string | null;
   userId: string;
+  accountId?: string; // Optional: specific account to use
 }
 
 serve(async (req) => {
@@ -49,7 +50,7 @@ serve(async (req) => {
       );
     }
 
-    const { title, hebrewDescription, price, imageUrl, affiliateLink, userId }: TelegramRequest = await req.json();
+    const { title, hebrewDescription, price, imageUrl, affiliateLink, userId, accountId }: TelegramRequest = await req.json();
 
     // SECURITY: Verify the userId matches the authenticated user
     if (userId !== user.id) {
@@ -60,28 +61,75 @@ serve(async (req) => {
       );
     }
 
-    // Use service role to fetch decrypted credentials via RPC
+    // Use service role to fetch credentials
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch user's decrypted credentials via RPC (server-side only)
-    const { data: credentials, error: credentialsError } = await supabase
-      .rpc("get_decrypted_user_credentials", { p_user_id: user.id });
+    let botToken: string | null = null;
+    let chatId: string | null = null;
 
-    if (credentialsError || credentials?.error) {
-      console.error("[send-telegram] Error fetching credentials:", credentialsError || credentials?.error);
-      return new Response(
-        JSON.stringify({ success: false, error: "Failed to fetch user credentials" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // If accountId is provided, fetch from messaging_accounts
+    if (accountId) {
+      console.log("[send-telegram] Fetching credentials for account:", accountId);
+      
+      // First verify the account belongs to this user
+      const { data: account, error: accountError } = await supabase
+        .from("messaging_accounts")
+        .select("*")
+        .eq("id", accountId)
+        .eq("user_id", user.id)
+        .single();
+
+      if (accountError || !account) {
+        console.error("[send-telegram] Account not found or unauthorized:", accountError);
+        return new Response(
+          JSON.stringify({ success: false, error: "Account not found or unauthorized" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Get decrypted credentials via RPC
+      const { data: credentials, error: credError } = await supabase
+        .rpc("get_account_credentials_status", { p_account_id: accountId });
+
+      if (credError) {
+        console.error("[send-telegram] Error fetching account credentials:", credError);
+        return new Response(
+          JSON.stringify({ success: false, error: "Failed to fetch account credentials" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Decrypt the bot token directly
+      if (account.encrypted_bot_token) {
+        const { data: decrypted } = await supabase.rpc("decrypt_credential", { 
+          encrypted_data: account.encrypted_bot_token 
+        });
+        botToken = decrypted?.trim() || null;
+      }
+      chatId = account.telegram_chat_id?.trim() || null;
+
+    } else {
+      // Fallback: fetch from user_credentials (legacy)
+      console.log("[send-telegram] Using legacy user_credentials");
+      const { data: credentials, error: credentialsError } = await supabase
+        .rpc("get_decrypted_user_credentials", { p_user_id: user.id });
+
+      if (credentialsError || credentials?.error) {
+        console.error("[send-telegram] Error fetching credentials:", credentialsError || credentials?.error);
+        return new Response(
+          JSON.stringify({ success: false, error: "Failed to fetch user credentials" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      botToken = credentials?.telegram_bot_token?.trim() || null;
+      chatId = credentials?.telegram_chat_id?.trim() || null;
     }
 
-    const botToken = credentials?.telegram_bot_token?.trim();
-    const chatId = credentials?.telegram_chat_id?.trim();
-
     if (!botToken || !chatId) {
-      console.error("[send-telegram] Missing user credentials");
+      console.error("[send-telegram] Missing credentials - botToken:", !!botToken, "chatId:", !!chatId);
       return new Response(
-        JSON.stringify({ success: false, error: "Please configure your Telegram credentials in Settings" }),
+        JSON.stringify({ success: false, error: "הגדר Bot Token ו-Chat ID בהגדרות הטלגרם" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
