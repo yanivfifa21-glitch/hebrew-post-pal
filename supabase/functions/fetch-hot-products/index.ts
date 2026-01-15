@@ -7,13 +7,21 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Top-selling categories for Israel market
-const POPULAR_CATEGORIES = ["509", "15", "44", "34"];
+// Hebrew category mapping to AliExpress IDs
+// אלקטרוניקה ואביזרי מובייל: 509, 44
+// בית חכם ואביזרי בית: 15, 39
+// טיפוח, יופי ובריאות: 66, 200001996
+// כושר, ספורט ואורח חיים: 200000297, 200003498
+// רכב ואביזרי רכב: 34
+// גאדג׳טים ומוצרים ויראליים: 200003482, 7
+// משרד, מחשבים וציוד היקפי: 7, 21
+// אודיו וטכנולוגיה לבישה: 44, 509
+const POPULAR_CATEGORIES = ["509", "44", "15", "39", "66", "200000297", "34", "200003482", "7"];
 
-// Quality filters
-const MIN_RATING = 4.5;
-const MIN_SALES = 50;
-const MAX_DELIVERY_DAYS = 15;
+// Quality filters - relaxed for more results
+const MIN_RATING = 4.0;
+const MIN_SALES = 20;
+const MAX_DELIVERY_DAYS = 20;
 
 type HotProduct = {
   product_id: string;
@@ -74,8 +82,9 @@ serve(async (req) => {
     const category = String(body?.category || "").trim();
     const keywords = String(body?.keywords || "").trim();
     const page = parseInt(body?.page) || 1;
-    const pageSize = Math.min(parseInt(body?.pageSize) || 30, 50);
-    const sort = String(body?.sort || "BEST_MATCH").trim();
+    const pageSize = Math.min(parseInt(body?.pageSize) || 20, 50);
+    // Sort by volume (sales) to get hottest products
+    const sort = String(body?.sort || "VOLUME_DESC").trim();
 
     // Use service role to fetch user's decrypted credentials via RPC
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
