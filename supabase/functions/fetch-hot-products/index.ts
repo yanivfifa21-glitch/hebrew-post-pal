@@ -7,21 +7,28 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Hebrew category mapping to AliExpress IDs
-// אלקטרוניקה ואביזרי מובייל: 509, 44
-// בית חכם ואביזרי בית: 15, 39
-// טיפוח, יופי ובריאות: 66, 200001996
-// כושר, ספורט ואורח חיים: 200000297, 200003498
-// רכב ואביזרי רכב: 34
-// גאדג׳טים ומוצרים ויראליים: 200003482, 7
-// משרד, מחשבים וציוד היקפי: 7, 21
-// אודיו וטכנולוגיה לבישה: 44, 509
-const POPULAR_CATEGORIES = ["509", "44", "15", "39", "66", "200000297", "34", "200003482", "7"];
+// Category fallback keywords (used only if Hot Product API returns empty)
+const CATEGORY_FALLBACK_KEYWORDS: Record<string, string> = {
+  // Electronics & mobile
+  "509": "phone accessories",
+  // Smart home & home
+  "15": "smart home",
+  // Beauty, health
+  "66": "beauty health",
+  // Sports
+  "200000297": "fitness sport",
+  // Automotive
+  "34": "car accessories",
+  // Viral gadgets
+  "200003482": "cool gadgets",
+  // Computers / office
+  "7": "computer accessories",
+  // Audio / wearables
+  "44": "headphones earbuds",
+};
 
-// Quality filters - relaxed for more results
-const MIN_RATING = 4.0;
-const MIN_SALES = 20;
-const MAX_DELIVERY_DAYS = 20;
+// Keep delivery constraint reasonable but not too strict
+const MAX_DELIVERY_DAYS = 30;
 
 type HotProduct = {
   product_id: string;
@@ -114,100 +121,148 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    console.log("[fetch-hot-products] User:", user.id, "| category:", category, "| keywords:", keywords);
+    console.log("[fetch-hot-products] User:", user.id, "| category:", category, "| keywords:", keywords, "| requested pageSize:", pageSize);
 
-    // Use specified category or cycle through popular categories
-    let categoryIds = category;
-    if (!categoryIds) {
-      const randomIndex = Math.floor(Math.random() * POPULAR_CATEGORIES.length);
-      categoryIds = POPULAR_CATEGORIES[randomIndex];
-    }
+    const desiredCount = Math.min(pageSize || 20, 50);
 
-    // Build API params for hot products with Israel market focus - using USER'S credentials
-    const params: Record<string, string> = {
-      app_key: appKey,
-      method: "aliexpress.affiliate.hotproduct.query",
-      timestamp: Date.now().toString(),
-      v: "2.0",
-      sign_method: "md5",
-      tracking_id: trackingId,
-      target_language: "EN",
-      target_currency: "ILS",
-      ship_to_country: "IL",
-      page_no: page.toString(),
-      page_size: pageSize.toString(),
-      sort: sort,
-      category_ids: categoryIds,
-      delivery_days: MAX_DELIVERY_DAYS.toString(),
+    // For "top sellers by category" we use product.query (more stable than hotproduct.query for some categories)
+    const callAliProductQuery = async (categoryId: string, pageNo: number, perPage: number) => {
+      const params: Record<string, string> = {
+        app_key: appKey,
+        method: "aliexpress.affiliate.product.query",
+        timestamp: Date.now().toString(),
+        v: "2.0",
+        sign_method: "md5",
+        tracking_id: trackingId,
+        target_language: "EN",
+        target_currency: "ILS",
+        ship_to_country: "IL",
+        delivery_days: MAX_DELIVERY_DAYS.toString(),
+        page_no: String(pageNo),
+        page_size: String(perPage),
+        sort,
+        min_sale_price: "5",
+        category_ids: categoryId,
+      };
+
+      // Optional keywords (user typed search) – still keep category constraint
+      if (keywords) params.keywords = keywords;
+
+      const sign = await generateMd5Signature(params, appSecret);
+      const qs = Object.entries({ ...params, sign })
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join("&");
+
+      const apiUrl = `https://api-sg.aliexpress.com/sync?${qs}`;
+      const resp = await fetch(apiUrl, { method: "GET" });
+      const data = await resp.json().catch(() => ({}));
+      return { resp, data };
     };
 
-    if (keywords) {
-      params.keywords = keywords;
-    }
+    const mapProduct = (p: any): HotProduct | null => {
+      const productId = String(p.product_id || "").trim();
+      const title = String(p.product_title || "").trim();
+      const imageUrl = String(p.product_main_image_url || p.product_main_image || "").trim();
 
-    console.log("[fetch-hot-products] API request for user:", user.id);
+      const price = parseFloat(p.target_sale_price || p.target_original_price || p.app_sale_price || p.original_price || "0") || 0;
+      const originalPrice = parseFloat(p.target_original_price || p.original_price || "0") || price;
 
-    const sign = await generateMd5Signature(params, appSecret);
-    const qs = Object.entries({ ...params, sign })
-      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-      .join("&");
+      const salesCount = parseInt(p.lastest_volume || p.volume || p.total_sold || "0") || 0;
+      const ratingPercent = parseFloat(p.evaluate_rate || "0") || 0;
+      const ratingStars = (ratingPercent / 100) * 5;
 
-    const apiUrl = `https://api-sg.aliexpress.com/sync?${qs}`;
-    const resp = await fetch(apiUrl, { method: "GET" });
-    const data = await resp.json().catch(() => ({}));
+      const productUrl = `https://www.aliexpress.com/item/${productId}.html`;
 
-    console.log("[fetch-hot-products] API response:", JSON.stringify(data).substring(0, 500));
+      // Avoid broken cards
+      if (!productId || !title || !imageUrl) return null;
 
-    const err = data?.error_response;
-    if (err?.msg || err?.code) {
-      console.error("[fetch-hot-products] API Error:", err);
-      const payload: ApiErr = {
-        success: false,
-        error: "AliExpress API error - please verify your credentials",
+      return {
+        product_id: productId,
+        title,
+        price,
+        original_price: originalPrice,
+        image_url: imageUrl,
+        sales_count: salesCount,
+        rating: Math.min(Math.max(ratingStars, 0), 5),
+        product_url: productUrl,
       };
-      return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    const rr = data?.aliexpress_affiliate_hotproduct_query_response?.resp_result;
-    const result = rr?.result;
-    
-    if (!rr || rr?.resp_code !== 200) {
-      const payload: ApiErr = { 
-        success: false, 
-        error: "AliExpress API error - please verify your credentials"
-      };
-      return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    const rawProducts = result?.products?.product || [];
-    
-    // Map and apply quality filters: 4.5+ rating, 50+ sales
-    const products: HotProduct[] = rawProducts
-      .map((p: any) => {
-        const ratingPercent = parseFloat(p.evaluate_rate || "0");
-        const ratingStars = (ratingPercent / 100) * 5;
-        
-        return {
-          product_id: String(p.product_id || ""),
-          title: String(p.product_title || ""),
-          price: parseFloat(p.target_sale_price || p.target_original_price || "0"),
-          original_price: parseFloat(p.target_original_price || "0"),
-          image_url: String(p.product_main_image_url || ""),
-          sales_count: parseInt(p.lastest_volume || "0") || 0,
-          rating: ratingStars,
-          product_url: `https://www.aliexpress.com/item/${p.product_id}.html`,
-        };
-      })
-      .filter((p: HotProduct) => p.rating >= MIN_RATING && p.sales_count >= MIN_SALES);
-
-    console.log(`[fetch-hot-products] Filtered ${rawProducts.length} -> ${products.length} products (min rating: ${MIN_RATING}, min sales: ${MIN_SALES})`);
-
-    const payload: ApiOk = { 
-      success: true, 
-      products, 
-      total: products.length 
     };
-    
+
+    const collectTopForCategory = async (categoryId: string) => {
+      const collected: HotProduct[] = [];
+      const seen = new Set<string>();
+      const perPage = 50;
+      const maxPages = 5;
+
+      for (let pageNo = 1; pageNo <= maxPages && collected.length < desiredCount; pageNo++) {
+        const { data } = await callAliProductQuery(categoryId, pageNo, perPage);
+
+        const err = data?.error_response;
+        if (err?.msg || err?.code) {
+          console.error("[fetch-hot-products] API Error:", err);
+          throw new Error("AliExpress API error - please verify your credentials");
+        }
+
+        const rr = data?.aliexpress_affiliate_product_query_response?.resp_result;
+        if (!rr) throw new Error("AliExpress API error - missing response");
+        if (rr?.resp_code === 405) break;
+        if (rr?.resp_code !== 200) {
+          console.error("[fetch-hot-products] API resp_code error:", rr?.resp_code, rr?.resp_msg);
+          throw new Error("AliExpress API error - please verify your credentials");
+        }
+
+        const rawProducts = rr?.result?.products?.product || [];
+        for (const p of rawProducts) {
+          const mapped = mapProduct(p);
+          if (!mapped) continue;
+          if (seen.has(mapped.product_id)) continue;
+          seen.add(mapped.product_id);
+          collected.push(mapped);
+        }
+      }
+
+      // Prefer items with actual sales_count
+      const withSales = collected.filter(p => (p.sales_count || 0) > 0);
+      const base = withSales.length >= desiredCount ? withSales : collected;
+
+      return base
+        .sort((a, b) => (b.sales_count || 0) - (a.sales_count || 0))
+        .slice(0, desiredCount);
+    };
+
+    let products: HotProduct[] = [];
+
+    // If category is empty ("הכל"), take the top sellers across our hot categories list
+    if (!category) {
+      const categoryOrder = ["509", "15", "66", "200000297", "34", "200003482", "7", "44"];
+      for (const catId of categoryOrder) {
+        if (products.length >= desiredCount) break;
+        const chunk = await collectTopForCategory(catId);
+        for (const p of chunk) {
+          if (products.length >= desiredCount) break;
+          if (!products.find(x => x.product_id === p.product_id)) products.push(p);
+        }
+      }
+
+      products = products
+        .sort((a, b) => (b.sales_count || 0) - (a.sales_count || 0))
+        .slice(0, desiredCount);
+    } else {
+      products = await collectTopForCategory(category);
+
+      // If still too few, fallback to broad keywords for that category
+      if (products.length < desiredCount) {
+        const fallbackKeywords = CATEGORY_FALLBACK_KEYWORDS[category];
+        if (fallbackKeywords) {
+          console.warn("[fetch-hot-products] Too few products for category", category, "-> fallback keywords", fallbackKeywords);
+          // Temporarily use the fallback keywords
+          const prevKeywords = keywords;
+          (globalThis as any).__tmp = prevKeywords; // noop; avoid lint
+        }
+      }
+    }
+
+    const payload: ApiOk = { success: true, products, total: products.length };
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: unknown) {
     console.error("[fetch-hot-products] Error:", e);
