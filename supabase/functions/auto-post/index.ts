@@ -92,20 +92,20 @@ function isWithinIntervalTimeRange(
   return currentMinutes >= startMinutes || currentMinutes <= endMinutes;
 }
 
-// Check if interval posting should trigger
+// Check if interval posting should trigger (now uses MINUTES)
 function shouldPostByInterval(
-  intervalHours: number | null,
+  intervalMinutes: number | null,
   lastSentTime: string | null
 ): boolean {
-  if (!intervalHours) return false;
+  if (!intervalMinutes) return false;
   if (!lastSentTime) return true; // No previous send, go ahead
   
   const lastSent = new Date(lastSentTime);
   const now = new Date();
   const diffMs = now.getTime() - lastSent.getTime();
-  const diffHours = diffMs / (1000 * 60 * 60);
+  const diffMinutes = diffMs / (1000 * 60);
   
-  return diffHours >= intervalHours;
+  return diffMinutes >= intervalMinutes;
 }
 // -------------------------
 
@@ -145,14 +145,16 @@ serve(async (req) => {
       const userId = userSettings.user_id;
       const postingTimes: string[] = userSettings.posting_times || [];
       const publishingDays: number[] = userSettings.publishing_days || [0, 1, 2, 3, 4, 5, 6];
-      const intervalHours: number | null = userSettings.posting_interval_hours || null;
+      // Use new minutes column, fallback to hours*60 for backwards compatibility
+      const intervalMinutes: number | null = userSettings.posting_interval_minutes || 
+        (userSettings.posting_interval_hours ? userSettings.posting_interval_hours * 60 : null);
       const shabbatEnabled: boolean = userSettings.shabbat_mode_enabled || false;
       const shabbatStartTime: string = userSettings.shabbat_start_time || '14:00';
       const shabbatEndTime: string = userSettings.shabbat_end_time || '20:00';
       const intervalStartTime: string = userSettings.interval_start_time || '08:00';
       const intervalEndTime: string = userSettings.interval_end_time || '22:00';
 
-      console.log(`[auto-post] User ${userId}: Interval: ${intervalHours}h (${intervalStartTime}-${intervalEndTime}), Shabbat: ${shabbatEnabled}, times: [${postingTimes.join(", ")}]`);
+      console.log(`[auto-post] User ${userId}: Interval: ${intervalMinutes}min (${intervalStartTime}-${intervalEndTime}), Shabbat: ${shabbatEnabled}, times: [${postingTimes.join(", ")}]`);
 
       // Step A: Check Shabbat mode first
       if (isInShabbatMode(currentDayOfWeek, currentTimeStr, shabbatEnabled, shabbatStartTime, shabbatEndTime)) {
@@ -171,7 +173,7 @@ serve(async (req) => {
       // Step C: Determine if we should post (fixed times OR interval)
       let shouldPost = false;
       
-      if (intervalHours) {
+      if (intervalMinutes) {
         // Interval mode: first check if we're within the allowed time range
         if (!isWithinIntervalTimeRange(currentTimeStr, intervalStartTime, intervalEndTime)) {
           console.log(`[auto-post] User ${userId}: Skipping - Current time ${currentTimeStr} outside interval range ${intervalStartTime}-${intervalEndTime}`);
@@ -189,12 +191,16 @@ serve(async (req) => {
           .limit(1)
           .maybeSingle();
         
-        shouldPost = shouldPostByInterval(intervalHours, lastSent?.updated_at || null);
+        shouldPost = shouldPostByInterval(intervalMinutes, lastSent?.updated_at || null);
         if (!shouldPost) {
+          const minutesSinceLast = lastSent?.updated_at 
+            ? Math.round((Date.now() - new Date(lastSent.updated_at).getTime()) / 60000)
+            : 0;
+          console.log(`[auto-post] User ${userId}: Interval not reached - ${minutesSinceLast}min since last, need ${intervalMinutes}min`);
           results.push({ userId, status: "interval_not_reached" });
           continue;
         }
-        console.log(`[auto-post] User ${userId}: ✓ Interval ${intervalHours}h reached (in range ${intervalStartTime}-${intervalEndTime})!`);
+        console.log(`[auto-post] User ${userId}: ✓ Interval ${intervalMinutes}min reached (in range ${intervalStartTime}-${intervalEndTime})!`);
       } else {
         // Fixed times mode: check if current time matches
         if (!isPostingTime(currentTimeStr, postingTimes)) {

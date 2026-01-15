@@ -24,6 +24,7 @@ export type Database = {
           interval_end_time: string | null
           interval_start_time: string | null
           posting_interval_hours: number | null
+          posting_interval_minutes: number | null
           posting_times: string[] | null
           publishing_days: number[] | null
           shabbat_end_time: string | null
@@ -45,6 +46,7 @@ export type Database = {
           interval_end_time?: string | null
           interval_start_time?: string | null
           posting_interval_hours?: number | null
+          posting_interval_minutes?: number | null
           posting_times?: string[] | null
           publishing_days?: number[] | null
           shabbat_end_time?: string | null
@@ -66,6 +68,7 @@ export type Database = {
           interval_end_time?: string | null
           interval_start_time?: string | null
           posting_interval_hours?: number | null
+          posting_interval_minutes?: number | null
           posting_times?: string[] | null
           publishing_days?: number[] | null
           shabbat_end_time?: string | null
