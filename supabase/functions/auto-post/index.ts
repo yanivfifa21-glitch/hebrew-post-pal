@@ -263,14 +263,23 @@ serve(async (req) => {
         continue;
       }
 
-      // Fetch user decrypted credentials via RPC
-      const { data: credentials, error: credError } = await supabase
-        .rpc("get_decrypted_user_credentials", { p_user_id: userId });
+      // Fetch active messaging accounts for user
+      const { data: accounts, error: accountsError } = await supabase
+        .from("messaging_accounts")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("is_active", true);
       
-      if (credError || credentials?.error) {
-        console.error(`[auto-post] User ${userId}: Failed to fetch credentials:`, credError || credentials?.error);
-        results.push({ userId, status: "credentials_error", productId: product.id });
-        // Reset product to Scheduled so it can be retried
+      if (accountsError) {
+        console.error(`[auto-post] User ${userId}: Failed to fetch messaging accounts:`, accountsError.message);
+        results.push({ userId, status: "accounts_error", productId: product.id });
+        await supabase.from("products").update({ status: "Scheduled" }).eq("id", product.id);
+        continue;
+      }
+
+      if (!accounts || accounts.length === 0) {
+        console.log(`[auto-post] User ${userId}: No active messaging accounts`);
+        results.push({ userId, status: "no_active_accounts", productId: product.id });
         await supabase.from("products").update({ status: "Scheduled" }).eq("id", product.id);
         continue;
       }
@@ -280,33 +289,55 @@ serve(async (req) => {
       let sendSuccess = false;
       let sentTo: string[] = [];
 
-      // Try Telegram
-      if (userSettings.telegram_enabled && credentials?.telegram_bot_token && credentials?.telegram_chat_id) {
-        try {
-          await sendToTelegram(credentials.telegram_bot_token, credentials.telegram_chat_id, product, message);
-          sendSuccess = true;
-          sentTo.push("telegram");
-          console.log(`[auto-post] User ${userId}: ✓ Sent to Telegram`);
-        } catch (e) {
-          console.error(`[auto-post] User ${userId}: Telegram failed: ${e}`);
+      // Process each active account
+      for (const account of accounts) {
+        // Fetch decrypted credentials for this account
+        const { data: credentials, error: credError } = await supabase
+          .rpc("get_decrypted_messaging_account_credentials", { 
+            p_account_id: account.id, 
+            p_user_id: userId 
+          });
+        
+        if (credError || !credentials) {
+          console.error(`[auto-post] User ${userId}: Failed to fetch credentials for account ${account.account_name}:`, credError?.message);
+          continue;
         }
-      }
 
-      // Try WhatsApp (GreenAPI)
-      if (userSettings.whatsapp_enabled && credentials?.greenapi_instance_id && credentials?.greenapi_api_token && credentials?.greenapi_chat_id) {
-        try {
-          await sendToWhatsApp(
-            credentials.greenapi_instance_id,
-            credentials.greenapi_api_token,
-            credentials.greenapi_chat_id,
-            product,
-            message,
-          );
-          sendSuccess = true;
-          sentTo.push("whatsapp");
-          console.log(`[auto-post] User ${userId}: ✓ Sent to WhatsApp`);
-        } catch (e) {
-          console.error(`[auto-post] User ${userId}: WhatsApp failed: ${e}`);
+        if (account.account_type === "telegram") {
+          // Try Telegram
+          const botToken = credentials.telegram_bot_token;
+          const chatId = account.telegram_chat_id;
+          
+          if (botToken && chatId) {
+            try {
+              await sendToTelegram(botToken, chatId, product, message);
+              sendSuccess = true;
+              sentTo.push(`telegram:${account.account_name}`);
+              console.log(`[auto-post] User ${userId}: ✓ Sent to Telegram (${account.account_name})`);
+            } catch (e) {
+              console.error(`[auto-post] User ${userId}: Telegram (${account.account_name}) failed: ${e}`);
+            }
+          } else {
+            console.log(`[auto-post] User ${userId}: Telegram (${account.account_name}) missing credentials: botToken=${!!botToken}, chatId=${!!chatId}`);
+          }
+        } else if (account.account_type === "whatsapp") {
+          // Try WhatsApp (GreenAPI)
+          const instanceId = credentials.greenapi_instance_id;
+          const apiToken = credentials.greenapi_api_token;
+          const chatId = account.whatsapp_chat_id;
+          
+          if (instanceId && apiToken && chatId) {
+            try {
+              await sendToWhatsApp(instanceId, apiToken, chatId, product, message);
+              sendSuccess = true;
+              sentTo.push(`whatsapp:${account.account_name}`);
+              console.log(`[auto-post] User ${userId}: ✓ Sent to WhatsApp (${account.account_name})`);
+            } catch (e) {
+              console.error(`[auto-post] User ${userId}: WhatsApp (${account.account_name}) failed: ${e}`);
+            }
+          } else {
+            console.log(`[auto-post] User ${userId}: WhatsApp (${account.account_name}) missing credentials: instanceId=${!!instanceId}, apiToken=${!!apiToken}, chatId=${!!chatId}`);
+          }
         }
       }
 
