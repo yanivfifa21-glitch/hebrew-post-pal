@@ -32,13 +32,17 @@ type HotProduct = {
 
 type ImportedProduct = ExcelProduct & { id: string };
 
+// Hebrew category mapping with AliExpress category IDs
 const CATEGORIES = [
-  { id: "", label: "הכל", icon: Flame },
-  { id: "44", label: "אלקטרוניקה", icon: null },
-  { id: "3", label: "בית וגינה", icon: null },
-  { id: "200000297", label: "ספורט", icon: null },
-  { id: "1503", label: "אופנה גברים", icon: null },
-  { id: "1501", label: "אופנה נשים", icon: null },
+  { id: "", label: "🔥 הכל", icon: Flame },
+  { id: "509,44", label: "אלקטרוניקה ואביזרי מובייל", icon: null },
+  { id: "15,39", label: "בית חכם ואביזרי בית", icon: null },
+  { id: "66,200001996", label: "טיפוח, יופי ובריאות", icon: null },
+  { id: "200000297,200003498", label: "כושר, ספורט ואורח חיים", icon: null },
+  { id: "34", label: "רכב ואביזרי רכב", icon: null },
+  { id: "200003482,7", label: "גאדג׳טים ומוצרים ויראליים", icon: null },
+  { id: "7,21", label: "משרד, מחשבים וציוד היקפי", icon: null },
+  { id: "44,509", label: "אודיו וטכנולוגיה לבישה", icon: null },
 ];
 
 const STORAGE_KEY = "aliaffilio_imported_products";
@@ -51,7 +55,7 @@ const Discovery = () => {
   const [selectedCategory, setSelectedCategory] = useState("");
   const [creatingPostId, setCreatingPostId] = useState<string | null>(null);
   const [hasFetched, setHasFetched] = useState(false);
-  const [activeMode, setActiveMode] = useState<"api" | "scrape" | "excel">("api");
+  const [activeMode, setActiveMode] = useState<"api" | "excel">("api");
   const [showManualInput, setShowManualInput] = useState(false);
   const [manualUrl, setManualUrl] = useState("");
   const [dataSource, setDataSource] = useState<string>("");
@@ -98,8 +102,6 @@ const Discovery = () => {
   const handlePullRefresh = useCallback(async () => {
     if (activeMode === "api") {
       await fetchHotProductsAsync(selectedCategory, searchQuery);
-    } else {
-      await fetchScrapedDealsAsync();
     }
   }, [activeMode, selectedCategory, searchQuery]);
 
@@ -118,15 +120,15 @@ const Discovery = () => {
     try {
       const trimmedKeywords = keywords.trim();
 
-      // If user typed keywords, use the general search endpoint (more relevant than "hot" API).
+      // If user typed keywords, use the general search endpoint
       const fnName = trimmedKeywords ? "search-ali-products" : "fetch-hot-products";
 
       const { data, error } = await supabase.functions.invoke(fnName, {
         body: {
           category,
           keywords: trimmedKeywords,
-          pageSize: 30,
-          sort: "BEST_MATCH", // Always use BEST_MATCH for more relevant products
+          pageSize: 20, // Fetch 20 hottest products
+          sort: "VOLUME_DESC", // Sort by sales volume for hottest products
         },
       });
 
@@ -135,11 +137,11 @@ const Discovery = () => {
 
       setProducts(data.products);
       setHasFetched(true);
-      setDataSource(trimmedKeywords ? "Search" : "API");
+      setDataSource(trimmedKeywords ? "חיפוש" : "מוצרים לוהטים");
     } catch (e) {
       toast({
-        title: "Failed to Load",
-        description: e instanceof Error ? e.message : "Could not load trending products",
+        title: "שגיאה בטעינה",
+        description: e instanceof Error ? e.message : "לא הצלחנו לטעון מוצרים",
         variant: "destructive",
       });
     }
@@ -152,66 +154,9 @@ const Discovery = () => {
     setIsLoading(false);
   };
 
-  const fetchScrapedDealsAsync = async () => {
-    setShowManualInput(false);
-    try {
-      const { data, error } = await supabase.functions.invoke("scrape-ali-deals", {
-        body: {},
-      });
-
-      if (error) throw new Error(error.message);
-      
-      if (!data?.success) {
-        if (data?.fallback) {
-          setShowManualInput(true);
-          toast({
-            title: "הגרידה נחסמה",
-            description: "השתמש בהזנה ידנית של קישור מוצר",
-            variant: "default",
-          });
-        } else {
-          throw new Error(data?.error || "Failed to scrape deals");
-        }
-        return;
-      }
-
-      setProducts(data.products.map((p: any) => ({
-        ...p,
-        sales_count: 0,
-        rating: 0,
-      })));
-      setHasFetched(true);
-      setDataSource(data.source === "demo" ? "Demo" : "Scraped");
-      
-      if (data.source === "demo") {
-        toast({
-          title: "מצב הדגמה",
-          description: "מציג נתוני דוגמה - הגרידה נחסמה ע\"י אליאקספרס",
-          variant: "default",
-        });
-      }
-    } catch (e) {
-      setShowManualInput(true);
-      toast({
-        title: "Scraping Failed",
-        description: "Try entering a product link manually",
-        variant: "destructive",
-      });
-    }
-  };
-
-  // Fetch via scraping (with loading state)
-  const fetchScrapedDeals = async () => {
-    setIsLoading(true);
-    await fetchScrapedDealsAsync();
-    setIsLoading(false);
-  };
-
   const handleSearch = () => {
     if (activeMode === "api") {
       fetchHotProducts(selectedCategory, searchQuery);
-    } else {
-      fetchScrapedDeals();
     }
   };
 
@@ -223,7 +168,7 @@ const Discovery = () => {
   };
 
   const handleModeChange = (mode: string) => {
-    setActiveMode(mode as "api" | "scrape" | "excel");
+    setActiveMode(mode as "api" | "excel");
     if (mode !== "excel") {
       setProducts([]);
       setHasFetched(false);
@@ -585,7 +530,7 @@ const Discovery = () => {
           <div className="flex items-center justify-between">
             <h1 className="text-2xl md:text-3xl font-bold text-foreground flex items-center gap-2">
               <Flame className="h-6 w-6 md:h-8 md:w-8 text-primary animate-pulse-soft" />
-              <span className="gradient-text">🔥 Super Deals</span>
+              <span className="gradient-text">🔥 מוצרים לוהטים</span>
             </h1>
             {dataSource && (
               <Badge variant="outline" className="text-xs border-primary/30 text-primary">
@@ -593,19 +538,15 @@ const Discovery = () => {
               </Badge>
             )}
           </div>
-          <p className="text-muted-foreground text-sm md:text-base">גלה מבצעים חמים ומוצרים טרנדיים</p>
+          <p className="text-muted-foreground text-sm md:text-base">20 המוצרים הכי נמכרים בכל קטגוריה</p>
         </div>
 
         {/* Mode Tabs */}
         <Tabs value={activeMode} onValueChange={handleModeChange} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 bg-card/50 backdrop-blur-sm border border-border/50">
+          <TabsList className="grid w-full grid-cols-2 bg-card/50 backdrop-blur-sm border border-border/50">
             <TabsTrigger value="api" className="gap-1 md:gap-2 text-xs md:text-sm px-2 md:px-4 data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-              <TrendingUp className="h-3.5 w-3.5 md:h-4 md:w-4" />
-              <span className="hidden xs:inline">Hot</span> API
-            </TabsTrigger>
-            <TabsTrigger value="scrape" className="gap-1 md:gap-2 text-xs md:text-sm px-2 md:px-4 data-[state=active]:bg-secondary/20 data-[state=active]:text-secondary">
-              <Zap className="h-3.5 w-3.5 md:h-4 md:w-4" />
-              Super Deals
+              <Flame className="h-3.5 w-3.5 md:h-4 md:w-4" />
+              מוצרים לוהטים
             </TabsTrigger>
             <TabsTrigger value="excel" className="gap-1 md:gap-2 text-xs md:text-sm px-2 md:px-4 data-[state=active]:bg-success/20 data-[state=active]:text-success">
               <FileSpreadsheet className="h-3.5 w-3.5 md:h-4 md:w-4" />
@@ -650,62 +591,6 @@ const Discovery = () => {
                   ))}
                 </div>
               </div>
-            </div>
-          </TabsContent>
-
-          {/* Scrape Mode Content */}
-          <TabsContent value="scrape" className="space-y-4 mt-4">
-            <div className="glass-card neon-border p-4 space-y-4">
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Button 
-                  onClick={fetchScrapedDeals} 
-                  disabled={isLoading} 
-                  variant="gradient"
-                  className="flex-1"
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      מחפש מבצעים...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      רענן מבצעים
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              {/* Manual Input Fallback */}
-              {showManualInput && (
-                <div className="border border-dashed border-primary/50 rounded-lg p-4 space-y-3 bg-primary/5">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <AlertCircle className="h-4 w-4 text-warning" />
-                    <span>הגרידה נחסמה - הזן קישור מוצר ידנית</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <Input
-                      value={manualUrl}
-                      onChange={(e) => setManualUrl(e.target.value)}
-                      placeholder="https://www.aliexpress.com/item/..."
-                      className="flex-1 bg-input/50"
-                      dir="ltr"
-                    />
-                    <Button 
-                      onClick={handleManualAdd}
-                      disabled={creatingPostId === "manual" || !manualUrl.trim()}
-                      variant="outline"
-                    >
-                      {creatingPostId === "manual" ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <LinkIcon className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              )}
             </div>
           </TabsContent>
 
@@ -834,26 +719,14 @@ const Discovery = () => {
               <div className="absolute inset-0 h-16 w-16 mx-auto bg-primary/20 blur-xl rounded-full" />
             </div>
             <h3 className="text-xl font-semibold text-foreground mb-2">
-              {activeMode === "api" ? "גלה מוצרים חמים" : "גלה סופר דילים"}
+              גלה את המוצרים הלוהטים ביותר
             </h3>
             <p className="text-muted-foreground mb-6">
-              {activeMode === "api" 
-                ? "בחר קטגוריה או חפש מוצרים כדי להתחיל"
-                : "לחץ על 'רענן מבצעים' כדי לגלות דילים חמים"
-              }
+              בחר קטגוריה או חפש מוצרים כדי לראות את 20 המוצרים הנמכרים ביותר
             </p>
-            <Button onClick={activeMode === "api" ? () => fetchHotProducts() : fetchScrapedDeals} variant="gradient" size="lg" className="animate-glow-pulse">
-              {activeMode === "api" ? (
-                <>
-                  <TrendingUp className="h-5 w-5 mr-2" />
-                  טען מוצרים פופולריים
-                </>
-              ) : (
-                <>
-                  <Zap className="h-5 w-5 mr-2" />
-                  חפש סופר דילים
-                </>
-              )}
+            <Button onClick={() => fetchHotProducts()} variant="gradient" size="lg" className="animate-glow-pulse">
+              <Flame className="h-5 w-5 mr-2" />
+              טען מוצרים לוהטים
             </Button>
           </div>
         )}
