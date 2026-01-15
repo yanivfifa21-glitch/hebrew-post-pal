@@ -67,46 +67,29 @@ serve(async (req) => {
     let botToken: string | null = null;
     let chatId: string | null = null;
 
-    // If accountId is provided, fetch from messaging_accounts
+    // If accountId is provided, fetch from messaging_accounts using secure RPC
     if (accountId) {
       console.log("[send-telegram] Fetching credentials for account:", accountId);
       
-      // First verify the account belongs to this user
-      const { data: account, error: accountError } = await supabase
-        .from("messaging_accounts")
-        .select("*")
-        .eq("id", accountId)
-        .eq("user_id", user.id)
-        .single();
-
-      if (accountError || !account) {
-        console.error("[send-telegram] Account not found or unauthorized:", accountError);
-        return new Response(
-          JSON.stringify({ success: false, error: "Account not found or unauthorized" }),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Get decrypted credentials via RPC
+      // Use the new secure RPC that decrypts credentials server-side
       const { data: credentials, error: credError } = await supabase
-        .rpc("get_account_credentials_status", { p_account_id: accountId });
+        .rpc("get_decrypted_messaging_account_credentials", { 
+          p_account_id: accountId,
+          p_user_id: user.id
+        });
 
-      if (credError) {
-        console.error("[send-telegram] Error fetching account credentials:", credError);
+      if (credError || credentials?.error) {
+        console.error("[send-telegram] Error fetching account credentials:", credError || credentials?.error);
         return new Response(
-          JSON.stringify({ success: false, error: "Failed to fetch account credentials" }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ success: false, error: credentials?.error || "Failed to fetch account credentials" }),
+          { status: credentials?.error === "Account not found" ? 404 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      // Decrypt the bot token directly
-      if (account.encrypted_bot_token) {
-        const { data: decrypted } = await supabase.rpc("decrypt_credential", { 
-          encrypted_data: account.encrypted_bot_token 
-        });
-        botToken = decrypted?.trim() || null;
-      }
-      chatId = account.telegram_chat_id?.trim() || null;
+      botToken = credentials?.telegram_bot_token?.trim() || null;
+      chatId = credentials?.telegram_chat_id?.trim() || null;
+      
+      console.log("[send-telegram] Credentials retrieved - botToken:", !!botToken, "chatId:", !!chatId);
 
     } else {
       // Fallback: fetch from user_credentials (legacy)

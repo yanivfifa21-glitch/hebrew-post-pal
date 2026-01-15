@@ -68,42 +68,30 @@ serve(async (req) => {
     let apiToken: string | null = null;
     let chatId: string | null = null;
 
-    // If accountId is provided, fetch from messaging_accounts
+    // If accountId is provided, fetch from messaging_accounts using secure RPC
     if (accountId) {
       console.log("[send-whatsapp] Fetching credentials for account:", accountId);
       
-      // First verify the account belongs to this user
-      const { data: account, error: accountError } = await supabase
-        .from("messaging_accounts")
-        .select("*")
-        .eq("id", accountId)
-        .eq("user_id", user.id)
-        .single();
+      // Use the new secure RPC that decrypts credentials server-side
+      const { data: credentials, error: credError } = await supabase
+        .rpc("get_decrypted_messaging_account_credentials", { 
+          p_account_id: accountId,
+          p_user_id: user.id
+        });
 
-      if (accountError || !account) {
-        console.error("[send-whatsapp] Account not found or unauthorized:", accountError);
+      if (credError || credentials?.error) {
+        console.error("[send-whatsapp] Error fetching account credentials:", credError || credentials?.error);
         return new Response(
-          JSON.stringify({ success: false, error: "Account not found or unauthorized" }),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ success: false, error: credentials?.error || "Failed to fetch account credentials" }),
+          { status: credentials?.error === "Account not found" ? 404 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      // Decrypt credentials
-      if (account.encrypted_instance_id) {
-        const { data: decrypted } = await supabase.rpc("decrypt_credential", { 
-          encrypted_data: account.encrypted_instance_id 
-        });
-        instanceId = decrypted?.trim() || null;
-      }
+      instanceId = credentials?.greenapi_instance_id?.trim() || null;
+      apiToken = credentials?.greenapi_api_token?.trim() || null;
+      chatId = credentials?.whatsapp_chat_id?.trim() || null;
       
-      if (account.encrypted_api_token) {
-        const { data: decrypted } = await supabase.rpc("decrypt_credential", { 
-          encrypted_data: account.encrypted_api_token 
-        });
-        apiToken = decrypted?.trim() || null;
-      }
-      
-      chatId = account.whatsapp_chat_id?.trim() || null;
+      console.log("[send-whatsapp] Credentials retrieved - instanceId:", !!instanceId, "apiToken:", !!apiToken, "chatId:", !!chatId);
 
     } else {
       // Fallback: fetch from user_credentials (legacy)
