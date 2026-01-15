@@ -32,17 +32,19 @@ type HotProduct = {
 
 type ImportedProduct = ExcelProduct & { id: string };
 
-// Hebrew category mapping with AliExpress category IDs
+// Hebrew category mapping with AliExpress category IDs and icons
+import { Smartphone, Home, Heart, Dumbbell, Car, Lightbulb, Monitor, Headphones } from "lucide-react";
+
 const CATEGORIES = [
-  { id: "", label: "🔥 הכל", icon: Flame },
-  { id: "509,44", label: "אלקטרוניקה ואביזרי מובייל", icon: null },
-  { id: "15,39", label: "בית חכם ואביזרי בית", icon: null },
-  { id: "66,200001996", label: "טיפוח, יופי ובריאות", icon: null },
-  { id: "200000297,200003498", label: "כושר, ספורט ואורח חיים", icon: null },
-  { id: "34", label: "רכב ואביזרי רכב", icon: null },
-  { id: "200003482,7", label: "גאדג׳טים ומוצרים ויראליים", icon: null },
-  { id: "7,21", label: "משרד, מחשבים וציוד היקפי", icon: null },
-  { id: "44,509", label: "אודיו וטכנולוגיה לבישה", icon: null },
+  { id: "", label: "הכל", icon: Flame, emoji: "🔥" },
+  { id: "509", label: "אלקטרוניקה ומובייל", icon: Smartphone, emoji: "📱" },
+  { id: "15", label: "בית חכם ואביזרים", icon: Home, emoji: "🏠" },
+  { id: "66", label: "טיפוח ובריאות", icon: Heart, emoji: "💄" },
+  { id: "200000297", label: "כושר וספורט", icon: Dumbbell, emoji: "💪" },
+  { id: "34", label: "רכב ואביזרים", icon: Car, emoji: "🚗" },
+  { id: "200003482", label: "גאדג׳טים ויראליים", icon: Lightbulb, emoji: "💡" },
+  { id: "7", label: "מחשבים וציוד", icon: Monitor, emoji: "💻" },
+  { id: "44", label: "אודיו ולבישה", icon: Headphones, emoji: "🎧" },
 ];
 
 const STORAGE_KEY = "aliaffilio_imported_products";
@@ -574,22 +576,27 @@ const Discovery = () => {
                 </Button>
               </div>
 
-              {/* Categories - horizontal scroll on mobile */}
-              <div className="overflow-x-auto -mx-3 px-3 scrollbar-hide">
-                <div className="flex gap-2 min-w-max pb-1">
-                  {CATEGORIES.map((cat) => (
-                    <Button
-                      key={cat.id}
-                      variant={selectedCategory === cat.id ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => handleCategoryChange(cat.id)}
-                      className="gap-1.5 text-xs whitespace-nowrap flex-shrink-0"
-                    >
-                      {cat.icon && <cat.icon className="h-3.5 w-3.5" />}
+              {/* Categories Grid */}
+              <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2">
+                {CATEGORIES.map((cat) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => handleCategoryChange(cat.id)}
+                    className={`
+                      flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl
+                      transition-all duration-200 text-center min-h-[80px]
+                      ${selectedCategory === cat.id 
+                        ? 'bg-primary text-primary-foreground shadow-lg scale-105 ring-2 ring-primary/50' 
+                        : 'bg-card/50 hover:bg-card border border-border/50 hover:border-primary/30 hover:scale-102'
+                      }
+                    `}
+                  >
+                    <span className="text-xl">{cat.emoji}</span>
+                    <span className="text-[10px] md:text-xs font-medium leading-tight">
                       {cat.label}
-                    </Button>
-                  ))}
-                </div>
+                    </span>
+                  </button>
+                ))}
               </div>
             </div>
           </TabsContent>
