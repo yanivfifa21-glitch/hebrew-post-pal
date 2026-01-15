@@ -194,11 +194,14 @@ const Settings = () => {
   const [postingTimes, setPostingTimes] = useState<string[]>(['10:00', '14:00', '20:00']);
   const [newTime, setNewTime] = useState('');
   
-  // Interval posting
-  const [postingIntervalHours, setPostingIntervalHours] = useState<number | null>(null);
+  // Interval posting (now in MINUTES)
+  const [postingIntervalMinutes, setPostingIntervalMinutes] = useState<number | null>(null);
   const [useIntervalPosting, setUseIntervalPosting] = useState(false);
   const [intervalStartTime, setIntervalStartTime] = useState('08:00');
   const [intervalEndTime, setIntervalEndTime] = useState('22:00');
+  
+  // Separate API save state
+  const [isSavingApi, setIsSavingApi] = useState(false);
   
   // Shabbat mode
   const [shabbatModeEnabled, setShabbatModeEnabled] = useState(false);
@@ -275,7 +278,7 @@ const Settings = () => {
       // Fetch app settings (non-sensitive data only)
       const { data, error } = await supabase
         .from('app_settings')
-        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, posting_interval_hours, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, interval_start_time, interval_end_time, usd_exchange_rate')
+        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, posting_interval_hours, posting_interval_minutes, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, interval_start_time, interval_end_time, usd_exchange_rate')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -287,8 +290,10 @@ const Settings = () => {
         setPostingTimes(data.posting_times || ['10:00', '14:00', '20:00']);
         setPublishingDays(data.publishing_days || [0, 1, 2, 3, 4, 5, 6]);
         setAliexpressTrackingId(data.aliexpress_tracking_id || '');
-        setPostingIntervalHours(data.posting_interval_hours || null);
-        setUseIntervalPosting(!!data.posting_interval_hours);
+        // Use new minutes column, fallback to hours*60
+        const intervalMins = (data as any).posting_interval_minutes || (data.posting_interval_hours ? data.posting_interval_hours * 60 : null);
+        setPostingIntervalMinutes(intervalMins);
+        setUseIntervalPosting(!!intervalMins);
         setShabbatModeEnabled(data.shabbat_mode_enabled || false);
         setShabbatStartTime(data.shabbat_start_time || '14:00');
         setShabbatEndTime(data.shabbat_end_time || '20:00');
@@ -347,7 +352,8 @@ const Settings = () => {
         publishing_days: publishingDays,
         aliexpress_tracking_id: aliexpressTrackingId || null,
         custom_ai_prompt: customAiPrompt || null,
-        posting_interval_hours: useIntervalPosting ? postingIntervalHours : null,
+        posting_interval_minutes: useIntervalPosting ? postingIntervalMinutes : null,
+        posting_interval_hours: null, // Clear old column
         shabbat_mode_enabled: shabbatModeEnabled,
         shabbat_start_time: shabbatStartTime,
         shabbat_end_time: shabbatEndTime,
@@ -810,25 +816,27 @@ const Settings = () => {
               </div>
             </div>
 
-            {/* Interval Hours Slider */}
+            {/* Interval Minutes Slider */}
             {useIntervalPosting && (
               <div className="space-y-4 p-4 rounded-lg border border-primary/30 bg-primary/5">
                 <div className="flex items-center justify-between">
                   <Label className="text-sm font-medium">שלח כל</Label>
                   <Badge variant="outline" className="text-lg font-bold">
-                    {postingIntervalHours || 2} שעות
+                    {postingIntervalMinutes && postingIntervalMinutes >= 60 
+                      ? `${postingIntervalMinutes / 60} שעות` 
+                      : `${postingIntervalMinutes || 30} דקות`}
                   </Badge>
                 </div>
                 <Slider
-                  value={[postingIntervalHours || 2]}
-                  onValueChange={([val]) => setPostingIntervalHours(val)}
-                  min={1}
-                  max={12}
-                  step={1}
+                  value={[postingIntervalMinutes || 60]}
+                  onValueChange={([val]) => setPostingIntervalMinutes(val)}
+                  min={30}
+                  max={720}
+                  step={30}
                   className="w-full"
                 />
                 <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>כל שעה</span>
+                  <span>כל 30 דק'</span>
                   <span>כל 12 שעות</span>
                 </div>
 
@@ -1470,6 +1478,63 @@ const Settings = () => {
                 className="w-32"
               />
             </div>
+            
+            {/* Dedicated API Save Button */}
+            <Button
+              onClick={async () => {
+                if (!newAliexpressKey && !newAliexpressSecret) {
+                  toast({
+                    title: "אין מה לשמור",
+                    description: "הכנס App Key או App Secret חדש לפני שמירה",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                setIsSavingApi(true);
+                try {
+                  const credentialsToUpdate: Record<string, string | null> = {};
+                  if (newAliexpressKey) credentialsToUpdate.p_aliexpress_app_key = newAliexpressKey;
+                  if (newAliexpressSecret) credentialsToUpdate.p_aliexpress_app_secret = newAliexpressSecret;
+                  
+                  const { error: credError } = await supabase.rpc('update_my_credentials', credentialsToUpdate);
+                  if (credError) throw credError;
+                  
+                  // Clear input fields
+                  setNewAliexpressKey('');
+                  setNewAliexpressSecret('');
+                  
+                  // Refresh credentials status
+                  const { data: credStatus } = await supabase.rpc('get_my_credentials_status');
+                  if (credStatus && typeof credStatus === 'object' && !Array.isArray(credStatus)) {
+                    setCredentialsStatus(credStatus as unknown as CredentialsStatus);
+                  }
+                  
+                  toast({
+                    title: "API נשמר בהצלחה! 🔐",
+                    description: "המפתחות הוצפנו ונשמרו בצורה מאובטחת.",
+                  });
+                } catch (error) {
+                  console.error('Save API error:', error);
+                  toast({
+                    title: "שגיאה בשמירת API",
+                    description: "לא ניתן לשמור את המפתחות. נסה שוב.",
+                    variant: "destructive",
+                  });
+                } finally {
+                  setIsSavingApi(false);
+                }
+              }}
+              disabled={isSavingApi || (!newAliexpressKey && !newAliexpressSecret)}
+              variant="outline"
+              className="w-full border-orange-500/50 text-orange-600 hover:bg-orange-50"
+            >
+              {isSavingApi ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Save className="h-4 w-4 mr-2" />
+              )}
+              שמור API מוצפן
+            </Button>
           </CardContent>
         </Card>
 
