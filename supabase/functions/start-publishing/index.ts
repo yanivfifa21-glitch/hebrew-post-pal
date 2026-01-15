@@ -40,38 +40,37 @@ function isWithinIntervalTimeRange(currentTimeStr: string, intervalStartTime: st
   return currentMinutes >= startMinutes || currentMinutes <= endMinutes;
 }
 
-// Escape special Markdown characters for Telegram
-function escapeMarkdown(text: string): string {
+// Escape special HTML characters for Telegram
+function escapeHtml(text: string): string {
   return text
-    .replace(/\*/g, '\\*')
-    .replace(/_/g, '\\_')
-    .replace(/\[/g, '\\[')
-    .replace(/\]/g, '\\]')
-    .replace(/`/g, '\\`');
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
-// Message builder
+// Message builder - uses HTML format for reliability
 function buildMessage(product: Record<string, unknown>): string {
   const rawTitle = String(product.title ?? "").trim();
-  const title = escapeMarkdown(rawTitle);
+  const title = escapeHtml(rawTitle);
   const price = product.price ? `₪${Number(product.price).toFixed(2)}` : "";
-  const description = String(product.hebrew_description ?? "").trim();
+  const rawDescription = String(product.hebrew_description ?? "").trim();
+  const description = escapeHtml(rawDescription);
   const affiliateLink = String(product.affiliate_link ?? "").trim();
   
   const parts: string[] = [];
-  if (title) parts.push(`🛒 *${title}*`);
+  if (title) parts.push(`🛒 <b>${title}</b>`);
   if (price) parts.push(`💰 ${price}`);
   if (description) parts.push(`\n${description}`);
-  if (affiliateLink && !description.includes(affiliateLink)) {
+  if (affiliateLink && !rawDescription.includes(affiliateLink)) {
     parts.push(`\n🔗 ${affiliateLink}`);
   }
   return parts.join("\n");
 }
 
-// Telegram sender
+// Telegram sender - uses HTML parse mode
 async function sendToTelegram(token: string, chatId: string, product: any, text: string) {
   const url = `https://api.telegram.org/bot${token}/${product.image_url ? "sendPhoto" : "sendMessage"}`;
-  const body: any = { chat_id: chatId, parse_mode: "Markdown" };
+  const body: any = { chat_id: chatId, parse_mode: "HTML" };
 
   if (product.image_url) {
     body.photo = product.image_url;
