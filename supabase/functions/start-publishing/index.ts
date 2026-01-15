@@ -48,22 +48,23 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
-// Message builder - uses HTML format for reliability
+// Message builder - sends ONLY the content the user wrote in the Hebrew description box
 function buildMessage(product: Record<string, unknown>): string {
-  const rawTitle = String(product.title ?? "").trim();
-  const title = escapeHtml(rawTitle);
-  const price = product.price ? `₪${Number(product.price).toFixed(2)}` : "";
   const rawDescription = String(product.hebrew_description ?? "").trim();
   const description = escapeHtml(rawDescription);
   const affiliateLink = String(product.affiliate_link ?? "").trim();
-  
+
   const parts: string[] = [];
-  if (title) parts.push(`🛒 <b>${title}</b>`);
-  if (price) parts.push(`💰 ${price}`);
-  if (description) parts.push(`\n${description}`);
-  if (affiliateLink && !rawDescription.includes(affiliateLink)) {
+  if (description) parts.push(description);
+
+  if (affiliateLink && rawDescription && !rawDescription.includes(affiliateLink)) {
     parts.push(`\n🔗 ${affiliateLink}`);
   }
+
+  if (parts.length === 0 && affiliateLink) {
+    parts.push(`🔗 ${affiliateLink}`);
+  }
+
   return parts.join("\n");
 }
 

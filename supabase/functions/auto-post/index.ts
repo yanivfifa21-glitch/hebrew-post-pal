@@ -388,27 +388,26 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
-// Message builder - uses HTML format for reliability
+// Message builder - sends ONLY the content the user wrote in the Hebrew description box
 function buildMessage(product: Record<string, unknown>): string {
-  const rawTitle = String(product.title ?? "").trim();
-  const title = escapeHtml(rawTitle);
-  const price = product.price ? `₪${Number(product.price).toFixed(2)}` : "";
   const rawDescription = String(product.hebrew_description ?? "").trim();
   const description = escapeHtml(rawDescription);
   const affiliateLink = String(product.affiliate_link ?? "").trim();
-  
-  // Build message with all components
+
   const parts: string[] = [];
-  
-  if (title) parts.push(`🛒 <b>${title}</b>`);
-  if (price) parts.push(`💰 ${price}`);
-  if (description) parts.push(`\n${description}`);
-  
+
+  if (description) parts.push(description);
+
   // Only add affiliate link if it's NOT already in the description
-  if (affiliateLink && !rawDescription.includes(affiliateLink)) {
+  if (affiliateLink && rawDescription && !rawDescription.includes(affiliateLink)) {
     parts.push(`\n🔗 ${affiliateLink}`);
   }
-  
+
+  // Fallback: if description empty, do NOT prepend English title
+  if (parts.length === 0 && affiliateLink) {
+    parts.push(`🔗 ${affiliateLink}`);
+  }
+
   return parts.join("\n");
 }
 
