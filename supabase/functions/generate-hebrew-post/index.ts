@@ -9,27 +9,26 @@ const corsHeaders = {
 type ApiOk = { success: true; hebrewDescription: string };
 type ApiErr = { success: false; error: string; code?: string };
 
-// Default prompt - product description with fixed format
-const DEFAULT_SYSTEM_PROMPT = `אתה משווק שותפים ישראלי. כתוב תיאור מוצר קצר וממוקד בעברית.
+// Default prompt - translate Product Desc (English) into a Hebrew affiliate post format
+const DEFAULT_SYSTEM_PROMPT = `אתה משווק שותפים ישראלי. המידע שמתקבל הוא Product Desc באנגלית.
+
+מטרה: כתוב פוסט שיווקי בעברית בלבד (מותר להשאיר שם מותג באנגלית אם חייב).
 
 מבנה חובה:
-[אימוג'י פתיחה + שם המוצר (עברית) | Brand Name אם יש]
+[אימוג'י פתיחה + שם המוצר בעברית | Brand באנגלית אם יש]
 
 [2–3 שורות תיאור קצרות בעברית:
 מה זה המוצר,
 למה הוא שימושי,
 ומה היתרון המרכזי שלו]
 
-⭐ דירוג: [X.X] מתוך 5  
+⭐ דירוג: [X.X] מתוך 5
 👥 מעל [כמות הזמנות] הזמנות
 
-🔗 לפרטים והזמנה >> [קישור]
-
 כללים קריטיים:
-- שם המוצר/מותג יישאר באנגלית בכותרת
-- כל השאר בעברית בלבד
-- אסור להוסיף מחיר או קופון - המידע הזה יתווסף אוטומטית
-- הקישור יתווסף אוטומטית - רק כתוב [קישור] כ-placeholder`;
+- אל תוסיף מחיר או קופון
+- אל תוסיף קישור (הקישור יתווסף אחר כך)
+- אל תכתוב משפטי CTA כמו "לחץ כאן"`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -105,14 +104,21 @@ serve(async (req) => {
       console.log("[generate-hebrew-post] Using custom prompt for user:", user.email);
     }
 
-    // Build product context - only title, orders, and rating
+    // Build product context - title + social proof
     const productDetails: string[] = [];
-    
-    // Add social proof data from API
+
+    // rating can arrive as 0-5 or as a percentage (0-100)
     if (rate > 0) {
-      const displayRating = rate > 5 ? (rate / 20).toFixed(1) : rate.toFixed(1);
-      productDetails.push(`ציון: ${displayRating}/5 כוכבים`);
+      if (rate > 5) {
+        const percent = Math.round(rate);
+        const displayRating = (rate / 20).toFixed(1);
+        productDetails.push(`אחוז חיובי: ${percent}%`);
+        productDetails.push(`דירוג משוער: ${displayRating}/5`);
+      } else {
+        productDetails.push(`דירוג: ${rate.toFixed(1)}/5`);
+      }
     }
+
     if (orders > 0) {
       const ordersText = orders > 10000 ? `${Math.round(orders/1000)}K+` : orders > 1000 ? `${(orders/1000).toFixed(1)}K` : String(orders);
       productDetails.push(`הזמנות: ${ordersText}`);

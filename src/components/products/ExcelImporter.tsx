@@ -5,20 +5,22 @@ import { toast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 
 export interface ExcelProduct {
+  // Columns accepted (strict): Image Url | Product Desc | Sales180Day | Positive Feedback | Promotion Url
   imageUrl: string;
-  title: string;
+  title: string; // mapped from "Product Desc"
+  promotionLink: string; // mapped from "Promotion Url" (also used as affiliate link)
+  affiliateLink?: string;
+  hebrewDescription?: string;
+  sales180Day?: number;
+  positiveFeedback?: number;
+
+  // Backwards-compat fields kept for UI that expects prices/discounts (Excel import will set them to 0)
   originalPrice: number;
   discountPrice: number;
   discountPercent: number;
-  promotionLink: string;
-  affiliateLink?: string;
-  hebrewDescription?: string;
   category?: string;
   codeName?: string;
   codeValue?: string;
-  // New fields from AliExpress API
-  sales180Day?: number;
-  positiveFeedback?: number;
 }
 
 interface ExcelImporterProps {
@@ -93,19 +95,11 @@ export const ExcelImporter = ({ onProductsLoaded, onClearAll, hasProducts, isLoa
   const downloadTemplate = () => {
     const templateData = [
       {
-        "Product ID": "12345",
         "Image Url": "https://example.com/image.jpg",
-        "Product Description": "Product Title Here",
-        "Origin Price": "100.00",
-        "Discount Price": "79.99",
-        "Discount": "20",
-        "Original Link": "https://aliexpress.com/item/12345.html",
-        "Promotion Link": "https://s.click.aliexpress.com/e/abc123",
-        "Affiliate Link": "https://s.click.aliexpress.com/e/affiliate123",
-        "Hebrew Description": "תיאור המוצר בעברית",
-        "Category": "Electronics",
-        "Code Name": "SAVE10",
-        "Code Value": "10%"
+        "Product Desc": "Baseus Eli Sport 2 Open-Ear Wireless Earphones...",
+        "Sales180Day": "1200",
+        "Positive Feedback": "96",
+        "Promotion Url": "https://s.click.aliexpress.com/e/yourAffiliateLink"
       }
     ];
     
@@ -116,7 +110,7 @@ export const ExcelImporter = ({ onProductsLoaded, onClearAll, hasProducts, isLoa
     
     toast({
       title: "Template Downloaded",
-      description: "Use this template to prepare your product data with all fields",
+      description: "הטמפלט כולל רק את העמודות הנתמכות: Image Url, Product Desc, Sales180Day, Positive Feedback, Promotion Url",
     });
   };
 
@@ -138,33 +132,25 @@ export const ExcelImporter = ({ onProductsLoaded, onClearAll, hasProducts, isLoa
       const headers = Object.keys(jsonData[0] as object);
       console.log("Found headers:", headers);
 
-      // Flexible column mapping with partial keyword matching - ENHANCED with all fields
+      // Strict column mapping - ONLY the columns you provided
       const columnMap = {
-        imageUrl: findColumn(headers, ["imageurl", "image", "photo", "picture"]),
-        title: findColumn(headers, ["productdescription", "productdesc", "description", "title", "name", "productname"]),
-        originalPrice: findColumn(headers, ["originpric", "originalprice", "origin", "baseprice"]),
-        discountPrice: findColumn(headers, ["discountprice", "discountf", "price", "finalprice", "saleprice"]),
-        discount: findColumn(headers, ["discount", "percent", "off"]),
-        originalLink: findColumn(headers, ["originallink", "originalurl", "producturl", "productlink", "sourceurl"]),
-        promotionLink: findColumn(headers, ["promotionlink", "promotionurl", "promotion", "promolink"]),
-        affiliateLink: findColumn(headers, ["affiliatelink", "affiliate", "afflink", "trackinglink"]),
-        hebrewDescription: findColumn(headers, ["hebrewdescription", "hebrew", "תיאור", "description_he"]),
-        category: findColumn(headers, ["category", "cat", "קטגוריה", "type"]),
-        codeName: findColumn(headers, ["codename", "couponcode", "code", "coupon"]),
-        codeValue: findColumn(headers, ["codevalue", "couponvalue", "value", "discount_value"]),
-        // New AliExpress fields
-        sales180Day: findColumn(headers, ["sales180day", "sales180", "180day", "sales"]),
-        positiveFeedback: findColumn(headers, ["positivefeedback", "feedback", "positive", "rating"]),
+        imageUrl: findColumn(headers, ["imageurl"]),
+        title: findColumn(headers, ["productdesc"]),
+        promotionLink: findColumn(headers, ["promotionurl"]),
+        sales180Day: findColumn(headers, ["sales180day"]),
+        positiveFeedback: findColumn(headers, ["positivefeedback"]),
       };
 
       console.log("Column mapping:", columnMap);
 
-      // Check for minimum required columns
-      if (!columnMap.title && !columnMap.imageUrl) {
-        const missingCols = [];
-        if (!columnMap.title) missingCols.push("Title/Description");
-        if (!columnMap.imageUrl) missingCols.push("Image URL");
-        throw new Error(`Missing required columns: ${missingCols.join(", ")}. Found columns: ${headers.join(", ")}`);
+      // Required columns
+      const missing: string[] = [];
+      if (!columnMap.imageUrl) missing.push("Image Url");
+      if (!columnMap.title) missing.push("Product Desc");
+      if (!columnMap.promotionLink) missing.push("Promotion Url");
+
+      if (missing.length > 0) {
+        throw new Error(`Missing required columns: ${missing.join(", ")}. Found columns: ${headers.join(", ")}`);
       }
 
       const products: ExcelProduct[] = [];
@@ -174,40 +160,32 @@ export const ExcelImporter = ({ onProductsLoaded, onClearAll, hasProducts, isLoa
         
         const imageUrl = columnMap.imageUrl ? String(row[columnMap.imageUrl] || "").trim() : "";
         const title = columnMap.title ? String(row[columnMap.title] || "").trim() : "";
-        const originalPrice = columnMap.originalPrice ? cleanPrice(row[columnMap.originalPrice]) : 0;
-        const discountPrice = columnMap.discountPrice ? cleanPrice(row[columnMap.discountPrice]) : 0;
-        const discountPercent = columnMap.discount ? cleanDiscount(row[columnMap.discount]) : 0;
-        const originalLink = columnMap.originalLink ? String(row[columnMap.originalLink] || "").trim() : "";
         const promotionLink = columnMap.promotionLink ? String(row[columnMap.promotionLink] || "").trim() : "";
-        const affiliateLink = columnMap.affiliateLink ? String(row[columnMap.affiliateLink] || "").trim() : "";
-        const hebrewDescription = columnMap.hebrewDescription ? String(row[columnMap.hebrewDescription] || "").trim() : "";
-        const category = columnMap.category ? String(row[columnMap.category] || "").trim() : "";
-        const codeName = columnMap.codeName ? String(row[columnMap.codeName] || "").trim() : "";
-        const codeValue = columnMap.codeValue ? String(row[columnMap.codeValue] || "").trim() : "";
         const sales180Day = columnMap.sales180Day ? cleanPrice(row[columnMap.sales180Day]) : 0;
         const positiveFeedback = columnMap.positiveFeedback ? cleanDiscount(row[columnMap.positiveFeedback]) : 0;
 
-        // Validate row - must have at least title OR image
-        if (!title && !imageUrl) {
-          errors.push(`Row ${rowNum}: Missing both Title and Image URL`);
+        // Validate row
+        if (!title || !promotionLink) {
+          errors.push(`Row ${rowNum}: Missing Product Desc or Promotion Url`);
           return;
         }
 
         products.push({
           imageUrl,
-          title: title || "Untitled Product",
-          originalPrice,
-          discountPrice,
-          discountPercent,
-          // Use the best available link: affiliate > promotion > original
-          promotionLink: affiliateLink || promotionLink || originalLink,
-          affiliateLink: affiliateLink || promotionLink || undefined,
-          hebrewDescription: hebrewDescription || undefined,
-          category: category || undefined,
-          codeName: codeName || undefined,
-          codeValue: codeValue || undefined,
+          title,
+          promotionLink,
+          affiliateLink: promotionLink, // IMPORTANT: keep the affiliate link from Excel
+          hebrewDescription: undefined,
           sales180Day: sales180Day || undefined,
           positiveFeedback: positiveFeedback || undefined,
+
+          // Backwards compat numeric fields
+          originalPrice: 0,
+          discountPrice: 0,
+          discountPercent: 0,
+          category: undefined,
+          codeName: undefined,
+          codeValue: undefined,
         });
       });
 

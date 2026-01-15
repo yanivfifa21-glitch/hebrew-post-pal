@@ -284,30 +284,18 @@ const Discovery = () => {
 
     for (const product of selectedProducts) {
       try {
-        // Use existing affiliate link from Excel if available
-        let affiliateLink = product.affiliateLink || product.promotionLink;
-        
-        if (!product.affiliateLink) {
-          const { data: affResp } = await supabase.functions.invoke("generate-affiliate-link", {
-            body: { productUrl: product.promotionLink, userId },
-          });
-          affiliateLink = affResp?.success ? affResp.affiliateLink : product.promotionLink;
-        }
+        // IMPORTANT: keep the affiliate link coming from Excel (Promotion Url)
+        const affiliateLink = product.affiliateLink || product.promotionLink;
 
-        // Use existing Hebrew description or generate
+        // Always generate Hebrew from Product Desc (English) unless Excel already contains Hebrew (rare)
         let hebrewDescription = product.hebrewDescription || "";
-        
+
         if (!hebrewDescription) {
           const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
-            body: { 
-              title: product.title,
+            body: {
+              title: product.title, // mapped from Product Desc
               ordersCount: product.sales180Day || 0,
-              rating: product.positiveFeedback ? product.positiveFeedback / 20 : 0,
-              originalPrice: product.originalPrice,
-              discountPrice: product.discountPrice,
-              discountPercent: product.discountPercent,
-              couponCode: product.codeName,
-              couponValue: product.codeValue,
+              rating: product.positiveFeedback || 0, // percent (0-100)
               userId,
             },
           });
@@ -334,7 +322,7 @@ const Discovery = () => {
         const { error: saveErr } = await supabase.from("products").insert({
           original_url: product.promotionLink,
           title: product.title,
-          price: product.discountPrice,
+          price: null,
           image_url: product.imageUrl,
           orders_count: product.sales180Day || 0,
           rating: product.positiveFeedback ? product.positiveFeedback / 20 : 0,
@@ -385,33 +373,18 @@ const Discovery = () => {
 
     setAddingProductId(product.id);
     try {
-      // Use existing affiliate link from Excel if available, otherwise generate
-      let affiliateLink = product.affiliateLink || product.promotionLink;
-      
-      if (!product.affiliateLink) {
-        const { data: affResp, error: affErr } = await supabase.functions.invoke("generate-affiliate-link", {
-          body: { productUrl: product.promotionLink, userId },
-        });
+      // IMPORTANT: keep the affiliate link coming from Excel (Promotion Url)
+      const affiliateLink = product.affiliateLink || product.promotionLink;
 
-        if (affErr) throw new Error(affErr.message);
-        affiliateLink = affResp?.success ? affResp.affiliateLink : product.promotionLink;
-      }
-
-      // Use existing Hebrew description from Excel if available, otherwise generate
+      // Use existing Hebrew description from Excel if available, otherwise generate from Product Desc
       let hebrewDescription = product.hebrewDescription || "";
-      
+
       if (!hebrewDescription) {
-        // Build description from Excel data including sales and feedback
         const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
-          body: { 
+          body: {
             title: product.title,
             ordersCount: product.sales180Day || 0,
-            rating: product.positiveFeedback ? product.positiveFeedback / 20 : 0, // Convert percentage to 5-star scale
-            originalPrice: product.originalPrice,
-            discountPrice: product.discountPrice,
-            discountPercent: product.discountPercent,
-            couponCode: product.codeName,
-            couponValue: product.codeValue,
+            rating: product.positiveFeedback || 0, // percent (0-100)
             userId,
           },
         });
@@ -439,7 +412,7 @@ const Discovery = () => {
       const { error: saveErr } = await supabase.from("products").insert({
         original_url: product.promotionLink,
         title: product.title,
-        price: product.discountPrice,
+        price: null,
         image_url: product.imageUrl,
         orders_count: product.sales180Day || 0,
         rating: product.positiveFeedback ? product.positiveFeedback / 20 : 0,
