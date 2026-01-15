@@ -40,9 +40,20 @@ function isWithinIntervalTimeRange(currentTimeStr: string, intervalStartTime: st
   return currentMinutes >= startMinutes || currentMinutes <= endMinutes;
 }
 
+// Escape special Markdown characters for Telegram
+function escapeMarkdown(text: string): string {
+  return text
+    .replace(/\*/g, '\\*')
+    .replace(/_/g, '\\_')
+    .replace(/\[/g, '\\[')
+    .replace(/\]/g, '\\]')
+    .replace(/`/g, '\\`');
+}
+
 // Message builder
 function buildMessage(product: Record<string, unknown>): string {
-  const title = String(product.title ?? "").trim();
+  const rawTitle = String(product.title ?? "").trim();
+  const title = escapeMarkdown(rawTitle);
   const price = product.price ? `₪${Number(product.price).toFixed(2)}` : "";
   const description = String(product.hebrew_description ?? "").trim();
   const affiliateLink = String(product.affiliate_link ?? "").trim();
