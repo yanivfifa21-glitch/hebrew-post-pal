@@ -120,8 +120,22 @@ serve(async (req) => {
     }
 
     if (orders > 0) {
-      const ordersText = orders > 10000 ? `${Math.round(orders/1000)}K+` : orders > 1000 ? `${(orders/1000).toFixed(1)}K` : String(orders);
-      productDetails.push(`הזמנות: ${ordersText}`);
+      // Round up to nice numbers: 299 → "מעל 300", 1234 → "מעל 1300"
+      const roundUpTo = (n: number, base: number) => Math.ceil(n / base) * base;
+      let roundedOrders: number;
+      if (orders >= 10000) {
+        roundedOrders = roundUpTo(orders, 1000); // Round to nearest 1000
+      } else if (orders >= 1000) {
+        roundedOrders = roundUpTo(orders, 100); // Round to nearest 100
+      } else if (orders >= 100) {
+        roundedOrders = roundUpTo(orders, 50); // Round to nearest 50
+      } else if (orders >= 10) {
+        roundedOrders = roundUpTo(orders, 10); // Round to nearest 10
+      } else {
+        roundedOrders = orders;
+      }
+      const ordersText = roundedOrders >= 1000 ? `${(roundedOrders/1000).toFixed(roundedOrders % 1000 === 0 ? 0 : 1)}K+` : String(roundedOrders);
+      productDetails.push(`הזמנות: מעל ${ordersText}`);
     }
 
     const userPrompt = `מוצר: ${t}
