@@ -30,7 +30,9 @@ import {
   AlertCircle,
   Edit,
   MessageSquare,
-  RefreshCw
+  RefreshCw,
+  Play,
+  Send
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -234,6 +236,7 @@ const Settings = () => {
 
   const [isResettingStuck, setIsResettingStuck] = useState(false);
   const [isFetchingRate, setIsFetchingRate] = useState(false);
+  const [isStartingPublish, setIsStartingPublish] = useState(false);
 
   const fetchBankIsraelRate = async () => {
     setIsFetchingRate(true);
@@ -262,6 +265,56 @@ const Settings = () => {
       });
     } finally {
       setIsFetchingRate(false);
+    }
+  };
+
+  const handleStartPublishing = async () => {
+    setIsStartingPublish(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        toast({
+          title: "שגיאת התחברות",
+          description: "נא להתחבר מחדש",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const response = await supabase.functions.invoke('start-publishing', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      const result = response.data;
+
+      if (result.success) {
+        setAutomationEnabled(true);
+        toast({
+          title: "🎉 הפרסום התחיל!",
+          description: result.message,
+        });
+      } else {
+        toast({
+          title: "שגיאה בפרסום",
+          description: result.error,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Start publishing error:', error);
+      toast({
+        title: "שגיאה",
+        description: error instanceof Error ? error.message : "שגיאה בהפעלת פרסום",
+        variant: "destructive",
+      });
+    } finally {
+      setIsStartingPublish(false);
     }
   };
 
@@ -775,6 +828,28 @@ const Settings = () => {
                 className={automationEnabled ? 'data-[state=checked]:bg-primary shadow-[0_0_10px_rgba(var(--primary),0.5)]' : ''}
               />
             </div>
+
+            {/* Start Publishing Button */}
+            <Button
+              onClick={handleStartPublishing}
+              disabled={isStartingPublish}
+              className="w-full h-14 text-lg font-bold bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white shadow-lg hover:shadow-xl transition-all duration-300"
+            >
+              {isStartingPublish ? (
+                <>
+                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                  מפרסם...
+                </>
+              ) : (
+                <>
+                  <Play className="h-5 w-5 mr-2" />
+                  🚀 התחל לפרסם עכשיו
+                </>
+              )}
+            </Button>
+            <p className="text-xs text-center text-muted-foreground">
+              לחיצה תפרסם מיידית את המוצר הראשון בתור ותפעיל פרסום כל {postingIntervalMinutes || 30} דקות בטווח {intervalStartTime}-{intervalEndTime}
+            </p>
 
             {/* Interval vs Fixed Times Toggle */}
             <div className="space-y-3">
