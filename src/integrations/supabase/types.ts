@@ -304,6 +304,10 @@ export type Database = {
         Args: { p_account_id: string }
         Returns: Json
       }
+      get_decrypted_messaging_account_credentials: {
+        Args: { p_account_id: string; p_user_id: string }
+        Returns: Json
+      }
       get_decrypted_user_credentials: {
         Args: { p_user_id: string }
         Returns: Json
