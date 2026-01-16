@@ -675,34 +675,30 @@ const Discovery = () => {
 
                 <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                   {importedProducts.map((product) => (
-                    <div key={product.id} className="relative">
-                      {/* Selection Checkbox Overlay */}
+                    <div key={product.id} className="relative group">
+                      {/* Selection Checkbox - Always Visible */}
                       <div 
-                        className={`absolute top-2 left-2 z-10 transition-all ${
-                          selectedProductIds.has(product.id) 
-                            ? 'opacity-100' 
-                            : 'opacity-0 group-hover:opacity-100'
-                        }`}
+                        className="absolute top-2 left-2 z-10"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleProductSelection(product.id);
+                        }}
                       >
                         <div 
-                          className={`p-1 rounded-md backdrop-blur-sm cursor-pointer ${
+                          className={`p-1.5 rounded-lg backdrop-blur-sm cursor-pointer transition-all shadow-md ${
                             selectedProductIds.has(product.id) 
-                              ? 'bg-primary/90' 
-                              : 'bg-background/80 hover:bg-background'
+                              ? 'bg-primary shadow-glow-sm scale-110' 
+                              : 'bg-background/90 hover:bg-background border border-border hover:border-primary'
                           }`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleProductSelection(product.id);
-                          }}
                         >
                           {selectedProductIds.has(product.id) ? (
                             <CheckCircle2 className="h-5 w-5 text-primary-foreground" />
                           ) : (
-                            <div className="h-5 w-5 border-2 border-muted-foreground rounded-md" />
+                            <div className="h-5 w-5 border-2 border-muted-foreground/50 rounded-md" />
                           )}
                         </div>
                       </div>
-                      <div className={`group ${selectedProductIds.has(product.id) ? 'ring-2 ring-primary ring-offset-2 ring-offset-background rounded-xl' : ''}`}>
+                      <div className={`transition-all ${selectedProductIds.has(product.id) ? 'ring-2 ring-primary ring-offset-2 ring-offset-background rounded-xl' : ''}`}>
                         <ExcelProductCard
                           product={product}
                           onQuickAdd={() => handleQuickAddFromExcel(product)}
