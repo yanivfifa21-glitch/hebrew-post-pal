@@ -7,28 +7,28 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Category fallback keywords (used only if Hot Product API returns empty)
-const CATEGORY_FALLBACK_KEYWORDS: Record<string, string> = {
+// Category fallback keywords for better results
+const CATEGORY_FALLBACK_KEYWORDS: Record<string, string[]> = {
   // Electronics & mobile
-  "509": "phone accessories",
+  "509": ["phone case", "phone holder", "charger", "cable", "screen protector"],
   // Smart home & home
-  "15": "smart home",
+  "15": ["led lights", "kitchen gadgets", "home decor", "storage", "organizer"],
   // Beauty, health
-  "66": "beauty health",
+  "66": ["skincare", "makeup", "beauty tools", "hair accessories", "nail art"],
   // Sports
-  "200000297": "fitness sport",
+  "200000297": ["yoga", "fitness", "gym", "running", "outdoor"],
   // Automotive
-  "34": "car accessories",
+  "34": ["car holder", "car charger", "car organizer", "car accessories"],
   // Viral gadgets
-  "200003482": "cool gadgets",
+  "200003482": ["gadgets", "cool gadgets", "useful tools", "mini"],
   // Computers / office
-  "7": "computer accessories",
+  "7": ["mouse", "keyboard", "laptop stand", "usb hub", "webcam"],
   // Audio / wearables
-  "44": "headphones earbuds",
+  "44": ["earbuds", "headphones", "bluetooth speaker", "smartwatch"],
 };
 
-// Keep delivery constraint reasonable but not too strict
-const MAX_DELIVERY_DAYS = 30;
+// Keep delivery constraint reasonable
+const MAX_DELIVERY_DAYS = 45;
 
 type HotProduct = {
   product_id: string;
@@ -125,8 +125,8 @@ serve(async (req) => {
 
     const desiredCount = Math.min(pageSize || 20, 50);
 
-    // For "top sellers by category" we use product.query (more stable than hotproduct.query for some categories)
-    const callAliProductQuery = async (categoryId: string, pageNo: number, perPage: number) => {
+    // API call helper
+    const callAliProductQuery = async (categoryId: string, pageNo: number, perPage: number, searchKeywords?: string) => {
       const params: Record<string, string> = {
         app_key: appKey,
         method: "aliexpress.affiliate.product.query",
@@ -141,12 +141,17 @@ serve(async (req) => {
         page_no: String(pageNo),
         page_size: String(perPage),
         sort,
-        min_sale_price: "5",
-        category_ids: categoryId,
       };
 
-      // Optional keywords (user typed search) – still keep category constraint
-      if (keywords) params.keywords = keywords;
+      // Add category if provided
+      if (categoryId) {
+        params.category_ids = categoryId;
+      }
+
+      // Add keywords (user typed or fallback)
+      if (searchKeywords || keywords) {
+        params.keywords = searchKeywords || keywords;
+      }
 
       const sign = await generateMd5Signature(params, appSecret);
       const qs = Object.entries({ ...params, sign })
@@ -154,6 +159,8 @@ serve(async (req) => {
         .join("&");
 
       const apiUrl = `https://api-sg.aliexpress.com/sync?${qs}`;
+      console.log("[fetch-hot-products] Calling API with category:", categoryId, "keywords:", searchKeywords || keywords || "(none)");
+      
       const resp = await fetch(apiUrl, { method: "GET" });
       const data = await resp.json().catch(() => ({}));
       return { resp, data };
@@ -173,7 +180,7 @@ serve(async (req) => {
 
       const productUrl = `https://www.aliexpress.com/item/${productId}.html`;
 
-      // Avoid broken cards
+      // Avoid broken cards - require at least ID, title, and image
       if (!productId || !title || !imageUrl) return null;
 
       return {
@@ -188,44 +195,79 @@ serve(async (req) => {
       };
     };
 
-    const collectTopForCategory = async (categoryId: string) => {
+    const collectTopForCategory = async (categoryId: string, fallbackKeywordsList?: string[]) => {
       const collected: HotProduct[] = [];
       const seen = new Set<string>();
       const perPage = 50;
-      const maxPages = 5;
+      const maxPages = 3;
 
+      // First try: without keywords (pure category browsing)
       for (let pageNo = 1; pageNo <= maxPages && collected.length < desiredCount; pageNo++) {
-        const { data } = await callAliProductQuery(categoryId, pageNo, perPage);
+        try {
+          const { data } = await callAliProductQuery(categoryId, pageNo, perPage);
 
-        const err = data?.error_response;
-        if (err?.msg || err?.code) {
-          console.error("[fetch-hot-products] API Error:", err);
-          throw new Error("AliExpress API error - please verify your credentials");
-        }
+          const err = data?.error_response;
+          if (err?.msg || err?.code) {
+            console.error("[fetch-hot-products] API Error:", err);
+            break;
+          }
 
-        const rr = data?.aliexpress_affiliate_product_query_response?.resp_result;
-        if (!rr) throw new Error("AliExpress API error - missing response");
-        if (rr?.resp_code === 405) break;
-        if (rr?.resp_code !== 200) {
-          console.error("[fetch-hot-products] API resp_code error:", rr?.resp_code, rr?.resp_msg);
-          throw new Error("AliExpress API error - please verify your credentials");
-        }
+          const rr = data?.aliexpress_affiliate_product_query_response?.resp_result;
+          if (!rr) break;
+          if (rr?.resp_code === 405) break; // No more pages
+          if (rr?.resp_code !== 200) {
+            console.error("[fetch-hot-products] API resp_code error:", rr?.resp_code, rr?.resp_msg);
+            break;
+          }
 
-        const rawProducts = rr?.result?.products?.product || [];
-        for (const p of rawProducts) {
-          const mapped = mapProduct(p);
-          if (!mapped) continue;
-          if (seen.has(mapped.product_id)) continue;
-          seen.add(mapped.product_id);
-          collected.push(mapped);
+          const rawProducts = rr?.result?.products?.product || [];
+          console.log("[fetch-hot-products] Page", pageNo, "returned", rawProducts.length, "products");
+          
+          for (const p of rawProducts) {
+            const mapped = mapProduct(p);
+            if (!mapped) continue;
+            if (seen.has(mapped.product_id)) continue;
+            seen.add(mapped.product_id);
+            collected.push(mapped);
+          }
+        } catch (e) {
+          console.error("[fetch-hot-products] Error fetching page:", e);
+          break;
         }
       }
 
-      // Prefer items with actual sales_count
-      const withSales = collected.filter(p => (p.sales_count || 0) > 0);
-      const base = withSales.length >= desiredCount ? withSales : collected;
+      // If we don't have enough products, try with fallback keywords
+      if (collected.length < desiredCount && fallbackKeywordsList && fallbackKeywordsList.length > 0) {
+        console.log("[fetch-hot-products] Not enough products (", collected.length, "), trying fallback keywords");
+        
+        for (const fallbackKw of fallbackKeywordsList) {
+          if (collected.length >= desiredCount) break;
+          
+          try {
+            const { data } = await callAliProductQuery(categoryId, 1, perPage, fallbackKw);
+            
+            const rr = data?.aliexpress_affiliate_product_query_response?.resp_result;
+            if (!rr || rr?.resp_code !== 200) continue;
 
-      return base
+            const rawProducts = rr?.result?.products?.product || [];
+            console.log("[fetch-hot-products] Fallback keyword '", fallbackKw, "' returned", rawProducts.length, "products");
+            
+            for (const p of rawProducts) {
+              if (collected.length >= desiredCount) break;
+              const mapped = mapProduct(p);
+              if (!mapped) continue;
+              if (seen.has(mapped.product_id)) continue;
+              seen.add(mapped.product_id);
+              collected.push(mapped);
+            }
+          } catch (e) {
+            console.error("[fetch-hot-products] Error with fallback keyword:", fallbackKw, e);
+          }
+        }
+      }
+
+      // Sort by sales and return
+      return collected
         .sort((a, b) => (b.sales_count || 0) - (a.sales_count || 0))
         .slice(0, desiredCount);
     };
@@ -235,33 +277,36 @@ serve(async (req) => {
     // If category is empty ("הכל"), take the top sellers across our hot categories list
     if (!category) {
       const categoryOrder = ["509", "15", "66", "200000297", "34", "200003482", "7", "44"];
+      const seen = new Set<string>();
+      
+      // Collect from each category with its fallback keywords
       for (const catId of categoryOrder) {
         if (products.length >= desiredCount) break;
-        const chunk = await collectTopForCategory(catId);
+        
+        const fallbackKws = CATEGORY_FALLBACK_KEYWORDS[catId] || [];
+        const chunk = await collectTopForCategory(catId, fallbackKws);
+        
         for (const p of chunk) {
           if (products.length >= desiredCount) break;
-          if (!products.find(x => x.product_id === p.product_id)) products.push(p);
+          if (!seen.has(p.product_id)) {
+            seen.add(p.product_id);
+            products.push(p);
+          }
         }
       }
 
+      // Final sort by sales
       products = products
         .sort((a, b) => (b.sales_count || 0) - (a.sales_count || 0))
         .slice(0, desiredCount);
     } else {
-      products = await collectTopForCategory(category);
-
-      // If still too few, fallback to broad keywords for that category
-      if (products.length < desiredCount) {
-        const fallbackKeywords = CATEGORY_FALLBACK_KEYWORDS[category];
-        if (fallbackKeywords) {
-          console.warn("[fetch-hot-products] Too few products for category", category, "-> fallback keywords", fallbackKeywords);
-          // Temporarily use the fallback keywords
-          const prevKeywords = keywords;
-          (globalThis as any).__tmp = prevKeywords; // noop; avoid lint
-        }
-      }
+      // Specific category selected
+      const fallbackKws = CATEGORY_FALLBACK_KEYWORDS[category] || [];
+      products = await collectTopForCategory(category, fallbackKws);
     }
 
+    console.log("[fetch-hot-products] Returning", products.length, "products");
+    
     const payload: ApiOk = { success: true, products, total: products.length };
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: unknown) {
