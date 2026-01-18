@@ -7,27 +7,85 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Category fallback keywords for better results
-const CATEGORY_FALLBACK_KEYWORDS: Record<string, string[]> = {
-  // Electronics & mobile
-  "509": ["phone case", "phone holder", "charger", "cable", "screen protector"],
-  // Smart home & home
-  "15": ["led lights", "kitchen gadgets", "home decor", "storage", "organizer"],
-  // Beauty, health
-  "66": ["skincare", "makeup", "beauty tools", "hair accessories", "nail art"],
-  // Sports
-  "200000297": ["yoga", "fitness", "gym", "running", "outdoor"],
-  // Automotive
-  "34": ["car holder", "car charger", "car organizer", "car accessories"],
-  // Viral gadgets
-  "200003482": ["gadgets", "cool gadgets", "useful tools", "mini"],
-  // Computers / office
-  "7": ["mouse", "keyboard", "laptop stand", "usb hub", "webcam"],
-  // Audio / wearables
-  "44": ["earbuds", "headphones", "bluetooth speaker", "smartwatch"],
+// Category keywords for BEST_MATCH search - multiple keywords per category for variety
+const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  // Electronics & mobile - 509
+  "509": [
+    "phone accessories 2024",
+    "mobile phone holder",
+    "wireless charger fast",
+    "phone case popular",
+    "screen protector",
+    "usb c cable",
+    "power bank portable",
+  ],
+  // Smart home & home - 15
+  "15": [
+    "led strip lights",
+    "kitchen gadgets useful",
+    "home organizer storage",
+    "smart home devices",
+    "cleaning tools home",
+    "bathroom accessories",
+  ],
+  // Beauty, health - 66
+  "66": [
+    "skincare tools",
+    "makeup brushes set",
+    "hair styling tools",
+    "nail art supplies",
+    "beauty accessories",
+    "face care device",
+  ],
+  // Sports - 200000297
+  "200000297": [
+    "yoga mat accessories",
+    "fitness equipment home",
+    "gym workout gear",
+    "running accessories",
+    "outdoor sports gear",
+    "resistance bands set",
+  ],
+  // Automotive - 34
+  "34": [
+    "car phone holder",
+    "car charger fast",
+    "car organizer trunk",
+    "car accessories interior",
+    "car cleaning tools",
+    "led car lights",
+  ],
+  // Viral gadgets - 200003482
+  "200003482": [
+    "cool gadgets 2024",
+    "mini gadgets useful",
+    "trending products",
+    "creative tools",
+    "portable gadgets",
+    "smart gadgets",
+  ],
+  // Computers / office - 7
+  "7": [
+    "laptop stand desk",
+    "wireless mouse keyboard",
+    "usb hub multiport",
+    "desk organizer office",
+    "monitor accessories",
+    "webcam accessories",
+  ],
+  // Audio / wearables - 44
+  "44": [
+    "wireless earbuds bluetooth",
+    "headphones gaming",
+    "bluetooth speaker portable",
+    "smartwatch accessories",
+    "earphone case",
+  ],
 };
 
-// Keep delivery constraint reasonable
+// All categories for "הכל" mode
+const ALL_CATEGORY_IDS = ["509", "15", "66", "200000297", "34", "200003482", "7", "44"];
+
 const MAX_DELIVERY_DAYS = 45;
 
 type HotProduct = {
@@ -87,11 +145,8 @@ serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const category = String(body?.category || "").trim();
-    const keywords = String(body?.keywords || "").trim();
-    const page = parseInt(body?.page) || 1;
+    const userKeywords = String(body?.keywords || "").trim();
     const pageSize = Math.min(parseInt(body?.pageSize) || 20, 50);
-    // Sort by volume (sales) to get hottest products
-    const sort = String(body?.sort || "VOLUME_DESC").trim();
 
     // Use service role to fetch user's decrypted credentials via RPC
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -114,19 +169,19 @@ serve(async (req) => {
 
     const appKey = credentials?.aliexpress_app_key?.trim();
     const appSecret = credentials?.aliexpress_app_secret?.trim();
-    const trackingId = settings?.aliexpress_tracking_id?.trim() || "TELEGRAM";
+    const trackingId = settings?.aliexpress_tracking_id?.trim() || "default";
 
     if (!appKey || !appSecret) {
       const payload: ApiErr = { success: false, error: "Please configure your AliExpress API credentials in Settings" };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    console.log("[fetch-hot-products] User:", user.id, "| category:", category, "| keywords:", keywords, "| requested pageSize:", pageSize);
+    console.log("[fetch-hot-products] User:", user.id, "| category:", category || "ALL", "| userKeywords:", userKeywords, "| pageSize:", pageSize);
 
-    const desiredCount = Math.min(pageSize || 20, 50);
+    const desiredCount = pageSize;
 
-    // API call helper
-    const callAliProductQuery = async (categoryId: string, pageNo: number, perPage: number, searchKeywords?: string) => {
+    // API call helper - uses BEST_MATCH sorting
+    const callAliProductQuery = async (searchKeywords: string, categoryId?: string) => {
       const params: Record<string, string> = {
         app_key: appKey,
         method: "aliexpress.affiliate.product.query",
@@ -138,19 +193,15 @@ serve(async (req) => {
         target_currency: "ILS",
         ship_to_country: "IL",
         delivery_days: MAX_DELIVERY_DAYS.toString(),
-        page_no: String(pageNo),
-        page_size: String(perPage),
-        sort,
+        page_no: "1",
+        page_size: "50",
+        sort: "BEST_MATCH", // Changed to BEST_MATCH as requested
+        keywords: searchKeywords,
       };
 
-      // Add category if provided
+      // Optionally add category filter
       if (categoryId) {
         params.category_ids = categoryId;
-      }
-
-      // Add keywords (user typed or fallback)
-      if (searchKeywords || keywords) {
-        params.keywords = searchKeywords || keywords;
       }
 
       const sign = await generateMd5Signature(params, appSecret);
@@ -159,11 +210,11 @@ serve(async (req) => {
         .join("&");
 
       const apiUrl = `https://api-sg.aliexpress.com/sync?${qs}`;
-      console.log("[fetch-hot-products] Calling API with category:", categoryId, "keywords:", searchKeywords || keywords || "(none)");
+      console.log("[fetch-hot-products] API call - keywords:", searchKeywords, "| category:", categoryId || "none");
       
       const resp = await fetch(apiUrl, { method: "GET" });
       const data = await resp.json().catch(() => ({}));
-      return { resp, data };
+      return data;
     };
 
     const mapProduct = (p: any): HotProduct | null => {
@@ -180,7 +231,7 @@ serve(async (req) => {
 
       const productUrl = `https://www.aliexpress.com/item/${productId}.html`;
 
-      // Avoid broken cards - require at least ID, title, and image
+      // Avoid broken cards
       if (!productId || !title || !imageUrl) return null;
 
       return {
@@ -195,114 +246,71 @@ serve(async (req) => {
       };
     };
 
-    const collectTopForCategory = async (categoryId: string, fallbackKeywordsList?: string[]) => {
-      const collected: HotProduct[] = [];
-      const seen = new Set<string>();
-      const perPage = 50;
-      const maxPages = 3;
+    const seen = new Set<string>();
+    const products: HotProduct[] = [];
 
-      // First try: without keywords (pure category browsing)
-      for (let pageNo = 1; pageNo <= maxPages && collected.length < desiredCount; pageNo++) {
-        try {
-          const { data } = await callAliProductQuery(categoryId, pageNo, perPage);
-
-          const err = data?.error_response;
-          if (err?.msg || err?.code) {
-            console.error("[fetch-hot-products] API Error:", err);
-            break;
-          }
-
-          const rr = data?.aliexpress_affiliate_product_query_response?.resp_result;
-          if (!rr) break;
-          if (rr?.resp_code === 405) break; // No more pages
-          if (rr?.resp_code !== 200) {
-            console.error("[fetch-hot-products] API resp_code error:", rr?.resp_code, rr?.resp_msg);
-            break;
-          }
-
-          const rawProducts = rr?.result?.products?.product || [];
-          console.log("[fetch-hot-products] Page", pageNo, "returned", rawProducts.length, "products");
-          
-          for (const p of rawProducts) {
-            const mapped = mapProduct(p);
-            if (!mapped) continue;
-            if (seen.has(mapped.product_id)) continue;
-            seen.add(mapped.product_id);
-            collected.push(mapped);
-          }
-        } catch (e) {
-          console.error("[fetch-hot-products] Error fetching page:", e);
-          break;
-        }
-      }
-
-      // If we don't have enough products, try with fallback keywords
-      if (collected.length < desiredCount && fallbackKeywordsList && fallbackKeywordsList.length > 0) {
-        console.log("[fetch-hot-products] Not enough products (", collected.length, "), trying fallback keywords");
-        
-        for (const fallbackKw of fallbackKeywordsList) {
-          if (collected.length >= desiredCount) break;
-          
-          try {
-            const { data } = await callAliProductQuery(categoryId, 1, perPage, fallbackKw);
-            
-            const rr = data?.aliexpress_affiliate_product_query_response?.resp_result;
-            if (!rr || rr?.resp_code !== 200) continue;
-
-            const rawProducts = rr?.result?.products?.product || [];
-            console.log("[fetch-hot-products] Fallback keyword '", fallbackKw, "' returned", rawProducts.length, "products");
-            
-            for (const p of rawProducts) {
-              if (collected.length >= desiredCount) break;
-              const mapped = mapProduct(p);
-              if (!mapped) continue;
-              if (seen.has(mapped.product_id)) continue;
-              seen.add(mapped.product_id);
-              collected.push(mapped);
-            }
-          } catch (e) {
-            console.error("[fetch-hot-products] Error with fallback keyword:", fallbackKw, e);
-          }
-        }
-      }
-
-      // Sort by sales and return
-      return collected
-        .sort((a, b) => (b.sales_count || 0) - (a.sales_count || 0))
-        .slice(0, desiredCount);
-    };
-
-    let products: HotProduct[] = [];
-
-    // If category is empty ("הכל"), take the top sellers across our hot categories list
-    if (!category) {
-      const categoryOrder = ["509", "15", "66", "200000297", "34", "200003482", "7", "44"];
-      const seen = new Set<string>();
+    // If user provided keywords, use those directly
+    if (userKeywords) {
+      const data = await callAliProductQuery(userKeywords, category || undefined);
       
-      // Collect from each category with its fallback keywords
-      for (const catId of categoryOrder) {
+      const err = data?.error_response;
+      if (err?.msg || err?.code) {
+        console.error("[fetch-hot-products] API Error:", err);
+        const payload: ApiErr = { success: false, error: "AliExpress API error - please verify your credentials" };
+        return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      const rr = data?.aliexpress_affiliate_product_query_response?.resp_result;
+      if (rr?.resp_code === 200) {
+        const rawProducts = rr?.result?.products?.product || [];
+        for (const p of rawProducts) {
+          if (products.length >= desiredCount) break;
+          const mapped = mapProduct(p);
+          if (!mapped || seen.has(mapped.product_id)) continue;
+          seen.add(mapped.product_id);
+          products.push(mapped);
+        }
+      }
+    } else {
+      // No user keywords - use category keywords
+      const categoriesToFetch = category ? [category] : ALL_CATEGORY_IDS;
+      
+      for (const catId of categoriesToFetch) {
         if (products.length >= desiredCount) break;
         
-        const fallbackKws = CATEGORY_FALLBACK_KEYWORDS[catId] || [];
-        const chunk = await collectTopForCategory(catId, fallbackKws);
+        const keywords = CATEGORY_KEYWORDS[catId] || ["trending products"];
         
-        for (const p of chunk) {
+        // Try each keyword for this category until we have enough products
+        for (const kw of keywords) {
           if (products.length >= desiredCount) break;
-          if (!seen.has(p.product_id)) {
-            seen.add(p.product_id);
-            products.push(p);
+          
+          try {
+            const data = await callAliProductQuery(kw, catId);
+            
+            const err = data?.error_response;
+            if (err?.msg || err?.code) {
+              console.warn("[fetch-hot-products] API Error for keyword", kw, ":", err);
+              continue;
+            }
+
+            const rr = data?.aliexpress_affiliate_product_query_response?.resp_result;
+            if (rr?.resp_code !== 200) continue;
+
+            const rawProducts = rr?.result?.products?.product || [];
+            console.log("[fetch-hot-products] Keyword '", kw, "' returned", rawProducts.length, "products");
+            
+            for (const p of rawProducts) {
+              if (products.length >= desiredCount) break;
+              const mapped = mapProduct(p);
+              if (!mapped || seen.has(mapped.product_id)) continue;
+              seen.add(mapped.product_id);
+              products.push(mapped);
+            }
+          } catch (e) {
+            console.error("[fetch-hot-products] Error with keyword:", kw, e);
           }
         }
       }
-
-      // Final sort by sales
-      products = products
-        .sort((a, b) => (b.sales_count || 0) - (a.sales_count || 0))
-        .slice(0, desiredCount);
-    } else {
-      // Specific category selected
-      const fallbackKws = CATEGORY_FALLBACK_KEYWORDS[category] || [];
-      products = await collectTopForCategory(category, fallbackKws);
     }
 
     console.log("[fetch-hot-products] Returning", products.length, "products");
