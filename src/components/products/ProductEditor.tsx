@@ -4,11 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Sparkles, Save, Send, Loader2, Plus, Trash2, X } from "lucide-react";
+import { Sparkles, Save, Send, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { TelegramEmoji } from "@/components/ui/TelegramEmoji";
-import { EmojiPicker } from "@/components/products/EmojiPicker";
+import { PostEmojiPicker } from "@/components/products/PostEmojiPicker";
 
 export interface Coupon {
   code: string;
@@ -33,7 +32,7 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
   const [hebrewDescription, setHebrewDescription] = useState(productData.hebrewDescription || "");
   const [isGenerating, setIsGenerating] = useState(false);
   const [coupons, setCoupons] = useState<Coupon[]>(initialCoupons || [{ code: "", amount: "" }]);
-  const [selectedEmojis, setSelectedEmojis] = useState<string[]>([]);
+  const [postEmoji, setPostEmoji] = useState<string>("🔥");
   // Fetch USD exchange rate from settings
   useEffect(() => {
     const fetchExchangeRate = async () => {
@@ -118,10 +117,13 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || "Failed to generate Hebrew post");
 
-      // Build final description with price, coupons and link
+      // Build final description with emoji prefix, price, coupons and link
       const priceText = buildPriceText();
       const couponText = buildCouponText();
-      const parts = [data.hebrewDescription];
+      
+      // Add emoji prefix if selected
+      const emojiPrefix = postEmoji ? `${postEmoji} ` : "";
+      const parts = [emojiPrefix + data.hebrewDescription];
       if (priceText) parts.push(priceText);
       if (couponText) parts.push(couponText);
       parts.push(`👉 לרכישה: ${affiliateLink}`);
@@ -299,8 +301,9 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
           <div className="flex items-center justify-between">
             <Label htmlFor="hebrew">Hebrew Marketing Post</Label>
             <div className="flex gap-2">
-              <EmojiPicker 
-                onSelect={(url) => setSelectedEmojis([...selectedEmojis, url])} 
+              <PostEmojiPicker 
+                selectedEmoji={postEmoji}
+                onSelect={setPostEmoji} 
               />
               <Button variant="outline" size="sm" onClick={handleGenerateHebrew} disabled={isGenerating}>
                 {isGenerating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
@@ -309,21 +312,11 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
             </div>
           </div>
           
-          {/* Selected Animated Emojis */}
-          {selectedEmojis.length > 0 && (
-            <div className="flex flex-wrap gap-2 p-3 bg-muted/30 rounded-lg border border-border">
-              <span className="text-xs text-muted-foreground self-center mr-2">Emojis:</span>
-              {selectedEmojis.map((url, index) => (
-                <div key={index} className="relative group">
-                  <TelegramEmoji animationUrl={url} size={36} />
-                  <button
-                    onClick={() => setSelectedEmojis(selectedEmojis.filter((_, i) => i !== index))}
-                    className="absolute -top-1 -right-1 h-4 w-4 bg-destructive text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
+          {/* Post Emoji Preview */}
+          {postEmoji && (
+            <div className="flex items-center gap-2 p-2 bg-primary/10 rounded-lg border border-primary/20" dir="rtl">
+              <span className="text-2xl">{postEmoji}</span>
+              <span className="text-xs text-muted-foreground">יופיע בתחילת הפוסט (מונפש בטלגרם Premium)</span>
             </div>
           )}
           
