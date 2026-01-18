@@ -181,6 +181,14 @@ ${productDetails.length > 0 ? `\nנתונים מה-API:\n${productDetails.join("
 
     // Clean up - remove any links, prices, or CTAs the AI might have added
     content = String(content).trim();
+    
+    // Remove placeholder brackets from prompt template (e.g., [שם המותג, אם יש], [קישור])
+    content = content.replace(/\s*\|\s*\[.*?\]/g, ''); // Remove " | [placeholder]" patterns
+    content = content.replace(/\[שם המותג.*?\]/gi, ''); // Specific brand placeholder
+    content = content.replace(/\[קישור\]/gi, ''); // Link placeholder
+    content = content.replace(/\[.*?אם יש.*?\]/gi, ''); // Any "if exists" placeholders
+    content = content.replace(/\[Brand.*?\]/gi, ''); // English brand placeholders
+    
     content = content.replace(/https?:\/\/[^\s]+/g, '');
     content = content.replace(/👉[^\n]*/g, '');
     content = content.replace(/🔗[^\n]*/g, '');
@@ -193,8 +201,9 @@ ${productDetails.length > 0 ? `\nנתונים מה-API:\n${productDetails.join("
     content = content.replace(/🎟️[^\n]*/g, '');
     content = content.replace(/קופון[:\s]*[^\n]*/gi, '');
     content = content.replace(/קוד[:\s]*[A-Z0-9]+[^\n]*/gi, '');
-    // Clean up extra newlines
+    // Clean up extra newlines and spaces
     content = content.replace(/\n{3,}/g, '\n\n').trim();
+    content = content.replace(/\s{2,}/g, ' ').trim();
 
     const payload: ApiOk = { success: true, hebrewDescription: content };
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
