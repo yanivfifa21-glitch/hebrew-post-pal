@@ -76,33 +76,32 @@ Deno.serve(async (req) => {
     // Determine mime type from URL or default to jpeg
     const mimeType = imageUrl.toLowerCase().includes(".png") ? "image/png" : "image/jpeg";
 
-    // Call Google Gemini with image editing capabilities
+    // Call Google Gemini with image editing capabilities using Imagen 3
     const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${googleApiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${googleApiKey}`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          contents: [
+          instances: [
             {
-              parts: [
+              prompt: "Transform this product image into a high-end, professional marketing shot. Use cinematic lighting, a clean commercial background, and vibrant colors. Keep the original product shape and details intact but make the overall composition eye-catching and premium.",
+              referenceImages: [
                 {
-                  text: "Transform this product image into a high-end, professional marketing shot. Use cinematic lighting, a clean commercial background, and vibrant colors. Keep the original product shape and details intact but make the overall composition eye-catching and premium. Return only the enhanced image.",
-                },
-                {
-                  inline_data: {
-                    mime_type: mimeType,
-                    data: base64Image,
+                  referenceType: 1,
+                  referenceId: 1,
+                  referenceImage: {
+                    bytesBase64Encoded: base64Image,
                   },
                 },
               ],
             },
           ],
-          generationConfig: {
-            responseModalities: ["image", "text"],
-            responseMimeType: "image/jpeg",
+          parameters: {
+            sampleCount: 1,
+            aspectRatio: "1:1",
           },
         }),
       }
@@ -120,13 +119,8 @@ Deno.serve(async (req) => {
     // Extract the generated image from the response
     let enhancedImageBase64: string | null = null;
     
-    if (geminiResult.candidates?.[0]?.content?.parts) {
-      for (const part of geminiResult.candidates[0].content.parts) {
-        if (part.inlineData?.data) {
-          enhancedImageBase64 = part.inlineData.data;
-          break;
-        }
-      }
+    if (geminiResult.predictions?.[0]?.bytesBase64Encoded) {
+      enhancedImageBase64 = geminiResult.predictions[0].bytesBase64Encoded;
     }
 
     if (!enhancedImageBase64) {
