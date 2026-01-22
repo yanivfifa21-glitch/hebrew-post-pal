@@ -1,26 +1,70 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Edit, ShoppingBag, Percent, Tag } from "lucide-react";
+import { Loader2, Plus, Edit, ShoppingBag, Percent, Tag, Wand2, Sparkles } from "lucide-react";
 import { ExcelProduct } from "./ExcelImporter";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
 
 interface ExcelProductCardProps {
   product: ExcelProduct;
   onQuickAdd: (product: ExcelProduct) => void;
   onEdit: (product: ExcelProduct) => void;
   isAdding?: boolean;
+  onImageEnhanced?: (productId: string, newImageUrl: string) => void;
 }
 
-export const ExcelProductCard = ({ product, onQuickAdd, onEdit, isAdding }: ExcelProductCardProps) => {
+export const ExcelProductCard = ({ product, onQuickAdd, onEdit, isAdding, onImageEnhanced }: ExcelProductCardProps) => {
   const [imageError, setImageError] = useState(false);
+  const [isEnhancing, setIsEnhancing] = useState(false);
+  const [enhancedImageUrl, setEnhancedImageUrl] = useState<string | null>(null);
+
+  const currentImageUrl = enhancedImageUrl || product.imageUrl;
+
+  const handleEnhanceImage = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!currentImageUrl) return;
+
+    setIsEnhancing(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { data, error } = await supabase.functions.invoke("enhance-product-image", {
+        body: {
+          imageUrl: currentImageUrl,
+          userId: user.id,
+        },
+      });
+
+      if (error) throw new Error(error.message);
+      if (!data?.success) throw new Error(data?.error || "Failed to enhance image");
+
+      setEnhancedImageUrl(data.imageUrl);
+      onImageEnhanced?.((product as any).id, data.imageUrl);
+      
+      toast({
+        title: "✨ התמונה שודרגה!",
+        description: "התמונה הפכה למקצועית יותר",
+      });
+    } catch (e) {
+      toast({
+        title: "שיפור נכשל",
+        description: e instanceof Error ? e.message : "לא הצלחנו לשפר את התמונה",
+        variant: "destructive",
+      });
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
 
   return (
     <div className="glass-card neon-border overflow-hidden group card-interactive">
       {/* Image */}
       <div className="relative aspect-square overflow-hidden bg-muted/20">
-        {product.imageUrl && !imageError ? (
+        {currentImageUrl && !imageError ? (
           <img
-            src={product.imageUrl}
+            src={currentImageUrl}
             alt={product.title}
             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
             onError={() => setImageError(true)}
@@ -32,8 +76,16 @@ export const ExcelProductCard = ({ product, onQuickAdd, onEdit, isAdding }: Exce
           </div>
         )}
         
+        {/* Enhanced Badge */}
+        {enhancedImageUrl && (
+          <div className="absolute top-2 left-2 bg-gradient-to-r from-primary to-secondary text-primary-foreground px-2 py-0.5 rounded-full text-[10px] font-medium flex items-center gap-0.5">
+            <Sparkles className="h-2.5 w-2.5" />
+            משודרגת
+          </div>
+        )}
+        
         {/* Discount Badge */}
-        {product.discountPercent > 0 && (
+        {product.discountPercent > 0 && !enhancedImageUrl && (
           <Badge className="absolute top-2 left-2 bg-destructive/90 text-xs shadow-glow-sm">
             <Percent className="h-3 w-3 mr-0.5" />
             {Math.round(product.discountPercent)}%
@@ -47,6 +99,24 @@ export const ExcelProductCard = ({ product, onQuickAdd, onEdit, isAdding }: Exce
             קופון
           </Badge>
         )}
+
+        {/* Enhance Image Button */}
+        <Button
+          variant="glass"
+          size="sm"
+          className="absolute bottom-2 left-2 h-7 text-[10px] px-2 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={handleEnhanceImage}
+          disabled={isEnhancing || !currentImageUrl}
+        >
+          {isEnhancing ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <>
+              <Wand2 className="h-3 w-3 mr-0.5" />
+              ✨ שדרג
+            </>
+          )}
+        </Button>
       </div>
 
       {/* Content */}

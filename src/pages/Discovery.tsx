@@ -704,6 +704,11 @@ const Discovery = () => {
                           onQuickAdd={() => handleQuickAddFromExcel(product)}
                           onEdit={() => handleEditFromExcel(product)}
                           isAdding={addingProductId === product.id}
+                          onImageEnhanced={(productId, newImageUrl) => {
+                            setImportedProducts(prev => prev.map(p => 
+                              p.id === productId ? { ...p, imageUrl: newImageUrl } : p
+                            ));
+                          }}
                         />
                       </div>
                     </div>
