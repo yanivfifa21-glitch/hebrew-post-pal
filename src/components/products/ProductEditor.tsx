@@ -173,12 +173,21 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
       });
 
       if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || "Failed to enhance image");
+
+      // Handle quota exceeded or other graceful failures
+      if (data?.quotaExceeded || !data?.success) {
+        toast({
+          title: "⚠️ שדרוג לא זמין",
+          description: data?.hebrewMessage || "לא הצלחנו לשפר את התמונה",
+          variant: "destructive",
+        });
+        return;
+      }
 
       setEnhancedImageUrl(data.imageUrl);
       toast({
         title: "✨ התמונה שודרגה!",
-        description: "התמונה הפכה למקצועית יותר",
+        description: data?.hebrewMessage || "התמונה הפכה למקצועית יותר",
       });
     } catch (e) {
       toast({

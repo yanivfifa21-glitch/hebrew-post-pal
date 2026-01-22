@@ -32,8 +32,12 @@ Deno.serve(async (req) => {
 
     if (!googleApiKey) {
       return new Response(
-        JSON.stringify({ error: "Google AI API key not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ 
+          error: "Google AI API key not configured",
+          quotaExceeded: true,
+          hebrewMessage: "מפתח Google AI לא מוגדר. שדרוג תמונות לא זמין."
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -67,7 +71,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Enhancing image for product ${productId}: ${imageUrl}`);
+    console.log(`[enhance-product-image] Enhancing image for product ${productId}: ${imageUrl}`);
 
     // Fetch the original image and convert to base64
     const imageResponse = await fetch(imageUrl);
@@ -83,15 +87,11 @@ Deno.serve(async (req) => {
     // Determine mime type from URL or default to jpeg
     const mimeType = imageUrl.toLowerCase().includes(".png") ? "image/png" : "image/jpeg";
 
-    // NOTE:
-    // - Vertex AI Imagen endpoints require OAuth (service account), not an API key.
-    // - The API key we have is for the Google Generative Language API.
-    // So we use a Gemini image-generation capable model via :generateContent.
     const prompt =
       "Transform this product image into a high-end, professional marketing shot. Use cinematic lighting, a clean commercial background, and vibrant colors. Keep the original product shape and details intact but make the overall composition eye-catching and premium. Return only the enhanced image.";
 
+    // Try models that support image generation
     const candidateModels = [
-      // More widely available model ids for the API-key based endpoint
       "gemini-2.0-flash-exp",
       "gemini-2.0-flash",
       "gemini-1.5-flash",
@@ -99,8 +99,11 @@ Deno.serve(async (req) => {
 
     let geminiResponse: Response | null = null;
     let lastErrorText: string | null = null;
+    let quotaExceeded = false;
 
     for (const model of candidateModels) {
+      console.log(`[enhance-product-image] Trying model: ${model}`);
+      
       const resp = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${googleApiKey}`,
         {
@@ -121,7 +124,6 @@ Deno.serve(async (req) => {
               },
             ],
             generationConfig: {
-              // IMPORTANT: do NOT set responseMimeType (it only supports text/JSON/etc)
               responseModalities: ["IMAGE", "TEXT"],
             },
           }),
@@ -134,20 +136,51 @@ Deno.serve(async (req) => {
       }
 
       lastErrorText = await resp.text();
-      console.error(`[enhance-product-image] Model ${model} failed:`, lastErrorText);
+      console.error(`[enhance-product-image] Model ${model} failed (${resp.status}):`, lastErrorText);
+
+      // Check for quota exceeded (429)
+      if (resp.status === 429) {
+        quotaExceeded = true;
+        break;
+      }
 
       // If model doesn't exist / not enabled, try the next one.
       if (resp.status === 404) continue;
-      // For other failures (400/401/429/500), stop early.
+      
+      // For other failures (400/401/500), stop early.
       break;
     }
 
+    // Handle quota exceeded gracefully - return original image with message
+    if (quotaExceeded) {
+      console.log("[enhance-product-image] Quota exceeded, returning original image");
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          productId,
+          imageUrl: imageUrl,
+          quotaExceeded: true,
+          hebrewMessage: "חרגת ממכסת השימוש החינמית ב-Google AI. שדרוג התמונה לא זמין כרגע. נסה שוב מאוחר יותר או הפעל חיוב בחשבון Google Cloud."
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     if (!geminiResponse) {
-      throw new Error(`Gemini API error: ${lastErrorText ?? "unknown"}`);
+      console.error("[enhance-product-image] All models failed:", lastErrorText);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          productId,
+          imageUrl: imageUrl,
+          hebrewMessage: "שדרוג התמונה נכשל. מוחזרת התמונה המקורית."
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const geminiResult = await geminiResponse.json();
-    console.log("Gemini response received");
+    console.log("[enhance-product-image] Gemini response received");
 
     // Extract the generated image from the response
     let enhancedImageBase64: string | null = null;
@@ -164,20 +197,20 @@ Deno.serve(async (req) => {
 
     if (!enhancedImageBase64) {
       // If no image was generated, return the original
-      console.log("No enhanced image generated, keeping original");
+      console.log("[enhance-product-image] No enhanced image generated, keeping original");
       return new Response(
         JSON.stringify({ 
           success: true, 
           productId,
           imageUrl: imageUrl,
-          message: "Image could not be enhanced, keeping original"
+          hebrewMessage: "לא ניתן היה לשדרג את התמונה. מוחזרת התמונה המקורית."
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     // Upload enhanced image to Supabase Storage
-    const fileName = `enhanced_${productId}_${Date.now()}.jpg`;
+    const fileName = `enhanced_${productId || 'temp'}_${Date.now()}.jpg`;
     const imageBytes = Uint8Array.from(atob(enhancedImageBase64), c => c.charCodeAt(0));
     
     // Check if bucket exists, create if not
@@ -199,7 +232,7 @@ Deno.serve(async (req) => {
       });
 
     if (uploadError) {
-      console.error("Upload error:", uploadError);
+      console.error("[enhance-product-image] Upload error:", uploadError);
       throw new Error(`Failed to upload enhanced image: ${uploadError.message}`);
     }
 
@@ -217,29 +250,33 @@ Deno.serve(async (req) => {
         .eq("user_id", userId);
 
       if (updateError) {
-        console.error("Update error:", updateError);
+        console.error("[enhance-product-image] Update error:", updateError);
         throw new Error(`Failed to update product: ${updateError.message}`);
       }
     }
 
-    console.log(`Successfully enhanced image for product ${productId}`);
+    console.log(`[enhance-product-image] Successfully enhanced image for product ${productId}`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         productId,
         imageUrl: publicUrl,
-        message: "Image enhanced successfully"
+        hebrewMessage: "התמונה שודרגה בהצלחה!"
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error: unknown) {
-    console.error("Error enhancing image:", error);
+    console.error("[enhance-product-image] Error:", error);
     const errorMessage = error instanceof Error ? error.message : "Failed to enhance image";
     return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ 
+        success: false,
+        error: errorMessage,
+        hebrewMessage: "אירעה שגיאה בשדרוג התמונה. נסה שוב מאוחר יותר."
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
