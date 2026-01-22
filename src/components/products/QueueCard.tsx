@@ -3,6 +3,7 @@ import { Product } from "@/types/product";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Rocket, Trash2, Loader2, ExternalLink, Star, ShoppingCart, Copy, Check, Clock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -13,9 +14,12 @@ interface QueueCardProps {
   onSent: (productId: string) => void;
   onDeleted: (productId: string) => void;
   onStatusChanged?: (productId: string, newStatus: string) => void;
+  isSelected?: boolean;
+  onSelectionChange?: (productId: string, selected: boolean) => void;
+  showCheckbox?: boolean;
 }
 
-export const QueueCard = ({ product, onSent, onDeleted }: QueueCardProps) => {
+export const QueueCard = ({ product, onSent, onDeleted, isSelected = false, onSelectionChange, showCheckbox = false }: QueueCardProps) => {
   const [hebrewDescription, setHebrewDescription] = useState(product.hebrew_description || "");
   const [isSending, setIsSending] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -163,6 +167,16 @@ export const QueueCard = ({ product, onSent, onDeleted }: QueueCardProps) => {
   return (
     <div className="glass-card card-interactive overflow-hidden animate-fade-in-up">
       <div className="flex flex-col md:flex-row">
+        {/* Checkbox for selection */}
+        {showCheckbox && (
+          <div className="absolute top-3 right-3 z-10">
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={(checked) => onSelectionChange?.(product.id, checked === true)}
+              className="h-5 w-5 bg-background/80 backdrop-blur-sm border-2"
+            />
+          </div>
+        )}
         {/* Product Image */}
         <div className="relative w-full md:w-44 h-44 flex-shrink-0 overflow-hidden">
           {product.image_url ? (
