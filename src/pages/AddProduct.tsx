@@ -393,18 +393,16 @@ const AddProduct = () => {
         throw new Error(errors.join("; "));
       }
 
+      // Only update existing draft if it was already saved, don't create new record
+      // User explicitly wants: after manual post, don't auto-save to queue
       if (draftProductId) {
         const { error } = await supabase
           .from("products")
           .update({ ...product, status: "Sent", channels })
           .eq("id", draftProductId);
         if (error) throw error;
-      } else {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error("Not authenticated");
-        const { error } = await supabase.from("products").insert({ ...product, status: "Sent", channels, user_id: user.id });
-        if (error) throw error;
       }
+      // If no draftProductId, we simply don't save - the post was sent but not added to queue
 
       toast({
         title: "Posted Successfully!",
