@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Sparkles, Save, Send, Loader2, Plus, Trash2 } from "lucide-react";
+import { Sparkles, Save, Send, Loader2, Plus, Trash2, Wand2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { PostEmojiPicker } from "@/components/products/PostEmojiPicker";
@@ -33,6 +33,11 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
   const [isGenerating, setIsGenerating] = useState(false);
   const [coupons, setCoupons] = useState<Coupon[]>(initialCoupons || [{ code: "", amount: "" }]);
   const [postEmoji, setPostEmoji] = useState<string>("🔥");
+  const [isEnhancingImage, setIsEnhancingImage] = useState(false);
+  const [enhancedImageUrl, setEnhancedImageUrl] = useState<string | null>(null);
+
+  // Current image to display (enhanced or original)
+  const currentImageUrl = enhancedImageUrl || productData.image_url;
   // Fetch USD exchange rate from settings
   useEffect(() => {
     const fetchExchangeRate = async () => {
@@ -144,6 +149,48 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
     }
   };
 
+  // Handle image enhancement
+  const handleEnhanceImage = async () => {
+    if (!currentImageUrl) {
+      toast({
+        title: "אין תמונה",
+        description: "לא ניתן לשפר תמונה ללא מקור",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsEnhancingImage(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { data, error } = await supabase.functions.invoke("enhance-product-image", {
+        body: {
+          imageUrl: currentImageUrl,
+          userId: user.id,
+        },
+      });
+
+      if (error) throw new Error(error.message);
+      if (!data?.success) throw new Error(data?.error || "Failed to enhance image");
+
+      setEnhancedImageUrl(data.imageUrl);
+      toast({
+        title: "✨ התמונה שודרגה!",
+        description: "התמונה הפכה למקצועית יותר",
+      });
+    } catch (e) {
+      toast({
+        title: "שיפור נכשל",
+        description: e instanceof Error ? e.message : "לא הצלחנו לשפר את התמונה",
+        variant: "destructive",
+      });
+    } finally {
+      setIsEnhancingImage(false);
+    }
+  };
+
   const createProduct = (): Omit<Product, "id" | "created_at" | "updated_at"> => {
     // Normalize rating to 0-5 scale if needed (API might return 0-100)
     let normalizedRating = productData.rating ?? 0;
@@ -155,7 +202,7 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
     return {
       original_url: originalUrl,
       affiliate_link: affiliateLink || null,
-      image_url: productData.image_url || null,
+      image_url: enhancedImageUrl || productData.image_url || null,
       title,
       hebrew_description: hebrewDescription || null,
       price: parseFloat(price),
@@ -182,7 +229,32 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-4">
           <div className="relative aspect-square rounded-xl overflow-hidden border border-border">
-            <img src={productData.image_url} alt={`${title} product image`} className="w-full h-full object-cover" loading="lazy" />
+            <img src={currentImageUrl} alt={`${title} product image`} className="w-full h-full object-cover" loading="lazy" />
+            
+            {/* Enhanced badge */}
+            {enhancedImageUrl && (
+              <div className="absolute top-2 right-2 bg-gradient-to-r from-primary to-secondary text-primary-foreground px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1">
+                <Sparkles className="h-3 w-3" />
+                משודרגת
+              </div>
+            )}
+            
+            {/* Enhance button overlay */}
+            <Button
+              variant="glass"
+              size="sm"
+              className="absolute top-2 left-2 h-8 text-xs"
+              onClick={handleEnhanceImage}
+              disabled={isEnhancingImage}
+            >
+              {isEnhancingImage ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+              ) : (
+                <Wand2 className="h-3.5 w-3.5 mr-1" />
+              )}
+              {isEnhancingImage ? "משדרג..." : "✨ שדרג תמונה"}
+            </Button>
+            
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-background/90 to-transparent p-4">
               <div className="flex items-center gap-2 text-sm flex-wrap">
                 <span className="text-primary font-mono font-bold">${price}</span>
