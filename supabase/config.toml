@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.auto-post]
 verify_jwt = false
+
+[functions.enhance-product-image]
+verify_jwt = false
