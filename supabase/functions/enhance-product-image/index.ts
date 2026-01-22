@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 interface EnhanceRequest {
-  productId: string;
+  productId?: string;
   imageUrl: string;
   userId: string;
 }
@@ -52,6 +52,13 @@ Deno.serve(async (req) => {
 
     const { productId, imageUrl, userId }: EnhanceRequest = await req.json();
 
+    if (!imageUrl || !userId) {
+      return new Response(
+        JSON.stringify({ error: "Missing required fields: imageUrl, userId" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Verify user owns this product
     if (userId !== user.id) {
       return new Response(
@@ -76,41 +83,67 @@ Deno.serve(async (req) => {
     // Determine mime type from URL or default to jpeg
     const mimeType = imageUrl.toLowerCase().includes(".png") ? "image/png" : "image/jpeg";
 
-    // Call Google Gemini with image editing capabilities using Imagen 3
-    const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${googleApiKey}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          instances: [
-            {
-              prompt: "Transform this product image into a high-end, professional marketing shot. Use cinematic lighting, a clean commercial background, and vibrant colors. Keep the original product shape and details intact but make the overall composition eye-catching and premium.",
-              referenceImages: [
-                {
-                  referenceType: 1,
-                  referenceId: 1,
-                  referenceImage: {
-                    bytesBase64Encoded: base64Image,
-                  },
-                },
-              ],
-            },
-          ],
-          parameters: {
-            sampleCount: 1,
-            aspectRatio: "1:1",
-          },
-        }),
-      }
-    );
+    // NOTE:
+    // - Vertex AI Imagen endpoints require OAuth (service account), not an API key.
+    // - The API key we have is for the Google Generative Language API.
+    // So we use a Gemini image-generation capable model via :generateContent.
+    const prompt =
+      "Transform this product image into a high-end, professional marketing shot. Use cinematic lighting, a clean commercial background, and vibrant colors. Keep the original product shape and details intact but make the overall composition eye-catching and premium. Return only the enhanced image.";
 
-    if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text();
-      console.error("Gemini API error:", errorText);
-      throw new Error(`Gemini API error: ${geminiResponse.status}`);
+    const candidateModels = [
+      // More widely available model ids for the API-key based endpoint
+      "gemini-2.0-flash-exp",
+      "gemini-2.0-flash",
+      "gemini-1.5-flash",
+    ];
+
+    let geminiResponse: Response | null = null;
+    let lastErrorText: string | null = null;
+
+    for (const model of candidateModels) {
+      const resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${googleApiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: prompt },
+                  {
+                    inline_data: {
+                      mime_type: mimeType,
+                      data: base64Image,
+                    },
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              // IMPORTANT: do NOT set responseMimeType (it only supports text/JSON/etc)
+              responseModalities: ["IMAGE", "TEXT"],
+            },
+          }),
+        }
+      );
+
+      if (resp.ok) {
+        geminiResponse = resp;
+        break;
+      }
+
+      lastErrorText = await resp.text();
+      console.error(`[enhance-product-image] Model ${model} failed:`, lastErrorText);
+
+      // If model doesn't exist / not enabled, try the next one.
+      if (resp.status === 404) continue;
+      // For other failures (400/401/429/500), stop early.
+      break;
+    }
+
+    if (!geminiResponse) {
+      throw new Error(`Gemini API error: ${lastErrorText ?? "unknown"}`);
     }
 
     const geminiResult = await geminiResponse.json();
@@ -119,8 +152,14 @@ Deno.serve(async (req) => {
     // Extract the generated image from the response
     let enhancedImageBase64: string | null = null;
     
-    if (geminiResult.predictions?.[0]?.bytesBase64Encoded) {
-      enhancedImageBase64 = geminiResult.predictions[0].bytesBase64Encoded;
+    if (geminiResult?.candidates?.[0]?.content?.parts) {
+      for (const part of geminiResult.candidates[0].content.parts) {
+        const data = part?.inlineData?.data ?? part?.inline_data?.data;
+        if (data) {
+          enhancedImageBase64 = data;
+          break;
+        }
+      }
     }
 
     if (!enhancedImageBase64) {
@@ -169,16 +208,18 @@ Deno.serve(async (req) => {
       .from("product-images")
       .getPublicUrl(fileName);
 
-    // Update product in database
-    const { error: updateError } = await supabase
-      .from("products")
-      .update({ image_url: publicUrl })
-      .eq("id", productId)
-      .eq("user_id", userId);
+    // Update product in database (only when we already have a productId)
+    if (productId) {
+      const { error: updateError } = await supabase
+        .from("products")
+        .update({ image_url: publicUrl })
+        .eq("id", productId)
+        .eq("user_id", userId);
 
-    if (updateError) {
-      console.error("Update error:", updateError);
-      throw new Error(`Failed to update product: ${updateError.message}`);
+      if (updateError) {
+        console.error("Update error:", updateError);
+        throw new Error(`Failed to update product: ${updateError.message}`);
+      }
     }
 
     console.log(`Successfully enhanced image for product ${productId}`);
