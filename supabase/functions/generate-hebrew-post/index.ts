@@ -10,6 +10,7 @@ type ApiOk = { success: true; hebrewDescription: string };
 type ApiErr = { success: false; error: string; code?: string };
 
 // 4 different prompt styles that rotate
+// NOTE: style #1 may be overridden by user's custom prompt, while styles #2-#4 remain fixed.
 const PROMPT_TEMPLATES = [
   // Style 1: Original structured format
   `אתה משווק שותפים ישראלי. המידע שמתקבל הוא Product Desc באנגלית.
@@ -50,6 +51,7 @@ const PROMPT_TEMPLATES = [
 כללים קריטיים:
 - אין לכלול מחיר או המרה לשקלים
 - אין לכלול קישור (יתווסף אחר כך)
+- אין לכלול דירוג, אחוז חיובי או מספר הזמנות
 - אין לכתוב "לחץ כאן" או CTA דומה`,
 
   // Style 3: Price drop style
@@ -63,6 +65,7 @@ const PROMPT_TEMPLATES = [
 כללים קריטיים:
 - אין לכלול מחיר או המרה לשקלים
 - אין לכתוב "לחץ כאן" או לכלול קישור (יתווסף אחר כך)
+- אין לכלול דירוג, אחוז חיובי או מספר הזמנות
 - הפוסט צריך להיות קצר וקולע`,
 
   // Style 4: Benefits list
@@ -78,10 +81,10 @@ const PROMPT_TEMPLATES = [
 כללים קריטיים:
 - אין לכלול מחיר
 - אין לכלול קישור (יתווסף אחר כך)
+- אין לכלול דירוג, אחוז חיובי או מספר הזמנות
 - אין לכתוב משפטי CTA`
 ];
 
-// Get prompt index based on product title hash for consistent rotation
 // Pure random rotation - each call gets a random prompt style
 function getPromptIndex(): number {
   return Math.floor(Math.random() * PROMPT_TEMPLATES.length);
@@ -145,24 +148,29 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Select random prompt for variety
-    const promptIndex = getPromptIndex();
-    let systemPrompt = PROMPT_TEMPLATES[promptIndex];
-    console.log(`[generate-hebrew-post] Using prompt style ${promptIndex + 1} of ${PROMPT_TEMPLATES.length}`);
-    
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Check if user has a custom prompt - if so, use it instead
+    // Fetch user's custom prompt (if exists). It should affect ONLY style #1.
     const { data: settings } = await supabase
       .from("app_settings")
       .select("custom_ai_prompt")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    if (settings?.custom_ai_prompt?.trim()) {
-      systemPrompt = settings.custom_ai_prompt.trim();
-      console.log("[generate-hebrew-post] Using custom prompt for user:", user.email);
-    }
+    const customPrompt = settings?.custom_ai_prompt?.trim() || "";
+    const effectiveTemplates = [
+      customPrompt || PROMPT_TEMPLATES[0],
+      PROMPT_TEMPLATES[1],
+      PROMPT_TEMPLATES[2],
+      PROMPT_TEMPLATES[3],
+    ];
+
+    // Select random prompt for variety
+    const promptIndex = getPromptIndex();
+    const systemPrompt = effectiveTemplates[promptIndex];
+    console.log(
+      `[generate-hebrew-post] Using prompt style ${promptIndex + 1} of ${effectiveTemplates.length}${promptIndex === 0 && customPrompt ? " (custom style 1)" : ""}`,
+    );
 
     // Build product context - title + social proof
     const productDetails: string[] = [];
@@ -198,8 +206,10 @@ serve(async (req) => {
       productDetails.push(`הזמנות: מעל ${ordersText}`);
     }
 
+    // Only include rating/orders context for style #1.
+    const includeSocialProof = promptIndex === 0;
     const userPrompt = `מוצר: ${t}
-${productDetails.length > 0 ? `\nנתונים מה-API:\n${productDetails.join("\n")}` : ""}
+${includeSocialProof && productDetails.length > 0 ? `\nנתונים מה-API:\n${productDetails.join("\n")}` : ""}
 
 כתוב תיאור מוצר קצר. בלי מחיר, בלי קופון, בלי קישור.`;
 
