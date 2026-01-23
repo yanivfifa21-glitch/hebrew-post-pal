@@ -82,14 +82,9 @@ const PROMPT_TEMPLATES = [
 ];
 
 // Get prompt index based on product title hash for consistent rotation
-function getPromptIndex(title: string): number {
-  let hash = 0;
-  for (let i = 0; i < title.length; i++) {
-    const char = title.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  return Math.abs(hash) % PROMPT_TEMPLATES.length;
+// Pure random rotation - each call gets a random prompt style
+function getPromptIndex(): number {
+  return Math.floor(Math.random() * PROMPT_TEMPLATES.length);
 }
 
 serve(async (req) => {
@@ -150,8 +145,8 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Select prompt based on product title hash for variety
-    const promptIndex = getPromptIndex(t);
+    // Select random prompt for variety
+    const promptIndex = getPromptIndex();
     let systemPrompt = PROMPT_TEMPLATES[promptIndex];
     console.log(`[generate-hebrew-post] Using prompt style ${promptIndex + 1} of ${PROMPT_TEMPLATES.length}`);
     
