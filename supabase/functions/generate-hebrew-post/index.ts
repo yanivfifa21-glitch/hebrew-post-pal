@@ -25,7 +25,7 @@ const PROMPT_TEMPLATES = [
 למה הוא שימושי,
 ומה היתרון המרכזי שלו]
 
-⭐ דירוג: [X.X] מתוך 5
+⭐ דירוג מעולה: [X.X] מתוך 5
 👥 מעל [כמות הזמנות] הזמנות
 
 כללים קריטיים:
@@ -180,14 +180,10 @@ serve(async (req) => {
 
     // rating can arrive as 0-5 or as a percentage (0-100)
     if (rate > 0) {
-      if (rate > 5) {
-        const percent = Math.round(rate);
-        const displayRating = (rate / 20).toFixed(1);
-        productDetails.push(`אחוז חיובי: ${percent}%`);
-        productDetails.push(`דירוג משוער: ${displayRating}/5`);
-      } else {
-        productDetails.push(`דירוג: ${rate.toFixed(1)}/5`);
-      }
+      const rating5 = rate > 5 ? rate / 20 : rate;
+      const clamped = Math.max(0, Math.min(5, rating5));
+      // IMPORTANT: Always express rating in /5 format (no percentages)
+      productDetails.push(`דירוג מעולה: ${clamped.toFixed(1)} מתוך 5`);
     }
 
     if (orders > 0) {
@@ -258,6 +254,16 @@ ${includeSocialProof && productDetails.length > 0 ? `\nנתונים מה-API:\n$
     // Remove AI preamble text like "בטח, הנה רשימת יתרונות..."
     content = content.replace(/^(בטח|הנה|זה|להלן)[,،]?\s*(הנה\s*)?(רשימת?\s*)?(יתרונות|תיאור|פוסט)?[^:\n]*[:：]\s*/i, '');
     content = content.replace(/^(בטח|הנה|זה|להלן)[,،]?\s+/i, '');
+
+    // If style is NOT #1, aggressively remove any rating/orders/social-proof lines
+    if (promptIndex !== 0) {
+      const bannedLine = /(דירוג|כוכב|כוכבים|אחוז\s*חיובי|הזמנות|orders|rating|⭐|👥)/i;
+      content = content
+        .split(/\r?\n/)
+        .filter((line: string) => !bannedLine.test(line))
+        .join("\n")
+        .trim();
+    }
     
     // Remove placeholder brackets from prompt template (e.g., [שם המותג, אם יש], [קישור])
     content = content.replace(/\s*\|\s*\[.*?\]/g, ''); // Remove " | [placeholder]" patterns
