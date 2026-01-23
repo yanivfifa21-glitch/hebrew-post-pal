@@ -9,8 +9,10 @@ const corsHeaders = {
 type ApiOk = { success: true; hebrewDescription: string };
 type ApiErr = { success: false; error: string; code?: string };
 
-// Default prompt - translate Product Desc (English) into a Hebrew affiliate post format
-const DEFAULT_SYSTEM_PROMPT = `אתה משווק שותפים ישראלי. המידע שמתקבל הוא Product Desc באנגלית.
+// 4 different prompt styles that rotate
+const PROMPT_TEMPLATES = [
+  // Style 1: Original structured format
+  `אתה משווק שותפים ישראלי. המידע שמתקבל הוא Product Desc באנגלית.
 
 מטרה: כתוב פוסט שיווקי בעברית בלבד (מותר להשאיר שם מותג באנגלית אם חייב).
 
@@ -28,7 +30,67 @@ const DEFAULT_SYSTEM_PROMPT = `אתה משווק שותפים ישראלי. המ
 כללים קריטיים:
 - אל תוסיף מחיר או קופון
 - אל תוסיף קישור (הקישור יתווסף אחר כך)
-- אל תכתוב משפטי CTA כמו "לחץ כאן"`;
+- אל תכתוב משפטי CTA כמו "לחץ כאן"`,
+
+  // Style 2: Short marketing description
+  `כתוב תיאור קצר בעברית למוצר מאליאקספרס.
+
+מבנה:
+- 2–3 שורות בלבד
+- סגנון שיווקי ומושך
+- יתרון עיקרי ברור
+
+ציין:
+1. מה המוצר
+2. למה הוא כדאי
+3. מה היתרון הבולט שלו
+
+הוסף אימוג'י אחד מתאים בתחילת הפוסט.
+
+כללים קריטיים:
+- אין לכלול מחיר או המרה לשקלים
+- אין לכלול קישור (יתווסף אחר כך)
+- אין לכתוב "לחץ כאן" או CTA דומה`,
+
+  // Style 3: Price drop style
+  `צור פוסט קצר בעברית לפרסום מוצר מאליאקספרס בטלגרם או וואטסאפ.
+
+מבנה חובה:
+1. 🔥 ירידת מחיר! כותרת מושכת עם אימוג'י
+2. 2–3 שורות תיאור קצרות וממוקדות על המוצר
+3. משפט סיום קצר שמעודד רכישה
+
+כללים קריטיים:
+- אין לכלול מחיר או המרה לשקלים
+- אין לכתוב "לחץ כאן" או לכלול קישור (יתווסף אחר כך)
+- הפוסט צריך להיות קצר וקולע`,
+
+  // Style 4: Benefits list
+  `כתוב רשימת יתרונות בעברית למוצר מאליאקספרס.
+
+מבנה:
+- 3–5 נקודות יתרון
+- כל נקודה קצרה וברורה
+- סגנון: "מה המוצר עושה", "למה כדאי לקנות", "יתרון עיקרי"
+
+הוסף אימוג'י מתאים לכל יתרון (בתחילת כל שורה).
+
+כללים קריטיים:
+- אין לכלול מחיר
+- אין לכלול קישור (יתווסף אחר כך)
+- אין לכתוב משפטי CTA`
+];
+
+// Get prompt index based on product title hash for consistent rotation
+function getPromptIndex(title: string): number {
+  let hash = 0;
+  for (let i = 0; i < title.length; i++) {
+    const char = title.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash) % PROMPT_TEMPLATES.length;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -88,15 +150,18 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Fetch user's custom prompt using verified user.id
-    let systemPrompt = DEFAULT_SYSTEM_PROMPT;
+    // Select prompt based on product title hash for variety
+    const promptIndex = getPromptIndex(t);
+    let systemPrompt = PROMPT_TEMPLATES[promptIndex];
+    console.log(`[generate-hebrew-post] Using prompt style ${promptIndex + 1} of ${PROMPT_TEMPLATES.length}`);
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Check if user has a custom prompt - if so, use it instead
     const { data: settings } = await supabase
       .from("app_settings")
       .select("custom_ai_prompt")
-      .eq("user_id", user.id) // Use verified user.id
+      .eq("user_id", user.id)
       .maybeSingle();
 
     if (settings?.custom_ai_prompt?.trim()) {
