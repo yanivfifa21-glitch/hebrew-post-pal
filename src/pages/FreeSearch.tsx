@@ -176,10 +176,27 @@ const FreeSearch = () => {
 
           let hebrewDescription = "";
           if (!hebErr && hebResp?.success) {
-            hebrewDescription = `${hebResp.hebrewDescription}\n\n👉 לרכישה: ${affiliateLink}`;
+            hebrewDescription = hebResp.hebrewDescription;
+            
+            // Only add stats for promptStyle 1 (the structured format with rating/orders)
+            if (hebResp.promptStyle === 1 && (product.sales_count || product.rating)) {
+              const stats: string[] = [];
+              if (product.sales_count) stats.push(`📦 מעל ${product.sales_count.toLocaleString()} הזמנות`);
+              if (product.rating) {
+                // Normalize rating to 0-5 scale if needed
+                const rating5 = product.rating > 5 ? product.rating / 20 : product.rating;
+                stats.push(`⭐ דירוג: ${Math.min(5, rating5).toFixed(1)} מתוך 5`);
+              }
+              if (stats.length > 0 && !hebrewDescription.includes('דירוג') && !hebrewDescription.includes('הזמנות')) {
+                hebrewDescription = `${hebrewDescription}\n\n${stats.join('\n')}`;
+              }
+            }
+            
+            hebrewDescription = `${hebrewDescription}\n\n👉 לרכישה: ${affiliateLink}`;
           } else {
-            // Fallback template if generation fails
-            hebrewDescription = `🔥 ${product.title}\n\n💰 מחיר: ${product.price.toFixed(2)}₪\n📦 ${(product.sales_count || 0).toLocaleString()} הזמנות\n⭐ ${(product.rating || 0).toFixed(1)} כוכבים\n\n👉 לרכישה: ${affiliateLink}`;
+            // Fallback template if generation fails (style 1 format)
+            const rating5 = product.rating && product.rating > 5 ? product.rating / 20 : (product.rating || 0);
+            hebrewDescription = `🔥 ${product.title}\n\n📦 מעל ${(product.sales_count || 0).toLocaleString()} הזמנות\n⭐ דירוג: ${Math.min(5, rating5).toFixed(1)} מתוך 5\n\n👉 לרכישה: ${affiliateLink}`;
           }
 
           // Normalize rating to 0-5 scale

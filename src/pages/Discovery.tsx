@@ -250,20 +250,23 @@ const Discovery = () => {
           if (hebErr) throw hebErr;
           if (!hebResp?.success) throw new Error(hebResp?.error || "Failed to generate Hebrew content");
           hebrewDescription = hebResp.hebrewDescription;
-        }
-
-        // Add stats if available
-        let finalDescription = hebrewDescription;
-        if (product.sales180Day || product.positiveFeedback) {
-          const stats: string[] = [];
-          if (product.sales180Day) stats.push(`📦 ${product.sales180Day.toLocaleString()} הזמנות`);
-          if (product.positiveFeedback) stats.push(`⭐ ${product.positiveFeedback}% חיובי`);
-          if (stats.length > 0 && !finalDescription.includes('הזמנות')) {
-            finalDescription = `${finalDescription}\n\n${stats.join(' | ')}`;
+          
+          // Only add stats for promptStyle 1 (the structured format with rating/orders)
+          if (hebResp.promptStyle === 1 && (product.sales180Day || product.positiveFeedback)) {
+            const stats: string[] = [];
+            if (product.sales180Day) stats.push(`📦 מעל ${product.sales180Day.toLocaleString()} הזמנות`);
+            if (product.positiveFeedback) {
+              // Convert percentage to 5-star rating
+              const rating5 = Math.min(5, product.positiveFeedback / 20);
+              stats.push(`⭐ דירוג: ${rating5.toFixed(1)} מתוך 5`);
+            }
+            if (stats.length > 0 && !hebrewDescription.includes('דירוג') && !hebrewDescription.includes('הזמנות')) {
+              hebrewDescription = `${hebrewDescription}\n\n${stats.join('\n')}`;
+            }
           }
         }
 
-        finalDescription = `${finalDescription}\n\n👉 להזמנה: ${affiliateLink}`;
+        const finalDescription = `${hebrewDescription}\n\n👉 להזמנה: ${affiliateLink}`;
 
         // Save to queue
         const { error: saveErr } = await supabase.from("products").insert({
@@ -325,6 +328,7 @@ const Discovery = () => {
 
       // Use existing Hebrew description from Excel if available, otherwise generate from Product Desc
       let hebrewDescription = product.hebrewDescription || "";
+      let promptStyle = 1; // default
 
       if (!hebrewDescription) {
         const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
@@ -339,21 +343,25 @@ const Discovery = () => {
         if (hebErr) throw new Error(hebErr.message);
         if (!hebResp?.success) throw new Error(hebResp?.error || "Failed to generate Hebrew content");
         hebrewDescription = hebResp.hebrewDescription;
+        promptStyle = hebResp.promptStyle || 1;
       }
 
-      // Add sales and feedback info to description if available from Excel
-      let finalDescription = hebrewDescription;
-      if (product.sales180Day || product.positiveFeedback) {
+      // Only add stats for promptStyle 1 (the structured format with rating/orders)
+      if (promptStyle === 1 && (product.sales180Day || product.positiveFeedback)) {
         const stats: string[] = [];
-        if (product.sales180Day) stats.push(`📦 ${product.sales180Day.toLocaleString()} הזמנות`);
-        if (product.positiveFeedback) stats.push(`⭐ ${product.positiveFeedback}% חיובי`);
-        if (stats.length > 0 && !finalDescription.includes('הזמנות')) {
-          finalDescription = `${finalDescription}\n\n${stats.join(' | ')}`;
+        if (product.sales180Day) stats.push(`📦 מעל ${product.sales180Day.toLocaleString()} הזמנות`);
+        if (product.positiveFeedback) {
+          // Convert percentage to 5-star rating
+          const rating5 = Math.min(5, product.positiveFeedback / 20);
+          stats.push(`⭐ דירוג: ${rating5.toFixed(1)} מתוך 5`);
+        }
+        if (stats.length > 0 && !hebrewDescription.includes('דירוג') && !hebrewDescription.includes('הזמנות')) {
+          hebrewDescription = `${hebrewDescription}\n\n${stats.join('\n')}`;
         }
       }
 
       // Add affiliate link at the end
-      finalDescription = `${finalDescription}\n\n👉 להזמנה: ${affiliateLink}`;
+      const finalDescription = `${hebrewDescription}\n\n👉 להזמנה: ${affiliateLink}`;
 
       // Save to queue
       const { error: saveErr } = await supabase.from("products").insert({

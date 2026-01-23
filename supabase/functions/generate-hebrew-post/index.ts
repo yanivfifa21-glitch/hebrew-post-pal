@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-type ApiOk = { success: true; hebrewDescription: string };
+type ApiOk = { success: true; hebrewDescription: string; promptStyle: number };
 type ApiErr = { success: false; error: string; code?: string };
 
 // 4 different prompt styles that rotate
@@ -288,7 +288,7 @@ ${includeSocialProof && productDetails.length > 0 ? `\nנתונים מה-API:\n$
     content = content.replace(/\n{3,}/g, '\n\n').trim();
     content = content.replace(/\s{2,}/g, ' ').trim();
 
-    const payload: ApiOk = { success: true, hebrewDescription: content };
+    const payload: ApiOk = { success: true, hebrewDescription: content, promptStyle: promptIndex + 1 };
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: unknown) {
     console.error("[generate-hebrew-post] Error:", e);
