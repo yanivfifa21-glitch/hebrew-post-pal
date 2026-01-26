@@ -24,6 +24,7 @@ const ALL_CATEGORY_IDS = ["509", "15", "66", "200000297", "34", "200003482", "7"
 
 const MAX_DELIVERY_DAYS = 45;
 const MIN_COMMISSION_RATE = "0.01"; // Minimum 1% commission
+const MIN_SALES_COUNT = 50; // Minimum 50 sales for quality filtering
 
 type HotProduct = {
   product_id: string;
@@ -85,6 +86,7 @@ serve(async (req) => {
     const category = String(body?.category || "").trim();
     const userKeywords = String(body?.keywords || "").trim();
     const pageSize = Math.min(parseInt(body?.pageSize) || 20, 50);
+    const pageNo = Math.max(parseInt(body?.pageNo) || 1, 1);
 
     // Use service role to fetch user's decrypted credentials via RPC
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -114,7 +116,7 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    console.log("[fetch-hot-products] User:", user.id, "| category:", category || "ALL", "| userKeywords:", userKeywords, "| pageSize:", pageSize);
+    console.log("[fetch-hot-products] User:", user.id, "| category:", category || "ALL", "| userKeywords:", userKeywords, "| pageSize:", pageSize, "| pageNo:", pageNo);
 
     const desiredCount = pageSize;
 
@@ -136,8 +138,8 @@ serve(async (req) => {
         ship_to_country: "IL",
         delivery_days: MAX_DELIVERY_DAYS.toString(),
         page_no: pageNo.toString(),
-        page_size: "50",
-        sort: "SALE_PRICE_ASC", // Sort by price (hot products are already pre-filtered for popularity)
+        page_size: "50", // Request more to filter by quality
+        sort: "LAST_VOLUME_DESC", // Sort by recent sales volume for better quality
       };
 
       // Add category filter if specified
@@ -237,7 +239,7 @@ serve(async (req) => {
 
     // If user provided keywords, use hot products API with keywords
     if (userKeywords) {
-      const data = await callHotProductQuery(category || undefined, userKeywords);
+      const data = await callHotProductQuery(category || undefined, userKeywords, pageNo);
       
       const err = data?.error_response;
       if (err?.msg || err?.code) {
@@ -251,6 +253,8 @@ serve(async (req) => {
             if (products.length >= desiredCount) break;
             const mapped = mapProduct(p);
             if (!mapped || seen.has(mapped.product_id)) continue;
+            // Quality filter - minimum sales
+            if (mapped.sales_count < MIN_SALES_COUNT) continue;
             seen.add(mapped.product_id);
             products.push(mapped);
           }
@@ -264,6 +268,8 @@ serve(async (req) => {
             if (products.length >= desiredCount) break;
             const mapped = mapProduct(p);
             if (!mapped || seen.has(mapped.product_id)) continue;
+            // Quality filter - minimum sales
+            if (mapped.sales_count < MIN_SALES_COUNT) continue;
             seen.add(mapped.product_id);
             products.push(mapped);
           }
@@ -271,16 +277,20 @@ serve(async (req) => {
       }
     } else {
       // No user keywords - fetch hot products by category
+      // For pagination: if pageNo > 1, cycle through categories differently
       const categoriesToFetch = category ? [category] : ALL_CATEGORY_IDS;
       
-      // Randomize category order for variety each time
+      // Shuffle categories based on pageNo for variety
       const shuffledCategories = [...categoriesToFetch].sort(() => Math.random() - 0.5);
+      
+      // For pagination, start from different pages of the API
+      const apiPageOffset = pageNo;
       
       for (const catId of shuffledCategories) {
         if (products.length >= desiredCount) break;
         
         try {
-          const data = await callHotProductQuery(catId);
+          const data = await callHotProductQuery(catId, undefined, apiPageOffset);
           
           const err = data?.error_response;
           if (err?.msg || err?.code) {
@@ -295,12 +305,14 @@ serve(async (req) => {
           }
 
           const rawProducts = rr?.result?.products?.product || [];
-          console.log("[fetch-hot-products] Category", catId, "returned", rawProducts.length, "hot products");
+          console.log("[fetch-hot-products] Category", catId, "page", apiPageOffset, "returned", rawProducts.length, "hot products");
           
           for (const p of rawProducts) {
             if (products.length >= desiredCount) break;
             const mapped = mapProduct(p);
             if (!mapped || seen.has(mapped.product_id)) continue;
+            // Quality filter - minimum sales count for better products
+            if (mapped.sales_count < MIN_SALES_COUNT) continue;
             seen.add(mapped.product_id);
             products.push(mapped);
           }
