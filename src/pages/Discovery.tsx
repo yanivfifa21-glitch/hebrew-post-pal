@@ -53,6 +53,7 @@ const Discovery = () => {
   const navigate = useNavigate();
   const [products, setProducts] = useState<HotProduct[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
   const [creatingPostId, setCreatingPostId] = useState<string | null>(null);
@@ -61,6 +62,8 @@ const Discovery = () => {
   const [showManualInput, setShowManualInput] = useState(false);
   const [manualUrl, setManualUrl] = useState("");
   const [dataSource, setDataSource] = useState<string>("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMoreProducts, setHasMoreProducts] = useState(true);
   
   // Excel import state - with localStorage persistence
   const [importedProducts, setImportedProducts] = useState<ImportedProduct[]>(() => {
@@ -117,7 +120,7 @@ const Discovery = () => {
 
   // Async versions for pull-to-refresh
 
-  const fetchHotProductsAsync = async (category = selectedCategory, keywords = "") => {
+  const fetchHotProductsAsync = async (category = selectedCategory, keywords = "", page = 1, append = false) => {
     setShowManualInput(false);
     try {
       const trimmedKeywords = keywords.trim();
@@ -129,16 +132,31 @@ const Discovery = () => {
         body: {
           category,
           keywords: trimmedKeywords,
-          pageSize: 20, // Fetch 20 hottest products
-          sort: "VOLUME_DESC", // Sort by sales volume for hottest products
+          pageSize: 20,
+          pageNo: page,
+          sort: "VOLUME_DESC",
         },
       });
 
       if (error) throw new Error(error.message);
       if (!data?.success) throw new Error(data?.error || "Failed to fetch products");
 
-      setProducts(data.products);
+      const newProducts = data.products || [];
+      
+      if (append) {
+        // Filter out duplicates when appending
+        setProducts(prev => {
+          const existingIds = new Set(prev.map(p => p.product_id));
+          const uniqueNew = newProducts.filter((p: HotProduct) => !existingIds.has(p.product_id));
+          return [...prev, ...uniqueNew];
+        });
+      } else {
+        setProducts(newProducts);
+      }
+      
       setHasFetched(true);
+      setCurrentPage(page);
+      setHasMoreProducts(newProducts.length >= 15); // If we got less than 15, probably no more
       setDataSource(trimmedKeywords ? "חיפוש" : "מוצרים לוהטים");
     } catch (e) {
       toast({
@@ -150,22 +168,36 @@ const Discovery = () => {
   };
 
   // Fetch from official API (with loading state)
-  const fetchHotProducts = async (category = selectedCategory, keywords = "") => {
-    setIsLoading(true);
-    await fetchHotProductsAsync(category, keywords);
+  const fetchHotProducts = async (category = selectedCategory, keywords = "", page = 1, append = false) => {
+    if (append) {
+      setIsLoadingMore(true);
+    } else {
+      setIsLoading(true);
+    }
+    await fetchHotProductsAsync(category, keywords, page, append);
     setIsLoading(false);
+    setIsLoadingMore(false);
   };
 
   const handleSearch = () => {
     if (activeMode === "api") {
-      fetchHotProducts(selectedCategory, searchQuery);
+      setCurrentPage(1);
+      fetchHotProducts(selectedCategory, searchQuery, 1, false);
     }
   };
 
   const handleCategoryChange = (category: string) => {
     setSelectedCategory(category);
+    setCurrentPage(1);
     if (activeMode === "api") {
-      fetchHotProducts(category, searchQuery);
+      fetchHotProducts(category, searchQuery, 1, false);
+    }
+  };
+  
+  const handleLoadMore = () => {
+    if (!isLoadingMore && hasMoreProducts) {
+      const nextPage = currentPage + 1;
+      fetchHotProducts(selectedCategory, searchQuery, nextPage, true);
     }
   };
 
@@ -775,89 +807,116 @@ const Discovery = () => {
                 <p className="text-muted-foreground">לא נמצאו מוצרים</p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-4">
-                {filteredProducts.map((product) => (
-                  <div key={product.product_id} className="glass-card neon-border overflow-hidden group card-interactive">
-                    {/* Image */}
-                    <div className="relative aspect-square overflow-hidden">
-                      <img
-                        src={product.image_url}
-                        alt={product.title}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                        loading="lazy"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = "/placeholder.svg";
-                        }}
-                      />
-                      {product.discount_percent && product.discount_percent > 30 && (
-                        <Badge className="absolute top-1 left-1 md:top-2 md:left-2 bg-destructive/90 text-[10px] md:text-xs px-1.5 md:px-2 shadow-glow-sm">
-                          -{product.discount_percent}%
-                        </Badge>
-                      )}
-                      {(product.sales_count || 0) > 100 && !product.discount_percent && (
-                        <Badge className="absolute top-1 left-1 md:top-2 md:left-2 bg-destructive/90 text-[10px] md:text-xs px-1.5 md:px-2">
-                          <Flame className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5" />
-                          חם
-                        </Badge>
-                      )}
-                      {(product.rating || 0) > 4.5 && (
-                        <Badge className="absolute top-1 right-1 md:top-2 md:right-2 bg-primary/90 text-[10px] md:text-xs px-1.5 md:px-2 shadow-glow-sm">
-                          <Star className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5" />
-                          {(product.rating || 0).toFixed(1)}
-                        </Badge>
-                      )}
-                    </div>
-
-                    {/* Content */}
-                    <div className="p-2 md:p-4 space-y-2 md:space-y-3">
-                      <h3 className="font-medium text-foreground line-clamp-2 text-xs md:text-sm leading-snug min-h-[2.5em]">
-                        {product.title}
-                      </h3>
-
-                      <div className="flex items-center justify-between">
-                        <div className="flex flex-col md:flex-row md:items-baseline gap-0.5 md:gap-2">
-                          <span className="text-sm md:text-lg font-bold text-primary">
-                            ${product.price.toFixed(2)}
-                          </span>
-                          {product.original_price > product.price && (
-                            <span className="text-[10px] md:text-xs text-muted-foreground line-through">
-                              ${product.original_price.toFixed(2)}
-                            </span>
-                          )}
-                        </div>
-                        {(product.sales_count || 0) > 0 && (
-                          <div className="hidden md:flex items-center gap-1 text-xs text-muted-foreground">
-                            <ShoppingBag className="h-3 w-3" />
-                            {(product.sales_count || 0).toLocaleString()}
-                          </div>
+              <>
+                <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-4">
+                  {filteredProducts.map((product) => (
+                    <div key={product.product_id} className="glass-card neon-border overflow-hidden group card-interactive">
+                      {/* Image */}
+                      <div className="relative aspect-square overflow-hidden">
+                        <img
+                          src={product.image_url}
+                          alt={product.title}
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                          loading="lazy"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = "/placeholder.svg";
+                          }}
+                        />
+                        {product.discount_percent && product.discount_percent > 30 && (
+                          <Badge className="absolute top-1 left-1 md:top-2 md:left-2 bg-destructive/90 text-[10px] md:text-xs px-1.5 md:px-2 shadow-glow-sm">
+                            -{product.discount_percent}%
+                          </Badge>
+                        )}
+                        {(product.sales_count || 0) > 100 && !product.discount_percent && (
+                          <Badge className="absolute top-1 left-1 md:top-2 md:left-2 bg-destructive/90 text-[10px] md:text-xs px-1.5 md:px-2">
+                            <Flame className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5" />
+                            חם
+                          </Badge>
+                        )}
+                        {(product.rating || 0) > 4.5 && (
+                          <Badge className="absolute top-1 right-1 md:top-2 md:right-2 bg-primary/90 text-[10px] md:text-xs px-1.5 md:px-2 shadow-glow-sm">
+                            <Star className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5" />
+                            {(product.rating || 0).toFixed(1)}
+                          </Badge>
                         )}
                       </div>
 
-                      <Button
-                        variant="gradient"
-                        size="sm"
-                        className="w-full h-8 md:h-9 text-xs md:text-sm"
-                        onClick={() => handleCreatePost(product)}
-                        disabled={creatingPostId === product.product_id}
-                      >
-                        {creatingPostId === product.product_id ? (
-                          <>
-                            <Loader2 className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2 animate-spin" />
-                            <span className="hidden md:inline">יוצר פוסט...</span>
-                            <span className="md:hidden">מעבד...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
-                            <span className="hidden md:inline">הוסף מהיר</span>
-                            <span className="md:hidden">הוסף</span>
-                          </>
-                        )}
-                      </Button>
+                      {/* Content */}
+                      <div className="p-2 md:p-4 space-y-2 md:space-y-3">
+                        <h3 className="font-medium text-foreground line-clamp-2 text-xs md:text-sm leading-snug min-h-[2.5em]">
+                          {product.title}
+                        </h3>
+
+                        <div className="flex items-center justify-between">
+                          <div className="flex flex-col md:flex-row md:items-baseline gap-0.5 md:gap-2">
+                            <span className="text-sm md:text-lg font-bold text-primary">
+                              ${product.price.toFixed(2)}
+                            </span>
+                            {product.original_price > product.price && (
+                              <span className="text-[10px] md:text-xs text-muted-foreground line-through">
+                                ${product.original_price.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                          {(product.sales_count || 0) > 0 && (
+                            <div className="hidden md:flex items-center gap-1 text-xs text-muted-foreground">
+                              <ShoppingBag className="h-3 w-3" />
+                              {(product.sales_count || 0).toLocaleString()}
+                            </div>
+                          )}
+                        </div>
+
+                        <Button
+                          variant="gradient"
+                          size="sm"
+                          className="w-full h-8 md:h-9 text-xs md:text-sm"
+                          onClick={() => handleCreatePost(product)}
+                          disabled={creatingPostId === product.product_id}
+                        >
+                          {creatingPostId === product.product_id ? (
+                            <>
+                              <Loader2 className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2 animate-spin" />
+                              <span className="hidden md:inline">יוצר פוסט...</span>
+                              <span className="md:hidden">מעבד...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
+                              <span className="hidden md:inline">הוסף מהיר</span>
+                              <span className="md:hidden">הוסף</span>
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </div>
+                  ))}
+                </div>
+                
+                {/* Load More Button */}
+                {hasMoreProducts && (
+                  <div className="flex justify-center pt-6">
+                    <Button
+                      onClick={handleLoadMore}
+                      disabled={isLoadingMore}
+                      variant="outline"
+                      size="lg"
+                      className="gap-2 min-w-[200px]"
+                    >
+                      {isLoadingMore ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          טוען עוד...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="h-4 w-4" />
+                          טען עוד מוצרים
+                        </>
+                      )}
+                    </Button>
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </>
         )}
