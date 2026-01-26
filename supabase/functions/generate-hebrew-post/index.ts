@@ -12,80 +12,75 @@ type ApiErr = { success: false; error: string; code?: string };
 // 4 different prompt styles that rotate
 // NOTE: style #1 may be overridden by user's custom prompt, while styles #2-#4 remain fixed.
 const PROMPT_TEMPLATES = [
-  // Style 1: Original structured format
-  `אתה משווק שותפים ישראלי. המידע שמתקבל הוא Product Desc באנגלית.
+  // Style 1: Original structured format with stats
+  `אתה משווק שותפים ישראלי מומחה. קיבלת שם מוצר באנגלית.
 
-מטרה: כתוב פוסט שיווקי בעברית בלבד (מותר להשאיר שם מותג באנגלית אם חייב).
+משימה: תרגם וכתוב פוסט שיווקי בעברית בלבד.
 
-מבנה חובה:
-[אימוג'י פתיחה + שם המוצר בעברית | Brand באנגלית אם יש]
+מבנה הפוסט:
+אימוג'י + שם המוצר בעברית (מותר לכתוב שם מותג באנגלית)
 
-[2–3 שורות תיאור קצרות בעברית:
-מה זה המוצר,
-למה הוא שימושי,
-ומה היתרון המרכזי שלו]
-
-⭐ דירוג מעולה: [X.X] מתוך 5
-👥 מעל [כמות הזמנות] הזמנות
+2-3 משפטים קצרים בעברית שמסבירים:
+- מה זה המוצר
+- למי הוא מתאים
+- מה היתרון העיקרי
 
 כללים קריטיים:
-- אל תוסיף מחיר או קופון
-- אל תוסיף קישור (הקישור יתווסף אחר כך)
-- אל תכתוב משפטי CTA כמו "לחץ כאן"`,
+- כתוב הכל בעברית תקנית וברורה
+- אסור לכלול משפטים או מילים באנגלית בתוך הטקסט
+- אסור לכתוב מחיר או קופון
+- אסור לכתוב קישור
+- אסור לכתוב "לחץ כאן" או CTA דומה`,
 
   // Style 2: Short marketing description
-  `כתוב תיאור קצר בעברית למוצר מאליאקספרס.
+  `אתה משווק ישראלי. תרגם את שם המוצר לעברית וכתוב תיאור שיווקי קצר.
 
 מבנה:
-- 2–3 שורות בלבד
-- סגנון שיווקי ומושך
-- יתרון עיקרי ברור
-
-ציין:
-1. מה המוצר
-2. למה הוא כדאי
-3. מה היתרון הבולט שלו
-
-הוסף אימוג'י אחד מתאים בתחילת הפוסט.
+אימוג'י + שם המוצר בעברית
+2-3 משפטים קצרים שמתארים את המוצר ויתרונותיו
 
 כללים קריטיים:
-- התחל ישירות עם התוכן, בלי משפט פתיחה כמו "בטח", "הנה", "זה המוצר" וכו'
-- אין לכלול מחיר או המרה לשקלים
-- אין לכלול קישור (יתווסף אחר כך)
-- אין לכלול דירוג, אחוז חיובי, כוכבים או מספר הזמנות
-- אין לכתוב "לחץ כאן" או CTA דומה`,
+- כתוב רק בעברית (חוץ משם מותג)
+- התחל ישירות עם התוכן - בלי "הנה", "בטח", "זהו" וכו'
+- אסור מחיר, קישור, דירוג או מספר הזמנות
+- אסור CTA כמו "לחץ כאן"`,
 
-  // Style 3: Price drop style
-  `צור פוסט קצר בעברית לפרסום מוצר מאליאקספרס בטלגרם או וואטסאפ.
+  // Style 3: Price drop style (must include full description!)
+  `אתה משווק ישראלי. צור פוסט "ירידת מחיר" בעברית.
 
-מבנה חובה:
-1. 🔥 ירידת מחיר! כותרת מושכת עם אימוג'י
-2. 2–3 שורות תיאור קצרות וממוקדות על המוצר
-3. משפט סיום קצר שמעודד רכישה
+מבנה חובה (כל החלקים!):
+🔥 ירידת מחיר! + שם המוצר בעברית
 
-כללים קריטיים:
-- התחל ישירות עם התוכן, בלי משפט פתיחה כמו "בטח", "הנה", "זה המוצר" וכו'
-- אין לכלול מחיר או המרה לשקלים
-- אין לכתוב "לחץ כאן" או לכלול קישור (יתווסף אחר כך)
-- אין לכלול דירוג, אחוז חיובי, כוכבים או מספר הזמנות
-- הפוסט צריך להיות קצר וקולע`,
+תיאור המוצר ב-2-3 משפטים:
+- מה זה המוצר
+- למה הוא שווה
+- יתרון מרכזי
+
+משפט סיום מעודד (בלי "לחץ כאן")
+
+חשוב מאוד: הפוסט חייב להכיל תיאור מלא של המוצר, לא רק "ירידת מחיר"!
+
+כללים:
+- כתוב רק בעברית
+- אסור מחיר, קישור, דירוג, הזמנות
+- אסור "לחץ כאן"`,
 
   // Style 4: Benefits list
-  `כתוב רשימת יתרונות בעברית למוצר מאליאקספרס.
+  `אתה משווק ישראלי. כתוב רשימת יתרונות למוצר בעברית.
 
 מבנה:
-- 3–5 נקודות יתרון
-- כל נקודה קצרה וברורה
-- סגנון: "מה המוצר עושה", "למה כדאי לקנות", "יתרון עיקרי"
+שם המוצר בעברית עם אימוג'י
 
-הוסף אימוג'י מתאים לכל יתרון (בתחילת כל שורה).
+רשימת 3-4 יתרונות:
+אימוג'י + יתרון ראשון
+אימוג'י + יתרון שני
+אימוג'י + יתרון שלישי
 
-כללים קריטיים:
-- התחל ישירות עם רשימת היתרונות, בלי משפט פתיחה כמו "בטח", "הנה רשימה", "זה המוצר" וכו'
-- אין לכלול מחיר
-- אין לכלול קישור (יתווסף אחר כך)
-- אין לכלול דירוג, אחוז חיובי, כוכבים או מספר הזמנות
-- אין לכתוב משפטי CTA`
+כללים:
+- כתוב רק בעברית (חוץ משם מותג)
+- התחל ישירות עם התוכן
+- אסור מחיר, קישור, דירוג, הזמנות
+- אסור CTA`
 ];
 
 // Pure random rotation - each call gets a random prompt style
@@ -240,56 +235,78 @@ ${includeSocialProof && productDetails.length > 0 ? `\nנתונים מה-API:\n$
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const data = await resp.json();
-    let content = data?.choices?.[0]?.message?.content;
+  const data = await resp.json();
+  let content = data?.choices?.[0]?.message?.content;
 
-    if (!content) {
-      const payload: ApiErr = { success: false, error: "AI returned empty response" };
-      return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    // Clean up - remove any links, prices, or CTAs the AI might have added
-    content = String(content).trim();
-    
-    // Remove AI preamble text like "בטח, הנה רשימת יתרונות..."
-    content = content.replace(/^(בטח|הנה|זה|להלן)[,،]?\s*(הנה\s*)?(רשימת?\s*)?(יתרונות|תיאור|פוסט)?[^:\n]*[:：]\s*/i, '');
-    content = content.replace(/^(בטח|הנה|זה|להלן)[,،]?\s+/i, '');
-
-    // If style is NOT #1, aggressively remove any rating/orders/social-proof lines
-    if (promptIndex !== 0) {
-      const bannedLine = /(דירוג|כוכב|כוכבים|אחוז\s*חיובי|הזמנות|orders|rating|⭐|👥)/i;
-      content = content
-        .split(/\r?\n/)
-        .filter((line: string) => !bannedLine.test(line))
-        .join("\n")
-        .trim();
-    }
-    
-    // Remove placeholder brackets from prompt template (e.g., [שם המותג, אם יש], [קישור])
-    content = content.replace(/\s*\|\s*\[.*?\]/g, ''); // Remove " | [placeholder]" patterns
-    content = content.replace(/\[שם המותג.*?\]/gi, ''); // Specific brand placeholder
-    content = content.replace(/\[קישור\]/gi, ''); // Link placeholder
-    content = content.replace(/\[.*?אם יש.*?\]/gi, ''); // Any "if exists" placeholders
-    content = content.replace(/\[Brand.*?\]/gi, ''); // English brand placeholders
-    
-    content = content.replace(/https?:\/\/[^\s]+/g, '');
-    content = content.replace(/👉[^\n]*/g, '');
-    content = content.replace(/🔗[^\n]*/g, '');
-    content = content.replace(/לרכישה[:\s]*/gi, '');
-    content = content.replace(/לחץ כאן[^\n]*/gi, '');
-    // Remove price lines
-    content = content.replace(/💰[^\n]*/g, '');
-    content = content.replace(/מחיר[:\s]*[\d\.\$₪]+[^\n]*/gi, '');
-    // Remove coupon lines
-    content = content.replace(/🎟️[^\n]*/g, '');
-    content = content.replace(/קופון[:\s]*[^\n]*/gi, '');
-    content = content.replace(/קוד[:\s]*[A-Z0-9]+[^\n]*/gi, '');
-    // Clean up extra newlines and spaces
-    content = content.replace(/\n{3,}/g, '\n\n').trim();
-    content = content.replace(/\s{2,}/g, ' ').trim();
-
-    const payload: ApiOk = { success: true, hebrewDescription: content, promptStyle: promptIndex + 1 };
+  if (!content) {
+    const payload: ApiErr = { success: false, error: "AI returned empty response" };
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
+  // Clean up - remove any links, prices, or CTAs the AI might have added
+  content = String(content).trim();
+  
+  // Remove AI preamble text like "בטח, הנה רשימת יתרונות..."
+  content = content.replace(/^(בטח|הנה|זה|להלן|בוודאי|כמובן)[,،\.]?\s*(הנה\s*)?(רשימת?\s*)?(יתרונות|תיאור|פוסט)?[^:\n]*[:：]?\s*/i, '');
+  content = content.replace(/^(בטח|הנה|זה|להלן|בוודאי|כמובן)[,،]?\s+/i, '');
+
+  // If style is NOT #1, aggressively remove any rating/orders/social-proof lines
+  if (promptIndex !== 0) {
+    const bannedLine = /(דירוג|כוכב|כוכבים|אחוז\s*חיובי|הזמנות|orders|rating|⭐|👥)/i;
+    content = content
+      .split(/\r?\n/)
+      .filter((line: string) => !bannedLine.test(line))
+      .join("\n")
+      .trim();
+  }
+  
+  // Remove placeholder brackets from prompt template (e.g., [שם המותג, אם יש], [קישור])
+  content = content.replace(/\s*\|\s*\[.*?\]/g, ''); // Remove " | [placeholder]" patterns
+  content = content.replace(/\[שם המותג.*?\]/gi, ''); // Specific brand placeholder
+  content = content.replace(/\[קישור\]/gi, ''); // Link placeholder
+  content = content.replace(/\[.*?אם יש.*?\]/gi, ''); // Any "if exists" placeholders
+  content = content.replace(/\[Brand.*?\]/gi, ''); // English brand placeholders
+  
+  // Remove English sentences - look for lines that are mostly English
+  const lines = content.split(/\r?\n/);
+  const hebrewLines = lines.filter((line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed) return true; // Keep empty lines
+    // Count Hebrew vs English characters
+    const hebrewChars = (trimmed.match(/[\u0590-\u05FF]/g) || []).length;
+    const englishChars = (trimmed.match(/[a-zA-Z]/g) || []).length;
+    // Keep line if it has more Hebrew than English, or if it's mostly symbols/emojis
+    return hebrewChars >= englishChars || (hebrewChars === 0 && englishChars === 0);
+  });
+  content = hebrewLines.join('\n');
+  
+  content = content.replace(/https?:\/\/[^\s]+/g, '');
+  content = content.replace(/👉[^\n]*/g, '');
+  content = content.replace(/🔗[^\n]*/g, '');
+  content = content.replace(/לרכישה[:\s]*/gi, '');
+  content = content.replace(/לחץ כאן[^\n]*/gi, '');
+  // Remove price lines
+  content = content.replace(/💰[^\n]*/g, '');
+  content = content.replace(/מחיר[:\s]*[\d\.\$₪]+[^\n]*/gi, '');
+  // Remove coupon lines
+  content = content.replace(/🎟️[^\n]*/g, '');
+  content = content.replace(/קופון[:\s]*[^\n]*/gi, '');
+  content = content.replace(/קוד[:\s]*[A-Z0-9]+[^\n]*/gi, '');
+  // Clean up extra newlines and spaces
+  content = content.replace(/\n{3,}/g, '\n\n').trim();
+  content = content.replace(/\s{2,}/g, ' ').trim();
+  
+  // Validation: Check if content is too short (incomplete generation)
+  const hebrewContentLength = (content.match(/[\u0590-\u05FF]/g) || []).length;
+  if (hebrewContentLength < 20) {
+    console.error("[generate-hebrew-post] Content too short, possibly incomplete:", content);
+    // Try to regenerate or return error
+    const payload: ApiErr = { success: false, error: "Generated content too short - try again" };
+    return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
+  const payload: ApiOk = { success: true, hebrewDescription: content, promptStyle: promptIndex + 1 };
+  return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: unknown) {
     console.error("[generate-hebrew-post] Error:", e);
     const payload: ApiErr = { success: false, error: e instanceof Error ? e.message : "Unknown error" };
