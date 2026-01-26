@@ -294,30 +294,51 @@ serve(async (req) => {
     // ============================================
     
     if (source === "hot_deals" || source === "high_commission" || source === "featured") {
-      // Use Featured Promo API for AD CENTER products
-      const promoTypeMap: Record<string, string> = {
-        "hot_deals": "Hot Product",
-        "high_commission": "Higher commission",
-        "featured": "New user bonus",
-      };
+      // For hot_deals and high_commission, use the campaigns approach
+      // The Featured Promo API with type names doesn't work reliably
+      // Instead, fetch from the available promotions list
+      const promoData = await callGetPromotions();
+      const promos = promoData?.aliexpress_affiliate_featuredpromo_get_response?.resp_result?.result?.promos?.promo || [];
+      console.log("[fetch-hot-products] Available promotions for", source, ":", promos.length);
       
-      const promoType = promoTypeMap[source] || "";
-      const data = await callFeaturedPromoProducts(promoType, pageNo);
+      // For hot_deals, try to find promos with "deal" or "hot" in the name
+      // For high_commission, try to find promos with "commission" in the name
+      // For featured, just use the first available promo
+      let targetPromos = promos;
+      if (source === "hot_deals") {
+        const filtered = promos.filter((p: any) => {
+          const name = (p.promo_name || "").toLowerCase();
+          return name.includes("deal") || name.includes("hot") || name.includes("sale");
+        });
+        targetPromos = filtered.length > 0 ? filtered : promos.slice(0, 2);
+      } else if (source === "high_commission") {
+        const filtered = promos.filter((p: any) => {
+          const name = (p.promo_name || "").toLowerCase();
+          return name.includes("commission");
+        });
+        targetPromos = filtered.length > 0 ? filtered : promos.slice(0, 2);
+      }
       
-      const rr = data?.aliexpress_affiliate_featuredpromo_products_get_response?.resp_result;
-      if (rr?.resp_code === 200) {
-        const rawProducts = rr?.result?.products?.product || [];
-        console.log("[fetch-hot-products] Featured promo returned", rawProducts.length, "products");
-        for (const p of rawProducts) {
-          if (products.length >= desiredCount) break;
-          const mapped = mapProduct(p, source);
-          if (!mapped || seen.has(mapped.product_id)) continue;
-          if (mapped.sales_count < 50) continue; // Lower threshold for promo products
-          seen.add(mapped.product_id);
-          products.push(mapped);
+      // Fetch products from target promotions
+      for (const promo of targetPromos.slice(0, 3)) {
+        if (products.length >= desiredCount) break;
+        const promoName = promo.promo_name || "";
+        const data = await callFeaturedPromoProducts(promoName, pageNo);
+        
+        const rr = data?.aliexpress_affiliate_featuredpromo_products_get_response?.resp_result;
+        if (rr?.resp_code === 200) {
+          const rawProducts = rr?.result?.products?.product || [];
+          console.log("[fetch-hot-products] Featured promo", promoName, "returned", rawProducts.length, "products");
+          for (const p of rawProducts) {
+            if (products.length >= desiredCount) break;
+            const mapped = mapProduct(p, source);
+            if (!mapped || seen.has(mapped.product_id)) continue;
+            // For high_commission, prioritize by commission rate
+            if (source === "high_commission" && (mapped.commission_rate || 0) < 5) continue;
+            seen.add(mapped.product_id);
+            products.push(mapped);
+          }
         }
-      } else {
-        console.warn("[fetch-hot-products] Featured promo API response:", rr);
       }
     } else if (source === "campaigns") {
       // First get available promotions, then fetch products

@@ -97,9 +97,12 @@ const Discovery = () => {
   const [addingProductId, setAddingProductId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   
-  // Multi-select state
+  // Multi-select state (used for both Excel and API products)
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [isAddingSelected, setIsAddingSelected] = useState(false);
+  
+  // API products selection state
+  const [selectedApiProductIds, setSelectedApiProductIds] = useState<Set<string>>(new Set());
 
   // Get current user ID on mount
   useEffect(() => {
@@ -269,7 +272,7 @@ const Discovery = () => {
     });
   };
 
-  // Toggle product selection
+  // Toggle product selection (Excel)
   const toggleProductSelection = (productId: string) => {
     setSelectedProductIds(prev => {
       const newSet = new Set(prev);
@@ -282,13 +285,117 @@ const Discovery = () => {
     });
   };
 
-  // Select/deselect all
+  // Select/deselect all (Excel)
   const toggleSelectAll = () => {
     if (selectedProductIds.size === importedProducts.length) {
       setSelectedProductIds(new Set());
     } else {
       setSelectedProductIds(new Set(importedProducts.map(p => p.id)));
     }
+  };
+  
+  // Apply price filter - defined early because it's used by selection functions
+  const filteredProducts = products.filter(p => {
+    if (minPrice > 0 && p.price < minPrice) return false;
+    if (maxPrice < 500 && p.price > maxPrice) return false;
+    return true;
+  });
+
+  // Toggle API product selection
+  const toggleApiProductSelection = (productId: string) => {
+    setSelectedApiProductIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(productId)) {
+        newSet.delete(productId);
+      } else {
+        newSet.add(productId);
+      }
+      return newSet;
+    });
+  };
+
+  // Select/deselect all API products
+  const toggleSelectAllApi = () => {
+    if (selectedApiProductIds.size === filteredProducts.length) {
+      setSelectedApiProductIds(new Set());
+    } else {
+      setSelectedApiProductIds(new Set(filteredProducts.map(p => p.product_id)));
+    }
+  };
+
+  // Add selected API products to queue
+  const handleAddSelectedApiToQueue = async () => {
+    if (!userId || selectedApiProductIds.size === 0) return;
+
+    setIsAddingSelected(true);
+    const selectedProducts = filteredProducts.filter(p => selectedApiProductIds.has(p.product_id));
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const product of selectedProducts) {
+      try {
+        // 1. Generate affiliate link
+        const { data: affResp, error: affErr } = await supabase.functions.invoke("generate-affiliate-link", {
+          body: { productUrl: product.product_url, userId },
+        });
+
+        if (affErr) throw new Error(affErr.message);
+        const affiliateLink = affResp?.success ? affResp.affiliateLink : product.product_url;
+
+        // 2. Generate Hebrew description with random prompt style (1-4)
+        const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
+          body: { 
+            title: product.title,
+            ordersCount: product.sales_count || 0,
+            rating: product.rating || 0,
+            userId,
+          },
+        });
+
+        if (hebErr) throw new Error(hebErr.message);
+        if (!hebResp?.success) throw new Error(hebResp?.error || "Failed to generate Hebrew content");
+
+        const hebrewDescription = `${hebResp.hebrewDescription}\n\n👉 לרכישה: ${affiliateLink}`;
+
+        // Normalize rating to 0-5 scale
+        let normalizedRating = product.rating ?? 0;
+        if (normalizedRating > 5) {
+          normalizedRating = normalizedRating / 20;
+        }
+        normalizedRating = Math.min(normalizedRating, 5);
+
+        // 3. Save to queue
+        const { error: saveErr } = await supabase.from("products").insert({
+          original_url: product.product_url,
+          title: product.title,
+          price: product.price,
+          image_url: product.image_url,
+          orders_count: product.sales_count || 0,
+          rating: normalizedRating,
+          affiliate_link: affiliateLink,
+          hebrew_description: hebrewDescription,
+          status: "Scheduled",
+          channels: [],
+          user_id: userId,
+        });
+
+        if (saveErr) throw new Error(saveErr.message);
+        successCount++;
+      } catch (e) {
+        console.error(`Failed to add product ${product.title}:`, e);
+        failCount++;
+      }
+    }
+
+    // Clear selection
+    setSelectedApiProductIds(new Set());
+
+    toast({
+      title: `✨ נוספו ${successCount} מוצרים לתור!`,
+      description: failCount > 0 ? `${failCount} נכשלו` : "כל המוצרים נוספו בהצלחה עם פרומפטים שונים",
+    });
+
+    setIsAddingSelected(false);
   };
 
   // Add selected products to queue
@@ -594,12 +701,7 @@ const Discovery = () => {
     }
   };
 
-  // Apply price filter
-  const filteredProducts = products.filter(p => {
-    if (minPrice > 0 && p.price < minPrice) return false;
-    if (maxPrice < 500 && p.price > maxPrice) return false;
-    return true;
-  });
+  
 
   return (
     <MainLayout>
@@ -928,9 +1030,72 @@ const Discovery = () => {
               </div>
             ) : (
               <>
+                {/* Selection Controls for API Products */}
+                <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/30 border border-border/50">
+                  <div className="flex items-center gap-3">
+                    <Checkbox
+                      checked={selectedApiProductIds.size === filteredProducts.length && filteredProducts.length > 0}
+                      onCheckedChange={toggleSelectAllApi}
+                      id="select-all-api"
+                    />
+                    <label htmlFor="select-all-api" className="text-sm cursor-pointer">
+                      {selectedApiProductIds.size === filteredProducts.length ? 'בטל הכל' : 'בחר הכל'}
+                    </label>
+                    {selectedApiProductIds.size > 0 && (
+                      <Badge variant="secondary" className="text-xs">
+                        {selectedApiProductIds.size} נבחרו
+                      </Badge>
+                    )}
+                  </div>
+                  {selectedApiProductIds.size > 0 && (
+                    <Button
+                      onClick={handleAddSelectedApiToQueue}
+                      disabled={isAddingSelected}
+                      variant="gradient"
+                      size="sm"
+                      className="gap-2"
+                    >
+                      {isAddingSelected ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          מוסיף {selectedApiProductIds.size}...
+                        </>
+                      ) : (
+                        <>
+                          <ListPlus className="h-4 w-4" />
+                          הוסף {selectedApiProductIds.size} לתור
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-4">
                   {filteredProducts.map((product) => (
-                    <div key={product.product_id} className="glass-card neon-border overflow-hidden group card-interactive">
+                    <div key={product.product_id} className={`relative glass-card neon-border overflow-hidden group card-interactive transition-all ${selectedApiProductIds.has(product.product_id) ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}`}>
+                      {/* Selection Checkbox */}
+                      <div 
+                        className="absolute top-2 left-2 z-10"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleApiProductSelection(product.product_id);
+                        }}
+                      >
+                        <div 
+                          className={`p-1.5 rounded-lg backdrop-blur-sm cursor-pointer transition-all shadow-md ${
+                            selectedApiProductIds.has(product.product_id) 
+                              ? 'bg-primary shadow-glow-sm scale-110' 
+                              : 'bg-background/90 hover:bg-background border border-border hover:border-primary'
+                          }`}
+                        >
+                          {selectedApiProductIds.has(product.product_id) ? (
+                            <CheckCircle2 className="h-5 w-5 text-primary-foreground" />
+                          ) : (
+                            <div className="h-5 w-5 border-2 border-muted-foreground/50 rounded-md" />
+                          )}
+                        </div>
+                      </div>
+
                       {/* Image */}
                       <div className="relative aspect-square overflow-hidden">
                         <img
@@ -943,18 +1108,18 @@ const Discovery = () => {
                           }}
                         />
                         {product.discount_percent && product.discount_percent > 30 && (
-                          <Badge className="absolute top-1 left-1 md:top-2 md:left-2 bg-destructive/90 text-[10px] md:text-xs px-1.5 md:px-2 shadow-glow-sm">
+                          <Badge className="absolute top-1 right-1 md:top-2 md:right-2 bg-destructive/90 text-[10px] md:text-xs px-1.5 md:px-2 shadow-glow-sm">
                             -{product.discount_percent}%
                           </Badge>
                         )}
                         {(product.sales_count || 0) > 100 && !product.discount_percent && (
-                          <Badge className="absolute top-1 left-1 md:top-2 md:left-2 bg-destructive/90 text-[10px] md:text-xs px-1.5 md:px-2">
+                          <Badge className="absolute top-8 left-2 md:top-10 md:left-2 bg-destructive/90 text-[10px] md:text-xs px-1.5 md:px-2">
                             <Flame className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5" />
                             חם
                           </Badge>
                         )}
                         {(product.rating || 0) > 4.5 && (
-                          <Badge className="absolute top-1 right-1 md:top-2 md:right-2 bg-primary/90 text-[10px] md:text-xs px-1.5 md:px-2 shadow-glow-sm">
+                          <Badge className="absolute bottom-1 right-1 md:bottom-2 md:right-2 bg-primary/90 text-[10px] md:text-xs px-1.5 md:px-2 shadow-glow-sm">
                             <Star className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5" />
                             {(product.rating || 0).toFixed(1)}
                           </Badge>
