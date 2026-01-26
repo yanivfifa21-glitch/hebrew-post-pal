@@ -294,10 +294,21 @@ const Discovery = () => {
     }
   };
   
-  // Apply price filter - defined early because it's used by selection functions
+  // Apply filters - price + source-specific filters
   const filteredProducts = products.filter(p => {
+    // Price filter
     if (minPrice > 0 && p.price < minPrice) return false;
     if (maxPrice < 500 && p.price > maxPrice) return false;
+    
+    // High commission filter: only show 8%+ commission products
+    if (productSource === "high_commission" && (p.commission_rate || 0) < 8) return false;
+    
+    // Hot products quality filter: 4.5+ rating and 500+ sales
+    if (productSource === "hot") {
+      if ((p.rating || 0) < 4.5) return false;
+      if ((p.sales_count || 0) < 500) return false;
+    }
+    
     return true;
   });
 
@@ -1143,22 +1154,32 @@ const Discovery = () => {
                               </span>
                             )}
                           </div>
-                          {/* Commission Rate Badge */}
+                          {/* Commission Rate Badge - Always visible when > 0 */}
                           {(product.commission_rate || 0) > 0 && (
-                            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-success/20 text-success text-[10px] md:text-xs font-medium">
+                            <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] md:text-xs font-medium ${
+                              (product.commission_rate || 0) >= 8 
+                                ? 'bg-success/30 text-success font-bold' 
+                                : 'bg-success/20 text-success'
+                            }`}>
                               <Percent className="h-2.5 w-2.5 md:h-3 md:w-3" />
                               {product.commission_rate?.toFixed(1)}%
                             </div>
                           )}
                         </div>
                         
-                        {/* Sales count */}
-                        {(product.sales_count || 0) > 0 && (
-                          <div className="flex items-center gap-1 text-[10px] md:text-xs text-muted-foreground">
+                        {/* Stats row: Sales + Rating */}
+                        <div className="flex items-center justify-between text-[10px] md:text-xs text-muted-foreground">
+                          <div className="flex items-center gap-1">
                             <ShoppingBag className="h-2.5 w-2.5 md:h-3 md:w-3" />
                             {(product.sales_count || 0).toLocaleString()} נמכרו
                           </div>
-                        )}
+                          {(product.rating || 0) > 0 && (
+                            <div className="flex items-center gap-1">
+                              <Star className="h-2.5 w-2.5 md:h-3 md:w-3 text-warning" />
+                              {(product.rating || 0).toFixed(1)}
+                            </div>
+                          )}
+                        </div>
 
                         <Button
                           variant="gradient"

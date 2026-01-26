@@ -26,8 +26,11 @@ const ALL_CATEGORY_IDS = ["509", "15", "66", "200000297", "34", "200003482", "7"
 
 const MAX_DELIVERY_DAYS = 45;
 const MIN_COMMISSION_RATE = "0.01";
-const MIN_SALES_COUNT = 100; // Reduced to get more variety
-const MIN_RATING = 3.5; // Slightly lower threshold
+// Quality thresholds for hot products
+const MIN_SALES_COUNT_HOT = 500; // Higher threshold for hot products
+const MIN_RATING_HOT = 4.5; // Higher rating threshold for hot products
+const MIN_SALES_COUNT_PROMO = 100; // Lower threshold for promo products
+const MIN_COMMISSION_HIGH = 8; // 8% minimum for high commission filter
 
 type HotProduct = {
   product_id: string;
@@ -381,8 +384,8 @@ serve(async (req) => {
               if (products.length >= desiredCount) break;
               const mapped = mapProduct(p, "search");
               if (!mapped || seen.has(mapped.product_id)) continue;
-              if (mapped.sales_count < MIN_SALES_COUNT) continue;
-              if (mapped.rating < MIN_RATING) continue;
+              if (mapped.sales_count < MIN_SALES_COUNT_HOT) continue;
+              if (mapped.rating < MIN_RATING_HOT) continue;
               seen.add(mapped.product_id);
               products.push(mapped);
             }
@@ -396,8 +399,8 @@ serve(async (req) => {
               if (products.length >= desiredCount) break;
               const mapped = mapProduct(p, "hot");
               if (!mapped || seen.has(mapped.product_id)) continue;
-              if (mapped.sales_count < MIN_SALES_COUNT) continue;
-              if (mapped.rating < MIN_RATING) continue;
+              if (mapped.sales_count < MIN_SALES_COUNT_HOT) continue;
+              if (mapped.rating < MIN_RATING_HOT) continue;
               seen.add(mapped.product_id);
               products.push(mapped);
             }
@@ -431,8 +434,8 @@ serve(async (req) => {
               if (products.length >= desiredCount) break;
               const mapped = mapProduct(p, "hot");
               if (!mapped || seen.has(mapped.product_id)) continue;
-              if (mapped.sales_count < MIN_SALES_COUNT) continue;
-              if (mapped.rating < MIN_RATING) continue;
+              if (mapped.sales_count < MIN_SALES_COUNT_HOT) continue;
+              if (mapped.rating < MIN_RATING_HOT) continue;
               seen.add(mapped.product_id);
               products.push(mapped);
             }
