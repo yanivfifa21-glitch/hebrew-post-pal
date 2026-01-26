@@ -19,13 +19,15 @@ const CATEGORY_IDS: Record<string, string> = {
   "44": "44",             // Consumer Electronics (Audio)
 };
 
-// All categories for "הכל" mode - rotate through them
+// AD CENTER product sources
+type ProductSource = "hot" | "hot_deals" | "high_commission" | "featured" | "campaigns";
+
 const ALL_CATEGORY_IDS = ["509", "15", "66", "200000297", "34", "200003482", "7", "44"];
 
 const MAX_DELIVERY_DAYS = 45;
-const MIN_COMMISSION_RATE = "0.01"; // Minimum 1% commission
-const MIN_SALES_COUNT = 200; // Minimum 200 sales for quality filtering
-const MIN_RATING = 4.0; // Minimum 4.0 star rating
+const MIN_COMMISSION_RATE = "0.01";
+const MIN_SALES_COUNT = 100; // Reduced to get more variety
+const MIN_RATING = 3.5; // Slightly lower threshold
 
 type HotProduct = {
   product_id: string;
@@ -38,6 +40,7 @@ type HotProduct = {
   product_url: string;
   commission_rate?: number;
   delivery_days?: number;
+  source?: string;
 };
 
 type ApiOk = { success: true; products: HotProduct[]; total: number };
@@ -71,7 +74,6 @@ serve(async (req) => {
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
-    // Verify user with anon key
     const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(
       authHeader.replace("Bearer ", "")
@@ -88,8 +90,9 @@ serve(async (req) => {
     const userKeywords = String(body?.keywords || "").trim();
     const pageSize = Math.min(parseInt(body?.pageSize) || 20, 50);
     const pageNo = Math.max(parseInt(body?.pageNo) || 1, 1);
+    // NEW: Product source selector
+    const source: ProductSource = body?.source || "hot";
 
-    // Use service role to fetch user's decrypted credentials via RPC
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { data: credentials, error: credentialsError } = await supabase
@@ -101,7 +104,6 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Fetch tracking ID from app_settings
     const { data: settings } = await supabase
       .from("app_settings")
       .select("aliexpress_tracking_id")
@@ -117,19 +119,17 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    console.log("[fetch-hot-products] User:", user.id, "| category:", category || "ALL", "| userKeywords:", userKeywords, "| pageSize:", pageSize, "| pageNo:", pageNo);
+    console.log("[fetch-hot-products] User:", user.id, "| source:", source, "| category:", category || "ALL", "| pageNo:", pageNo);
 
     const desiredCount = pageSize;
 
     // ============================================
-    // USE THE DEDICATED HOT PRODUCTS API
-    // aliexpress.affiliate.hotproduct.query
-    // This returns trending/hot products with high sales and commission
+    // HOT PRODUCTS API
     // ============================================
     const callHotProductQuery = async (categoryId?: string, keywords?: string, pageNo: number = 1) => {
       const params: Record<string, string> = {
         app_key: appKey,
-        method: "aliexpress.affiliate.hotproduct.query", // HOT PRODUCTS API!
+        method: "aliexpress.affiliate.hotproduct.query",
         timestamp: Date.now().toString(),
         v: "2.0",
         sign_method: "md5",
@@ -139,18 +139,47 @@ serve(async (req) => {
         ship_to_country: "IL",
         delivery_days: MAX_DELIVERY_DAYS.toString(),
         page_no: pageNo.toString(),
-        page_size: "50", // Request more to filter by quality
-        sort: "LAST_VOLUME_DESC", // Sort by recent sales volume for better quality
+        page_size: "50",
+        sort: "LAST_VOLUME_DESC",
       };
 
-      // Add category filter if specified
-      if (categoryId) {
-        params.category_ids = categoryId;
-      }
+      if (categoryId) params.category_ids = categoryId;
+      if (keywords) params.keywords = keywords;
 
-      // Add keywords if provided by user
-      if (keywords) {
-        params.keywords = keywords;
+      const sign = await generateMd5Signature(params, appSecret);
+      const qs = Object.entries({ ...params, sign })
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join("&");
+
+      const apiUrl = `https://api-sg.aliexpress.com/sync?${qs}`;
+      console.log("[fetch-hot-products] HOT API call - category:", categoryId || "all", "| page:", pageNo);
+      
+      const resp = await fetch(apiUrl, { method: "GET" });
+      return await resp.json().catch(() => ({}));
+    };
+
+    // ============================================
+    // FEATURED PROMO PRODUCTS API - Higher quality!
+    // aliexpress.affiliate.featuredpromo.products.get
+    // ============================================
+    const callFeaturedPromoProducts = async (promoType?: string, pageNo: number = 1) => {
+      const params: Record<string, string> = {
+        app_key: appKey,
+        method: "aliexpress.affiliate.featuredpromo.products.get",
+        timestamp: Date.now().toString(),
+        v: "2.0",
+        sign_method: "md5",
+        tracking_id: trackingId,
+        target_language: "EN",
+        target_currency: "ILS",
+        ship_to_country: "IL",
+        page_no: pageNo.toString(),
+        page_size: "50",
+      };
+
+      // promo_type_name: "HOT DEALS" | "HIGHER COMMISSION" | etc.
+      if (promoType) {
+        params.promotion_name = promoType;
       }
 
       const sign = await generateMd5Signature(params, appSecret);
@@ -159,15 +188,41 @@ serve(async (req) => {
         .join("&");
 
       const apiUrl = `https://api-sg.aliexpress.com/sync?${qs}`;
-      console.log("[fetch-hot-products] HOT API call - category:", categoryId || "all", "| keywords:", keywords || "none", "| page:", pageNo);
+      console.log("[fetch-hot-products] FEATURED PROMO API - type:", promoType || "all", "| page:", pageNo);
       
       const resp = await fetch(apiUrl, { method: "GET" });
-      const data = await resp.json().catch(() => ({}));
-      return data;
+      return await resp.json().catch(() => ({}));
     };
 
-    // Fallback to regular product query if hot products fails
-    const callProductQuery = async (keywords: string, categoryId?: string) => {
+    // ============================================
+    // GET AVAILABLE PROMOTIONS - for campaigns
+    // aliexpress.affiliate.featuredpromo.get
+    // ============================================
+    const callGetPromotions = async () => {
+      const params: Record<string, string> = {
+        app_key: appKey,
+        method: "aliexpress.affiliate.featuredpromo.get",
+        timestamp: Date.now().toString(),
+        v: "2.0",
+        sign_method: "md5",
+      };
+
+      const sign = await generateMd5Signature(params, appSecret);
+      const qs = Object.entries({ ...params, sign })
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join("&");
+
+      const apiUrl = `https://api-sg.aliexpress.com/sync?${qs}`;
+      console.log("[fetch-hot-products] GET PROMOTIONS API");
+      
+      const resp = await fetch(apiUrl, { method: "GET" });
+      return await resp.json().catch(() => ({}));
+    };
+
+    // ============================================
+    // PRODUCT QUERY API (fallback + search)
+    // ============================================
+    const callProductQuery = async (keywords: string, categoryId?: string, sort: string = "SALE_PRICE_ASC") => {
       const params: Record<string, string> = {
         app_key: appKey,
         method: "aliexpress.affiliate.product.query",
@@ -179,15 +234,13 @@ serve(async (req) => {
         target_currency: "ILS",
         ship_to_country: "IL",
         delivery_days: MAX_DELIVERY_DAYS.toString(),
-        page_no: "1",
+        page_no: pageNo.toString(),
         page_size: "50",
-        sort: "SALE_PRICE_ASC",
+        sort: sort,
         keywords: keywords,
       };
 
-      if (categoryId) {
-        params.category_ids = categoryId;
-      }
+      if (categoryId) params.category_ids = categoryId;
 
       const sign = await generateMd5Signature(params, appSecret);
       const qs = Object.entries({ ...params, sign })
@@ -195,14 +248,13 @@ serve(async (req) => {
         .join("&");
 
       const apiUrl = `https://api-sg.aliexpress.com/sync?${qs}`;
-      console.log("[fetch-hot-products] FALLBACK API call - keywords:", keywords, "| category:", categoryId || "none");
+      console.log("[fetch-hot-products] PRODUCT QUERY API - keywords:", keywords);
       
       const resp = await fetch(apiUrl, { method: "GET" });
-      const data = await resp.json().catch(() => ({}));
-      return data;
+      return await resp.json().catch(() => ({}));
     };
 
-    const mapProduct = (p: any): HotProduct | null => {
+    const mapProduct = (p: any, sourceLabel?: string): HotProduct | null => {
       const productId = String(p.product_id || "").trim();
       const title = String(p.product_title || "").trim();
       const imageUrl = String(p.product_main_image_url || p.product_main_image || "").trim();
@@ -214,12 +266,10 @@ serve(async (req) => {
       const ratingPercent = parseFloat(p.evaluate_rate || "0") || 0;
       const ratingStars = (ratingPercent / 100) * 5;
       
-      // Commission rate (available in hot products API)
       const commissionRate = parseFloat(p.commission_rate || "0") || 0;
 
       const productUrl = `https://www.aliexpress.com/item/${productId}.html`;
 
-      // Avoid broken cards
       if (!productId || !title || !imageUrl) return null;
 
       return {
@@ -232,104 +282,154 @@ serve(async (req) => {
         rating: Math.min(Math.max(ratingStars, 0), 5),
         product_url: productUrl,
         commission_rate: commissionRate,
+        source: sourceLabel,
       };
     };
 
     const seen = new Set<string>();
     const products: HotProduct[] = [];
 
-    // If user provided keywords, use hot products API with keywords
-    if (userKeywords) {
-      const data = await callHotProductQuery(category || undefined, userKeywords, pageNo);
+    // ============================================
+    // FETCH BASED ON SOURCE TYPE
+    // ============================================
+    
+    if (source === "hot_deals" || source === "high_commission" || source === "featured") {
+      // Use Featured Promo API for AD CENTER products
+      const promoTypeMap: Record<string, string> = {
+        "hot_deals": "Hot Product",
+        "high_commission": "Higher commission",
+        "featured": "New user bonus",
+      };
       
-      const err = data?.error_response;
-      if (err?.msg || err?.code) {
-        console.warn("[fetch-hot-products] Hot API Error:", err, "- falling back to regular query");
-        // Fallback to regular product query
-        const fallbackData = await callProductQuery(userKeywords, category || undefined);
-        const rr = fallbackData?.aliexpress_affiliate_product_query_response?.resp_result;
-        if (rr?.resp_code === 200) {
-          const rawProducts = rr?.result?.products?.product || [];
-          for (const p of rawProducts) {
-            if (products.length >= desiredCount) break;
-            const mapped = mapProduct(p);
-            if (!mapped || seen.has(mapped.product_id)) continue;
-            // Quality filter - minimum sales AND rating
-            if (mapped.sales_count < MIN_SALES_COUNT) continue;
-            if (mapped.rating < MIN_RATING) continue;
-            seen.add(mapped.product_id);
-            products.push(mapped);
-          }
+      const promoType = promoTypeMap[source] || "";
+      const data = await callFeaturedPromoProducts(promoType, pageNo);
+      
+      const rr = data?.aliexpress_affiliate_featuredpromo_products_get_response?.resp_result;
+      if (rr?.resp_code === 200) {
+        const rawProducts = rr?.result?.products?.product || [];
+        console.log("[fetch-hot-products] Featured promo returned", rawProducts.length, "products");
+        for (const p of rawProducts) {
+          if (products.length >= desiredCount) break;
+          const mapped = mapProduct(p, source);
+          if (!mapped || seen.has(mapped.product_id)) continue;
+          if (mapped.sales_count < 50) continue; // Lower threshold for promo products
+          seen.add(mapped.product_id);
+          products.push(mapped);
         }
       } else {
-        const rr = data?.aliexpress_affiliate_hotproduct_query_response?.resp_result;
+        console.warn("[fetch-hot-products] Featured promo API response:", rr);
+      }
+    } else if (source === "campaigns") {
+      // First get available promotions, then fetch products
+      const promoData = await callGetPromotions();
+      const promos = promoData?.aliexpress_affiliate_featuredpromo_get_response?.resp_result?.result?.promos?.promo || [];
+      console.log("[fetch-hot-products] Available promotions:", promos.length);
+      
+      // Fetch products from top promotions
+      for (const promo of promos.slice(0, 3)) {
+        if (products.length >= desiredCount) break;
+        const promoName = promo.promo_name || "";
+        const data = await callFeaturedPromoProducts(promoName, pageNo);
+        
+        const rr = data?.aliexpress_affiliate_featuredpromo_products_get_response?.resp_result;
         if (rr?.resp_code === 200) {
           const rawProducts = rr?.result?.products?.product || [];
-          console.log("[fetch-hot-products] HOT API returned", rawProducts.length, "products");
           for (const p of rawProducts) {
             if (products.length >= desiredCount) break;
-            const mapped = mapProduct(p);
+            const mapped = mapProduct(p, `campaign:${promoName}`);
             if (!mapped || seen.has(mapped.product_id)) continue;
-            // Quality filter - minimum sales AND rating
-            if (mapped.sales_count < MIN_SALES_COUNT) continue;
-            if (mapped.rating < MIN_RATING) continue;
             seen.add(mapped.product_id);
             products.push(mapped);
           }
         }
       }
     } else {
-      // No user keywords - fetch hot products by category
-      // For pagination: if pageNo > 1, cycle through categories differently
-      const categoriesToFetch = category ? [category] : ALL_CATEGORY_IDS;
-      
-      // Shuffle categories based on pageNo for variety
-      const shuffledCategories = [...categoriesToFetch].sort(() => Math.random() - 0.5);
-      
-      // For pagination, start from different pages of the API
-      const apiPageOffset = pageNo;
-      
-      for (const catId of shuffledCategories) {
-        if (products.length >= desiredCount) break;
+      // Default: HOT products
+      if (userKeywords) {
+        const data = await callHotProductQuery(category || undefined, userKeywords, pageNo);
         
-        try {
-          const data = await callHotProductQuery(catId, undefined, apiPageOffset);
-          
-          const err = data?.error_response;
-          if (err?.msg || err?.code) {
-            console.warn("[fetch-hot-products] Hot API Error for category", catId, ":", err);
-            continue;
+        const err = data?.error_response;
+        if (err?.msg || err?.code) {
+          console.warn("[fetch-hot-products] Hot API Error:", err);
+          // Fallback to regular product query
+          const fallbackData = await callProductQuery(userKeywords, category || undefined, "LAST_VOLUME_DESC");
+          const rr = fallbackData?.aliexpress_affiliate_product_query_response?.resp_result;
+          if (rr?.resp_code === 200) {
+            const rawProducts = rr?.result?.products?.product || [];
+            for (const p of rawProducts) {
+              if (products.length >= desiredCount) break;
+              const mapped = mapProduct(p, "search");
+              if (!mapped || seen.has(mapped.product_id)) continue;
+              if (mapped.sales_count < MIN_SALES_COUNT) continue;
+              if (mapped.rating < MIN_RATING) continue;
+              seen.add(mapped.product_id);
+              products.push(mapped);
+            }
           }
-
+        } else {
           const rr = data?.aliexpress_affiliate_hotproduct_query_response?.resp_result;
-          if (rr?.resp_code !== 200) {
-            console.warn("[fetch-hot-products] Hot API non-200 response for category", catId, ":", rr?.resp_code);
-            continue;
+          if (rr?.resp_code === 200) {
+            const rawProducts = rr?.result?.products?.product || [];
+            console.log("[fetch-hot-products] HOT API returned", rawProducts.length, "products");
+            for (const p of rawProducts) {
+              if (products.length >= desiredCount) break;
+              const mapped = mapProduct(p, "hot");
+              if (!mapped || seen.has(mapped.product_id)) continue;
+              if (mapped.sales_count < MIN_SALES_COUNT) continue;
+              if (mapped.rating < MIN_RATING) continue;
+              seen.add(mapped.product_id);
+              products.push(mapped);
+            }
           }
-
-          const rawProducts = rr?.result?.products?.product || [];
-          console.log("[fetch-hot-products] Category", catId, "page", apiPageOffset, "returned", rawProducts.length, "hot products");
+        }
+      } else {
+        // No keywords - fetch by category
+        const categoriesToFetch = category ? [category] : ALL_CATEGORY_IDS;
+        const shuffledCategories = [...categoriesToFetch].sort(() => Math.random() - 0.5);
+        const apiPageOffset = pageNo;
+        
+        for (const catId of shuffledCategories) {
+          if (products.length >= desiredCount) break;
           
-          for (const p of rawProducts) {
-            if (products.length >= desiredCount) break;
-            const mapped = mapProduct(p);
-            if (!mapped || seen.has(mapped.product_id)) continue;
-            // Quality filter - minimum sales count AND rating for better products
-            if (mapped.sales_count < MIN_SALES_COUNT) continue;
-            if (mapped.rating < MIN_RATING) continue;
-            seen.add(mapped.product_id);
-            products.push(mapped);
+          try {
+            const data = await callHotProductQuery(catId, undefined, apiPageOffset);
+            
+            const err = data?.error_response;
+            if (err?.msg || err?.code) {
+              console.warn("[fetch-hot-products] Hot API Error for category", catId, ":", err);
+              continue;
+            }
+
+            const rr = data?.aliexpress_affiliate_hotproduct_query_response?.resp_result;
+            if (rr?.resp_code !== 200) continue;
+
+            const rawProducts = rr?.result?.products?.product || [];
+            console.log("[fetch-hot-products] Category", catId, "page", apiPageOffset, "returned", rawProducts.length, "hot products");
+            
+            for (const p of rawProducts) {
+              if (products.length >= desiredCount) break;
+              const mapped = mapProduct(p, "hot");
+              if (!mapped || seen.has(mapped.product_id)) continue;
+              if (mapped.sales_count < MIN_SALES_COUNT) continue;
+              if (mapped.rating < MIN_RATING) continue;
+              seen.add(mapped.product_id);
+              products.push(mapped);
+            }
+          } catch (e) {
+            console.error("[fetch-hot-products] Error with category:", catId, e);
           }
-        } catch (e) {
-          console.error("[fetch-hot-products] Error with category:", catId, e);
         }
       }
     }
 
-    // Sort products by sales count (highest first) for better quality
-    products.sort((a, b) => b.sales_count - a.sales_count);
+    // Sort by sales for hot/search, by commission for high_commission
+    if (source === "high_commission") {
+      products.sort((a, b) => (b.commission_rate || 0) - (a.commission_rate || 0));
+    } else {
+      products.sort((a, b) => b.sales_count - a.sales_count);
+    }
 
-    console.log("[fetch-hot-products] Returning", products.length, "hot products (sorted by sales)");
+    console.log("[fetch-hot-products] Returning", products.length, "products from source:", source);
     
     const payload: ApiOk = { success: true, products, total: products.length };
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
