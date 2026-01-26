@@ -32,10 +32,16 @@ export type Database = {
           shabbat_start_time: string | null
           telegram_chat_id: string | null
           telegram_enabled: boolean | null
+          telegram_interval_end_time: string | null
+          telegram_interval_minutes: number | null
+          telegram_interval_start_time: string | null
           updated_at: string
           usd_exchange_rate: number | null
           user_id: string
           whatsapp_enabled: boolean | null
+          whatsapp_interval_end_time: string | null
+          whatsapp_interval_minutes: number | null
+          whatsapp_interval_start_time: string | null
         }
         Insert: {
           aliexpress_tracking_id?: string | null
@@ -54,10 +60,16 @@ export type Database = {
           shabbat_start_time?: string | null
           telegram_chat_id?: string | null
           telegram_enabled?: boolean | null
+          telegram_interval_end_time?: string | null
+          telegram_interval_minutes?: number | null
+          telegram_interval_start_time?: string | null
           updated_at?: string
           usd_exchange_rate?: number | null
           user_id: string
           whatsapp_enabled?: boolean | null
+          whatsapp_interval_end_time?: string | null
+          whatsapp_interval_minutes?: number | null
+          whatsapp_interval_start_time?: string | null
         }
         Update: {
           aliexpress_tracking_id?: string | null
@@ -76,10 +88,16 @@ export type Database = {
           shabbat_start_time?: string | null
           telegram_chat_id?: string | null
           telegram_enabled?: boolean | null
+          telegram_interval_end_time?: string | null
+          telegram_interval_minutes?: number | null
+          telegram_interval_start_time?: string | null
           updated_at?: string
           usd_exchange_rate?: number | null
           user_id?: string
           whatsapp_enabled?: boolean | null
+          whatsapp_interval_end_time?: string | null
+          whatsapp_interval_minutes?: number | null
+          whatsapp_interval_start_time?: string | null
         }
         Relationships: []
       }

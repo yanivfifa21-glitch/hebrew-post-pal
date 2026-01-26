@@ -198,11 +198,20 @@ const Settings = () => {
   const [postingTimes, setPostingTimes] = useState<string[]>(['10:00', '14:00', '20:00']);
   const [newTime, setNewTime] = useState('');
   
-  // Interval posting (now in MINUTES)
+  // Interval posting (now in MINUTES) - Global fallback
   const [postingIntervalMinutes, setPostingIntervalMinutes] = useState<number | null>(null);
   const [useIntervalPosting, setUseIntervalPosting] = useState(false);
   const [intervalStartTime, setIntervalStartTime] = useState('08:00');
   const [intervalEndTime, setIntervalEndTime] = useState('22:00');
+  
+  // Separate channel interval settings
+  const [useSeparateIntervals, setUseSeparateIntervals] = useState(false);
+  const [whatsappIntervalMinutes, setWhatsappIntervalMinutes] = useState<number | null>(null);
+  const [telegramIntervalMinutes, setTelegramIntervalMinutes] = useState<number | null>(null);
+  const [whatsappIntervalStart, setWhatsappIntervalStart] = useState('08:00');
+  const [whatsappIntervalEnd, setWhatsappIntervalEnd] = useState('22:00');
+  const [telegramIntervalStart, setTelegramIntervalStart] = useState('08:00');
+  const [telegramIntervalEnd, setTelegramIntervalEnd] = useState('22:00');
   
   // Separate API save state
   const [isSavingApi, setIsSavingApi] = useState(false);
@@ -333,7 +342,7 @@ const Settings = () => {
       // Fetch app settings (non-sensitive data only)
       const { data, error } = await supabase
         .from('app_settings')
-        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, posting_interval_hours, posting_interval_minutes, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, interval_start_time, interval_end_time, usd_exchange_rate')
+        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, posting_interval_hours, posting_interval_minutes, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, interval_start_time, interval_end_time, usd_exchange_rate, whatsapp_interval_minutes, telegram_interval_minutes, whatsapp_interval_start_time, whatsapp_interval_end_time, telegram_interval_start_time, telegram_interval_end_time')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -355,6 +364,17 @@ const Settings = () => {
         setIntervalStartTime((data as any).interval_start_time || '08:00');
         setIntervalEndTime((data as any).interval_end_time || '22:00');
         setUsdExchangeRate((data as any).usd_exchange_rate || 3.7);
+        
+        // Separate channel intervals
+        const waInterval = (data as any).whatsapp_interval_minutes;
+        const tgInterval = (data as any).telegram_interval_minutes;
+        setWhatsappIntervalMinutes(waInterval);
+        setTelegramIntervalMinutes(tgInterval);
+        setUseSeparateIntervals(!!(waInterval || tgInterval));
+        setWhatsappIntervalStart((data as any).whatsapp_interval_start_time || '08:00');
+        setWhatsappIntervalEnd((data as any).whatsapp_interval_end_time || '22:00');
+        setTelegramIntervalStart((data as any).telegram_interval_start_time || '08:00');
+        setTelegramIntervalEnd((data as any).telegram_interval_end_time || '22:00');
         
         // Set custom prompt - use saved value or default
         setCustomAiPrompt(data.custom_ai_prompt && data.custom_ai_prompt.trim() !== '' 
@@ -407,7 +427,7 @@ const Settings = () => {
         publishing_days: publishingDays,
         aliexpress_tracking_id: aliexpressTrackingId || null,
         custom_ai_prompt: customAiPrompt || null,
-        posting_interval_minutes: useIntervalPosting ? postingIntervalMinutes : null,
+        posting_interval_minutes: useIntervalPosting && !useSeparateIntervals ? postingIntervalMinutes : null,
         posting_interval_hours: null, // Clear old column
         shabbat_mode_enabled: shabbatModeEnabled,
         shabbat_start_time: shabbatStartTime,
@@ -415,6 +435,13 @@ const Settings = () => {
         interval_start_time: intervalStartTime,
         interval_end_time: intervalEndTime,
         usd_exchange_rate: usdExchangeRate,
+        // Separate channel intervals
+        whatsapp_interval_minutes: useSeparateIntervals ? whatsappIntervalMinutes : null,
+        telegram_interval_minutes: useSeparateIntervals ? telegramIntervalMinutes : null,
+        whatsapp_interval_start_time: useSeparateIntervals ? whatsappIntervalStart : '08:00',
+        whatsapp_interval_end_time: useSeparateIntervals ? whatsappIntervalEnd : '22:00',
+        telegram_interval_start_time: useSeparateIntervals ? telegramIntervalStart : '08:00',
+        telegram_interval_end_time: useSeparateIntervals ? telegramIntervalEnd : '22:00',
       };
 
       if (settingsId) {
@@ -939,6 +966,112 @@ const Settings = () => {
                       />
                     </div>
                   </div>
+                </div>
+                
+                {/* Separate Intervals Toggle */}
+                <div className="pt-4 border-t border-primary/20">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <Label className="text-sm font-medium">הפרד בין וואטסאפ לטלגרם</Label>
+                      <p className="text-xs text-muted-foreground">קבע מרווחי זמן שונים לכל ערוץ</p>
+                    </div>
+                    <Switch
+                      checked={useSeparateIntervals}
+                      onCheckedChange={setUseSeparateIntervals}
+                    />
+                  </div>
+                  
+                  {useSeparateIntervals && (
+                    <div className="space-y-6 mt-4">
+                      {/* WhatsApp Settings */}
+                      <div className="p-4 rounded-lg bg-success/10 border border-success/30 space-y-4">
+                        <div className="flex items-center gap-2">
+                          <MessageSquare className="h-4 w-4 text-success" />
+                          <span className="font-medium text-success">וואטסאפ</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm">שלח כל</Label>
+                          <Badge variant="outline" className="font-bold border-success/50 text-success">
+                            {whatsappIntervalMinutes && whatsappIntervalMinutes >= 60 
+                              ? `${whatsappIntervalMinutes / 60} שעות` 
+                              : `${whatsappIntervalMinutes || 60} דקות`}
+                          </Badge>
+                        </div>
+                        <Slider
+                          value={[whatsappIntervalMinutes || 60]}
+                          onValueChange={([val]) => setWhatsappIntervalMinutes(val)}
+                          min={30}
+                          max={720}
+                          step={30}
+                          className="w-full"
+                        />
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">משעה</Label>
+                            <Input
+                              type="time"
+                              value={whatsappIntervalStart}
+                              onChange={(e) => setWhatsappIntervalStart(e.target.value)}
+                              className="h-9"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">עד שעה</Label>
+                            <Input
+                              type="time"
+                              value={whatsappIntervalEnd}
+                              onChange={(e) => setWhatsappIntervalEnd(e.target.value)}
+                              className="h-9"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Telegram Settings */}
+                      <div className="p-4 rounded-lg bg-primary/10 border border-primary/30 space-y-4">
+                        <div className="flex items-center gap-2">
+                          <Send className="h-4 w-4 text-primary" />
+                          <span className="font-medium text-primary">טלגרם</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm">שלח כל</Label>
+                          <Badge variant="outline" className="font-bold border-primary/50 text-primary">
+                            {telegramIntervalMinutes && telegramIntervalMinutes >= 60 
+                              ? `${telegramIntervalMinutes / 60} שעות` 
+                              : `${telegramIntervalMinutes || 60} דקות`}
+                          </Badge>
+                        </div>
+                        <Slider
+                          value={[telegramIntervalMinutes || 60]}
+                          onValueChange={([val]) => setTelegramIntervalMinutes(val)}
+                          min={30}
+                          max={720}
+                          step={30}
+                          className="w-full"
+                        />
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">משעה</Label>
+                            <Input
+                              type="time"
+                              value={telegramIntervalStart}
+                              onChange={(e) => setTelegramIntervalStart(e.target.value)}
+                              className="h-9"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">עד שעה</Label>
+                            <Input
+                              type="time"
+                              value={telegramIntervalEnd}
+                              onChange={(e) => setTelegramIntervalEnd(e.target.value)}
+                              className="h-9"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

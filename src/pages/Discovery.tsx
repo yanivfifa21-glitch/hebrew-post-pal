@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { 
   Search, Loader2, Sparkles, TrendingUp, Flame, Star, 
   ShoppingBag, RefreshCw, Zap, AlertCircle, Link as LinkIcon,
-  FileSpreadsheet, CheckCircle2, ListPlus
+  FileSpreadsheet, CheckCircle2, ListPlus, Percent, Filter, SlidersHorizontal
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -28,6 +28,7 @@ type HotProduct = {
   rating?: number;
   product_url: string;
   discount_percent?: number;
+  commission_rate?: number;
 };
 
 type ImportedProduct = ExcelProduct & { id: string };
@@ -64,6 +65,11 @@ const Discovery = () => {
   const [dataSource, setDataSource] = useState<string>("");
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMoreProducts, setHasMoreProducts] = useState(true);
+  
+  // Price filter state
+  const [minPrice, setMinPrice] = useState<number>(0);
+  const [maxPrice, setMaxPrice] = useState<number>(500);
+  const [showFilters, setShowFilters] = useState(false);
   
   // Excel import state - with localStorage persistence
   const [importedProducts, setImportedProducts] = useState<ImportedProduct[]>(() => {
@@ -555,7 +561,12 @@ const Discovery = () => {
     }
   };
 
-  const filteredProducts = products;
+  // Apply price filter
+  const filteredProducts = products.filter(p => {
+    if (minPrice > 0 && p.price < minPrice) return false;
+    if (maxPrice < 500 && p.price > maxPrice) return false;
+    return true;
+  });
 
   return (
     <MainLayout>
@@ -611,10 +622,63 @@ const Discovery = () => {
                     dir="rtl"
                   />
                 </div>
+                <Button 
+                  onClick={() => setShowFilters(!showFilters)} 
+                  variant={showFilters ? "secondary" : "outline"} 
+                  size="icon" 
+                  className="h-10 w-10 md:h-11 md:w-11"
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                </Button>
                 <Button onClick={handleSearch} disabled={isLoading} variant="gradient" size="icon" className="h-10 w-10 md:h-11 md:w-11 md:w-auto md:px-4">
                   {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
                 </Button>
               </div>
+
+              {/* Price Filter Panel */}
+              {showFilters && (
+                <div className="p-3 bg-muted/30 rounded-lg border border-border/50 space-y-3" dir="rtl">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-foreground flex items-center gap-2">
+                      <Filter className="h-4 w-4" />
+                      סינון לפי מחיר
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      ${minPrice} - ${maxPrice === 500 ? '∞' : maxPrice}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="flex-1 space-y-1">
+                      <label className="text-xs text-muted-foreground">מינימום</label>
+                      <Input
+                        type="number"
+                        value={minPrice}
+                        onChange={(e) => setMinPrice(Math.max(0, parseInt(e.target.value) || 0))}
+                        className="h-8 text-sm"
+                        min={0}
+                      />
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <label className="text-xs text-muted-foreground">מקסימום</label>
+                      <Input
+                        type="number"
+                        value={maxPrice}
+                        onChange={(e) => setMaxPrice(Math.max(1, parseInt(e.target.value) || 500))}
+                        className="h-8 text-sm"
+                        min={1}
+                      />
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { setMinPrice(0); setMaxPrice(500); }}
+                      className="h-8 text-xs"
+                    >
+                      איפוס
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               {/* Categories Grid */}
               <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2">
@@ -858,13 +922,22 @@ const Discovery = () => {
                               </span>
                             )}
                           </div>
-                          {(product.sales_count || 0) > 0 && (
-                            <div className="hidden md:flex items-center gap-1 text-xs text-muted-foreground">
-                              <ShoppingBag className="h-3 w-3" />
-                              {(product.sales_count || 0).toLocaleString()}
+                          {/* Commission Rate Badge */}
+                          {(product.commission_rate || 0) > 0 && (
+                            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-success/20 text-success text-[10px] md:text-xs font-medium">
+                              <Percent className="h-2.5 w-2.5 md:h-3 md:w-3" />
+                              {product.commission_rate?.toFixed(1)}%
                             </div>
                           )}
                         </div>
+                        
+                        {/* Sales count */}
+                        {(product.sales_count || 0) > 0 && (
+                          <div className="flex items-center gap-1 text-[10px] md:text-xs text-muted-foreground">
+                            <ShoppingBag className="h-2.5 w-2.5 md:h-3 md:w-3" />
+                            {(product.sales_count || 0).toLocaleString()} נמכרו
+                          </div>
+                        )}
 
                         <Button
                           variant="gradient"

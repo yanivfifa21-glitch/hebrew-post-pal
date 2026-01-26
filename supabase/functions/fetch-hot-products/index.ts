@@ -24,7 +24,8 @@ const ALL_CATEGORY_IDS = ["509", "15", "66", "200000297", "34", "200003482", "7"
 
 const MAX_DELIVERY_DAYS = 45;
 const MIN_COMMISSION_RATE = "0.01"; // Minimum 1% commission
-const MIN_SALES_COUNT = 50; // Minimum 50 sales for quality filtering
+const MIN_SALES_COUNT = 200; // Minimum 200 sales for quality filtering
+const MIN_RATING = 4.0; // Minimum 4.0 star rating
 
 type HotProduct = {
   product_id: string;
@@ -253,8 +254,9 @@ serve(async (req) => {
             if (products.length >= desiredCount) break;
             const mapped = mapProduct(p);
             if (!mapped || seen.has(mapped.product_id)) continue;
-            // Quality filter - minimum sales
+            // Quality filter - minimum sales AND rating
             if (mapped.sales_count < MIN_SALES_COUNT) continue;
+            if (mapped.rating < MIN_RATING) continue;
             seen.add(mapped.product_id);
             products.push(mapped);
           }
@@ -268,8 +270,9 @@ serve(async (req) => {
             if (products.length >= desiredCount) break;
             const mapped = mapProduct(p);
             if (!mapped || seen.has(mapped.product_id)) continue;
-            // Quality filter - minimum sales
+            // Quality filter - minimum sales AND rating
             if (mapped.sales_count < MIN_SALES_COUNT) continue;
+            if (mapped.rating < MIN_RATING) continue;
             seen.add(mapped.product_id);
             products.push(mapped);
           }
@@ -311,8 +314,9 @@ serve(async (req) => {
             if (products.length >= desiredCount) break;
             const mapped = mapProduct(p);
             if (!mapped || seen.has(mapped.product_id)) continue;
-            // Quality filter - minimum sales count for better products
+            // Quality filter - minimum sales count AND rating for better products
             if (mapped.sales_count < MIN_SALES_COUNT) continue;
+            if (mapped.rating < MIN_RATING) continue;
             seen.add(mapped.product_id);
             products.push(mapped);
           }
