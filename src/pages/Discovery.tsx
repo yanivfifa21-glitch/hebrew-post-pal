@@ -29,9 +29,20 @@ type HotProduct = {
   product_url: string;
   discount_percent?: number;
   commission_rate?: number;
+  source?: string;
 };
 
 type ImportedProduct = ExcelProduct & { id: string };
+
+// Product sources for AD CENTER / Campaigns
+type ProductSource = "hot" | "hot_deals" | "high_commission" | "featured" | "campaigns";
+
+const PRODUCT_SOURCES = [
+  { id: "hot", label: "מוצרים לוהטים", icon: Flame, emoji: "🔥" },
+  { id: "hot_deals", label: "Hot Deals", icon: Zap, emoji: "⚡" },
+  { id: "high_commission", label: "עמלה גבוהה", icon: Percent, emoji: "💰" },
+  { id: "campaigns", label: "קמפיינים", icon: TrendingUp, emoji: "📈" },
+];
 
 // Hebrew category mapping with AliExpress category IDs and icons
 import { Smartphone, Home, Heart, Dumbbell, Car, Lightbulb, Monitor, Headphones } from "lucide-react";
@@ -65,6 +76,9 @@ const Discovery = () => {
   const [dataSource, setDataSource] = useState<string>("");
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMoreProducts, setHasMoreProducts] = useState(true);
+  
+  // Product source state (for AD CENTER categories)
+  const [productSource, setProductSource] = useState<ProductSource>("hot");
   
   // Price filter state
   const [minPrice, setMinPrice] = useState<number>(0);
@@ -126,7 +140,7 @@ const Discovery = () => {
 
   // Async versions for pull-to-refresh
 
-  const fetchHotProductsAsync = async (category = selectedCategory, keywords = "", page = 1, append = false) => {
+  const fetchHotProductsAsync = async (category = selectedCategory, keywords = "", page = 1, append = false, source: ProductSource = productSource) => {
     setShowManualInput(false);
     try {
       const trimmedKeywords = keywords.trim();
@@ -141,6 +155,7 @@ const Discovery = () => {
           pageSize: 20,
           pageNo: page,
           sort: "VOLUME_DESC",
+          source: source, // Pass the product source for AD CENTER
         },
       });
 
@@ -162,8 +177,17 @@ const Discovery = () => {
       
       setHasFetched(true);
       setCurrentPage(page);
-      setHasMoreProducts(newProducts.length >= 15); // If we got less than 15, probably no more
-      setDataSource(trimmedKeywords ? "חיפוש" : "מוצרים לוהטים");
+      setHasMoreProducts(newProducts.length >= 15);
+      
+      // Set data source label
+      const sourceLabels: Record<ProductSource, string> = {
+        hot: "מוצרים לוהטים",
+        hot_deals: "Hot Deals",
+        high_commission: "עמלה גבוהה",
+        featured: "מוצרים מומלצים",
+        campaigns: "קמפיינים",
+      };
+      setDataSource(trimmedKeywords ? "חיפוש" : sourceLabels[source]);
     } catch (e) {
       toast({
         title: "שגיאה בטעינה",
@@ -174,13 +198,13 @@ const Discovery = () => {
   };
 
   // Fetch from official API (with loading state)
-  const fetchHotProducts = async (category = selectedCategory, keywords = "", page = 1, append = false) => {
+  const fetchHotProducts = async (category = selectedCategory, keywords = "", page = 1, append = false, source: ProductSource = productSource) => {
     if (append) {
       setIsLoadingMore(true);
     } else {
       setIsLoading(true);
     }
-    await fetchHotProductsAsync(category, keywords, page, append);
+    await fetchHotProductsAsync(category, keywords, page, append, source);
     setIsLoading(false);
     setIsLoadingMore(false);
   };
@@ -196,7 +220,16 @@ const Discovery = () => {
     setSelectedCategory(category);
     setCurrentPage(1);
     if (activeMode === "api") {
-      fetchHotProducts(category, searchQuery, 1, false);
+      fetchHotProducts(category, searchQuery, 1, false, productSource);
+    }
+  };
+  
+  const handleSourceChange = (source: ProductSource) => {
+    setProductSource(source);
+    setSelectedCategory(""); // Reset category when changing source
+    setCurrentPage(1);
+    if (activeMode === "api") {
+      fetchHotProducts("", searchQuery, 1, false, source);
     }
   };
   
@@ -680,28 +713,51 @@ const Discovery = () => {
                 </div>
               )}
 
-              {/* Categories Grid */}
-              <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2">
-                {CATEGORIES.map((cat) => (
+              {/* Product Source Tabs (AD CENTER) */}
+              <div className="flex gap-2 overflow-x-auto pb-1" dir="rtl">
+                {PRODUCT_SOURCES.map((src) => (
                   <button
-                    key={cat.id}
-                    onClick={() => handleCategoryChange(cat.id)}
+                    key={src.id}
+                    onClick={() => handleSourceChange(src.id as ProductSource)}
                     className={`
-                      flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl
-                      transition-all duration-200 text-center min-h-[80px]
-                      ${selectedCategory === cat.id 
-                        ? 'bg-primary text-primary-foreground shadow-lg scale-105 ring-2 ring-primary/50' 
-                        : 'bg-card/50 hover:bg-card border border-border/50 hover:border-primary/30 hover:scale-102'
+                      flex items-center gap-2 px-4 py-2 rounded-full whitespace-nowrap
+                      transition-all duration-200 text-sm font-medium
+                      ${productSource === src.id 
+                        ? 'bg-primary text-primary-foreground shadow-lg scale-105' 
+                        : 'bg-card/50 hover:bg-card border border-border/50 hover:border-primary/30'
                       }
                     `}
                   >
-                    <span className="text-xl">{cat.emoji}</span>
-                    <span className="text-[10px] md:text-xs font-medium leading-tight">
-                      {cat.label}
-                    </span>
+                    <span>{src.emoji}</span>
+                    <span>{src.label}</span>
                   </button>
                 ))}
               </div>
+
+              {/* Categories Grid - only show for "hot" source */}
+              {productSource === "hot" && (
+                <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2">
+                  {CATEGORIES.map((cat) => (
+                    <button
+                      key={cat.id}
+                      onClick={() => handleCategoryChange(cat.id)}
+                      className={`
+                        flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl
+                        transition-all duration-200 text-center min-h-[80px]
+                        ${selectedCategory === cat.id 
+                          ? 'bg-primary text-primary-foreground shadow-lg scale-105 ring-2 ring-primary/50' 
+                          : 'bg-card/50 hover:bg-card border border-border/50 hover:border-primary/30 hover:scale-102'
+                        }
+                      `}
+                    >
+                      <span className="text-xl">{cat.emoji}</span>
+                      <span className="text-[10px] md:text-xs font-medium leading-tight">
+                        {cat.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </TabsContent>
 
