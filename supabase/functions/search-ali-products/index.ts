@@ -7,9 +7,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Israel market settings
-const MIN_PRICE_USD = "5";
+// ========== WINNING PRODUCT QUALITY THRESHOLDS ==========
+const MIN_PRICE_USD = "10";            // Price floor: $10+ to avoid junk items
 const MAX_DELIVERY_DAYS = 15;
+const MIN_RATING_THRESHOLD = 4.5;      // Rating threshold: 4.5+ stars
+const MIN_SALES_THRESHOLD = 100;       // Minimum sales to show
 
 // Accessory keywords to filter out for certain searches
 const ACCESSORY_KEYWORDS = ["strap", "band", "case", "cover", "film", "protector", "cable", "charger", "holder", "stand", "dock"];
@@ -109,7 +111,8 @@ serve(async (req) => {
     const page = parseInt(body?.page) || 1;
     const pageSize = Math.min(parseInt(body?.pageSize) || 40, 50);
     
-    const sort = "BEST_MATCH";
+    // Sort by volume for winning products (best sellers)
+    const sort = "VOLUME_DESC";
 
     // Use service role to fetch user's decrypted credentials via RPC
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -257,10 +260,23 @@ serve(async (req) => {
       };
     });
 
+    // ========== QUALITY FILTERING ==========
+    const beforeQualityFilter = products.length;
+    
+    // Filter by rating (4.5+ stars)
+    products = products.filter(p => p.rating >= MIN_RATING_THRESHOLD);
+    console.log(`[search-ali-products] Rating filter (${MIN_RATING_THRESHOLD}+): ${beforeQualityFilter} -> ${products.length}`);
+    
+    // Filter by minimum sales
+    const beforeSalesFilter = products.length;
+    products = products.filter(p => p.sales_count >= MIN_SALES_THRESHOLD);
+    console.log(`[search-ali-products] Sales filter (${MIN_SALES_THRESHOLD}+): ${beforeSalesFilter} -> ${products.length}`);
+
+    // Filter accessories for certain product types
     if (filterAccessories) {
-      const beforeFilter = products.length;
+      const beforeAccessoryFilter = products.length;
       products = products.filter(p => !isAccessory(p.title));
-      console.log(`[search-ali-products] Filtered accessories: ${beforeFilter} -> ${products.length} products`);
+      console.log(`[search-ali-products] Accessory filter: ${beforeAccessoryFilter} -> ${products.length}`);
     }
 
     console.log("[search-ali-products] Final products count:", products.length);
