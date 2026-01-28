@@ -25,12 +25,13 @@ type ProductSource = "hot" | "hot_deals" | "high_commission" | "featured" | "cam
 const ALL_CATEGORY_IDS = ["509", "15", "66", "200000297", "34", "200003482", "7", "44"];
 
 const MAX_DELIVERY_DAYS = 45;
-const MIN_COMMISSION_RATE = "0.01";
-// Quality thresholds for hot products
-const MIN_SALES_COUNT_HOT = 500; // Higher threshold for hot products
-const MIN_RATING_HOT = 4.5; // Higher rating threshold for hot products
-const MIN_SALES_COUNT_PROMO = 100; // Lower threshold for promo products
-const MIN_COMMISSION_HIGH = 8; // 8% minimum for high commission filter
+// ========== WINNING PRODUCT QUALITY THRESHOLDS ==========
+const MIN_PRICE_USD = "10";            // Price floor: avoid $1 junk items
+const MIN_SALES_COUNT_HOT = 500;       // Minimum sales for "hot" source
+const MIN_RATING_HOT = 4.5;            // Rating threshold: 4.5+ stars
+const MIN_SALES_COUNT_PROMO = 100;     // Lower threshold for promo products
+const MIN_COMMISSION_HIGH = 8;         // 8% minimum for high commission filter
+const MIN_COMMISSION_RATE = "0.01";    // Minimum commission rate for API
 
 type HotProduct = {
   product_id: string;
@@ -127,9 +128,10 @@ serve(async (req) => {
     const desiredCount = pageSize;
 
     // ============================================
-    // HOT PRODUCTS API
+    // HOT PRODUCTS API - "Winning Products" Query
+    // Uses hotproduct.query with quality filters
     // ============================================
-    const callHotProductQuery = async (categoryId?: string, keywords?: string, pageNo: number = 1) => {
+    const callHotProductQuery = async (categoryId?: string, keywords?: string, pageNo: number = 1, sortBy: string = "VOLUME_DESC") => {
       const params: Record<string, string> = {
         app_key: appKey,
         method: "aliexpress.affiliate.hotproduct.query",
@@ -139,11 +141,12 @@ serve(async (req) => {
         tracking_id: trackingId,
         target_language: "EN",
         target_currency: "ILS",
-        ship_to_country: "IL",
+        ship_to_country: "IL",                    // Target market: Israel
         delivery_days: MAX_DELIVERY_DAYS.toString(),
         page_no: pageNo.toString(),
         page_size: "50",
-        sort: "LAST_VOLUME_DESC",
+        sort: sortBy,                             // VOLUME_DESC for best sellers
+        min_sale_price: MIN_PRICE_USD,            // Price floor: $10+ (avoid junk)
       };
 
       if (categoryId) params.category_ids = categoryId;
@@ -155,7 +158,7 @@ serve(async (req) => {
         .join("&");
 
       const apiUrl = `https://api-sg.aliexpress.com/sync?${qs}`;
-      console.log("[fetch-hot-products] HOT API call - category:", categoryId || "all", "| page:", pageNo);
+      console.log("[fetch-hot-products] HOT API - category:", categoryId || "all", "| sort:", sortBy, "| minPrice:", MIN_PRICE_USD, "| page:", pageNo);
       
       const resp = await fetch(apiUrl, { method: "GET" });
       return await resp.json().catch(() => ({}));
@@ -223,9 +226,9 @@ serve(async (req) => {
     };
 
     // ============================================
-    // PRODUCT QUERY API (fallback + search)
+    // PRODUCT QUERY API (fallback + search) - With Quality Filters
     // ============================================
-    const callProductQuery = async (keywords: string, categoryId?: string, sort: string = "SALE_PRICE_ASC") => {
+    const callProductQuery = async (keywords: string, categoryId?: string, sort: string = "VOLUME_DESC") => {
       const params: Record<string, string> = {
         app_key: appKey,
         method: "aliexpress.affiliate.product.query",
@@ -235,12 +238,13 @@ serve(async (req) => {
         tracking_id: trackingId,
         target_language: "EN",
         target_currency: "ILS",
-        ship_to_country: "IL",
+        ship_to_country: "IL",                   // Target market
         delivery_days: MAX_DELIVERY_DAYS.toString(),
         page_no: pageNo.toString(),
         page_size: "50",
-        sort: sort,
+        sort: sort,                              // VOLUME_DESC for winning products
         keywords: keywords,
+        min_sale_price: MIN_PRICE_USD,           // Price floor: $10+
       };
 
       if (categoryId) params.category_ids = categoryId;
@@ -251,7 +255,7 @@ serve(async (req) => {
         .join("&");
 
       const apiUrl = `https://api-sg.aliexpress.com/sync?${qs}`;
-      console.log("[fetch-hot-products] PRODUCT QUERY API - keywords:", keywords);
+      console.log("[fetch-hot-products] PRODUCT QUERY - keywords:", keywords, "| sort:", sort, "| minPrice:", MIN_PRICE_USD);
       
       const resp = await fetch(apiUrl, { method: "GET" });
       return await resp.json().catch(() => ({}));
