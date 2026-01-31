@@ -21,6 +21,8 @@ const PROMPT_TEMPLATES = [
 
 חוקים קריטיים:
 - אסור לפתוח עם "זוהי", "זהו", "הוא", "היא", "מדובר ב" - התחל ישירות עם שם המוצר או היתרון.
+- אל תכתוב משפטים כלליים/סגנון-חיים כמו "מתאים לשימוש יומיומי..." או רשימות פעילויות (רכיבה, דיג, טיולים וכד').
+- סיים רק במשפט שלם (עם נקודה/סימן סיום). אסור להשאיר סיום תלוי כמו "היא מתאימה".
 - אסור לציין מחירים, מטבעות או סכומים כספיים.
 - אסור לכלול קריאה לפעולה, קישורים או הנחיות להזמנה.
 - אסור להוסיף משפטי השראה או מוטיבציה בסוף.
@@ -34,6 +36,8 @@ const PROMPT_TEMPLATES = [
 
 חוקים קריטיים:
 - אסור לפתוח עם "זוהי", "זהו", "הוא", "היא", "מדובר ב" - התחל ישירות עם תיאור היתרון או התכונה.
+- אל תכתוב משפטים כלליים כמו "מתאים לשימוש יומיומי" או רשימות תחביבים/פעילויות (אופנוע, דיג, טיולים וכו').
+- סיים רק במשפט שלם. אל תשאיר סוף פתוח כמו "הוא מתאים"/"היא מתאימה".
 - אסור לציין מחירים או מטבעות.
 - אסור לכלול קישורים או קריאה לפעולה.
 - אסור לסיים עם משפטי השראה כמו "תהנו", "תשכחו", "שקט נפשי".
@@ -47,10 +51,48 @@ const PROMPT_TEMPLATES = [
 
 חוקים קריטיים:
 - לעולם אל תפתח עם "זוהי", "זהו", "הוא", "היא", "מדובר ב" - התחל ישירות עם התכונה או היתרון.
+- בלי משפטים כלליים כמו "מתאים לשימוש יומיומי" או פירוט פעילויות (רכיבה/דיג/טיולים/פעילות חיצונית וכו').
+- סיום חייב להיות משפט שלם בלבד (עם נקודה/סימן סיום), בלי "היא מתאימה" בסוף.
 - אין מחירים, קישורים או הנחיות רכישה.
 - אין משפטי השראה או מוטיבציה בסוף.
 - רק תיאור טכני של המוצר.`
 ];
+
+function removeGenericUsageLines(text: string): string {
+  const patterns: RegExp[] = [
+    /מתאים\/?ה?\s+לשימוש\s+יומיומי[^\n]*/gi,
+    /מתאים\/?ה?\s+ל[^\n]*(רכיבה|אופנוע|דיג|טיול|טיולים|קמפינג|טרקים|פעילות\s+חיצונית|ספורט\s+חיצוני)[^\n]*/gi,
+    /אידיאלי\s+ל[^\n]*(רכיבה|אופנוע|דיג|טיול|טיולים|קמפינג|טרקים|פעילות\s+חיצונית)[^\n]*/gi,
+    /לכל\s+(פעילות|מצב|תנאי)[^\n]*/gi,
+  ];
+
+  const lines = text.split(/\r?\n/);
+  const kept = lines.filter((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return true;
+    return !patterns.some((re) => re.test(trimmed));
+  });
+  return kept.join("\n");
+}
+
+function trimDanglingEndings(text: string): string {
+  let t = text.trim();
+
+  // Remove common dangling fragments at the very end
+  t = t.replace(/\s*(הוא|היא)\s*$/g, "");
+  t = t.replace(/\s*(מתאים|מתאימה)\s*$/g, "");
+  t = t.replace(/\s*(הוא\s+מתאים|היא\s+מתאימה)\s*$/g, "");
+
+  // If it still doesn't end with punctuation, trim to last sentence-like punctuation.
+  // Covers: . ! ? … and Hebrew gershayim can appear but we focus on sentence endings.
+  const m = t.match(/[\s\S]*[\.!\?…]\s*$/);
+  if (!m) {
+    const lastPunct = Math.max(t.lastIndexOf("."), t.lastIndexOf("!"), t.lastIndexOf("?"), t.lastIndexOf("…"));
+    if (lastPunct > 0) t = t.slice(0, lastPunct + 1).trim();
+  }
+
+  return t.trim();
+}
 
 // Pure random rotation - each call gets one of the 3 prompts randomly
 function getPromptIndex(): number {
@@ -276,6 +318,12 @@ serve(async (req) => {
   content = content.replace(/קופון[:\s]*[^\n]*/gi, '');
   content = content.replace(/קוד[:\s]*[A-Z0-9]+[^\n]*/gi, '');
   content = content.replace(/הנחה[^\n]*/gi, '');
+
+  // Remove generic lifestyle/activity lines the user doesn't want
+  content = removeGenericUsageLines(content);
+
+  // Ensure we don't return a dangling/unfinished ending (e.g., "היא מתאימה")
+  content = trimDanglingEndings(content);
   
   // Clean up extra newlines and spaces
   content = content.replace(/\n{3,}/g, '\n\n').trim();
