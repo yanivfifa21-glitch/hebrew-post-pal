@@ -9,80 +9,47 @@ const corsHeaders = {
 type ApiOk = { success: true; hebrewDescription: string; promptStyle: number };
 type ApiErr = { success: false; error: string; code?: string };
 
-// 4 different prompt styles that rotate - clean, short marketing copy (2-3 lines max)
-// NOTE: style #1 may be overridden by user's custom prompt, while styles #2-#4 remain fixed.
-// IMPORTANT: No inappropriate content - use words like 'נוחות', 'שלווה', 'פתרון מתקדם'
+// 3 prompt styles - randomly selected each time
+// CRITICAL: No prices, currencies, or monetary conversions in any output
 const PROMPT_TEMPLATES = [
-  // Style 1: Social Proof - מספר הזמנות וציון כוכבים
-  `אתה משווק ישראלי. כתוב 2-3 שורות שיווקיות עם הוכחה חברתית.
+  // Prompt 1: Clear and trustworthy Telegram post
+  `צור פוסט טלגרם קצר וברור בעברית מלאה.
 
-מבנה:
-אימוג'י + שם המוצר בעברית
-משפט אחד שמציין את מספר ההזמנות והציון
-משפט הנעה להצטרפות ללקוחות מרוצים
+כלול כותרת מושכת עם אימוג'י אחד בלבד.
+הוסף תיאור של 2–3 שורות: מה המוצר ולמה הוא שווה.
+הדגש יתרון מרכזי אחד או שניים.
+הוסף שורת אמינות (ביקורות, פופולריות או שימוש נפוץ).
+סיים בשורת קריאה לפעולה עם קישור.
+הטון צריך להיות טבעי, אמין ולא שיווקי מדי.
 
-דוגמה: "🔥 כרית מדהימה לשינה נוחה
-מעל 2,000 הזמנות וציון 4.9! הצטרפו לאלפי הלקוחות המרוצים שלנו ותתחילו להרגיש בהבדל כבר היום."
+אסור לציין מחירים, מטבעות או סכומים כספיים.`,
 
-כללים:
-- עד 3 שורות בלבד
-- שפה נקייה ושיווקית
-- אסור מחיר, קישור, CTA כמו "לחץ כאן"
-- אסור להזכיר מונחים רפואיים או חלקי גוף`,
+  // Prompt 2: Recommendation style
+  `כתוב פוסט טלגרם בעברית בסגנון המלצה.
 
-  // Style 2: Direct Benefit - תועלת ישירה, בלי מספרים
-  `אתה משווק ישראלי. כתוב 2-3 שורות שמתמקדות בתועלת ובשיפור איכות החיים.
+פתח במשפט שמסביר למה שווה לבדוק את המוצר.
+הוסף 2–3 שורות יתרונות בשפה פשוטה.
+הימנע מהגזמות ומילים שיווקיות חזקות.
+שלב אלמנט של אמינות או שימוש יומיומי.
+סיים בקישור להזמנה.
 
-מבנה:
-אימוג'י + שם המוצר בעברית
-1-2 משפטים על הנוחות ושיפור היומיום
+אסור לציין מחירים, מטבעות או סכומים כספיים.`,
 
-דוגמה: "✨ מגבת מיקרופייבר מפנקת
-נוחות מושלמת לכל יום - רכה, נעימה וסופגת במיוחד. הדרך הטובה ביותר לפנק את עצמכם."
+  // Prompt 3: Template style - short and readable
+  `צור טמפלט פוסט לטלגרם למוצר אונליין.
 
-כללים:
-- עד 3 שורות בלבד
-- בלי מספרים (אסור הזמנות, דירוג, אחוזים)
-- שפה חיובית ונעימה
-- אסור מחיר, קישור, CTA`,
+הפוסט צריך להיות קצר, קריא ונעים לעין.
+כלול כותרת עם אימוג'י אחד.
+הוסף תיאור של עד 4 שורות בעברית טבעית.
+הדגש ערך או פתרון שהמוצר נותן.
+סיים במשפט שמעודד בדיקה ולחיצה על הקישור.
 
-  // Style 3: Call to Action - הנעה לפעולה, קצר ותכליתי
-  `אתה משווק ישראלי. כתוב 2-3 שורות שמסבירות למה כדאי להזמין עכשיו.
-
-מבנה:
-אימוג'י + שם המוצר בעברית
-משפט על הערך המיוחד
-משפט שמעודד לפעולה (בלי "לחץ כאן")
-
-דוגמה: "🌟 מנורת לילה חכמה
-הפתרון המושלם לשינה שקטה ונעימה. זה הזמן לשדרג את חדר השינה שלכם!"
-
-כללים:
-- עד 3 שורות בלבד
-- בלי מספרים
-- אסור CTA ישיר כמו "לחץ כאן" או "קנה עכשיו"
-- אסור מחיר או קישור`,
-
-  // Style 4: "Found for you" - המלצה חמה
-  `אתה משווק ישראלי. כתוב 2-3 שורות בסגנון המלצה חמה.
-
-מבנה:
-אימוג'י + "מצאנו עבורכם:" + שם המוצר בעברית
-המלצה חמה על הפתרון הנוח והנעים
-
-דוגמה: "💎 מצאנו עבורכם: כרית תמיכה ארגונומית
-פתרון מתקדם ונוח במיוחד - הלקוחות שלנו פשוט מתאהבים! המלצה חמה לכל מי שמחפש שלווה ונוחות."
-
-כללים:
-- עד 3 שורות בלבד
-- בלי מספרים
-- סגנון אישי וחם
-- אסור מחיר, קישור, CTA`
+אסור לכלול מחירים, מטבעות או מספרים כספיים.`
 ];
 
-// Pure random rotation - each call gets a random prompt style
+// Pure random rotation - each call gets one of the 3 prompts randomly
 function getPromptIndex(): number {
-  return Math.floor(Math.random() * PROMPT_TEMPLATES.length);
+  return Math.floor(Math.random() * 3);
 }
 
 serve(async (req) => {
@@ -145,7 +112,7 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch user's custom prompt (if exists). It should affect ONLY style #1.
+    // Custom prompt only affects the first style
     const { data: settings } = await supabase
       .from("app_settings")
       .select("custom_ai_prompt")
@@ -157,52 +124,19 @@ serve(async (req) => {
       customPrompt || PROMPT_TEMPLATES[0],
       PROMPT_TEMPLATES[1],
       PROMPT_TEMPLATES[2],
-      PROMPT_TEMPLATES[3],
     ];
 
-    // Select random prompt for variety
+    // Select random prompt for variety (1 of 3)
     const promptIndex = getPromptIndex();
     const systemPrompt = effectiveTemplates[promptIndex];
     console.log(
-      `[generate-hebrew-post] Using prompt style ${promptIndex + 1} of ${effectiveTemplates.length}${promptIndex === 0 && customPrompt ? " (custom style 1)" : ""}`,
+      `[generate-hebrew-post] Using prompt style ${promptIndex + 1} of 3${promptIndex === 0 && customPrompt ? " (custom)" : ""}`,
     );
 
-    // Build product context - title + social proof
-    const productDetails: string[] = [];
-
-    // rating can arrive as 0-5 or as a percentage (0-100)
-    if (rate > 0) {
-      const rating5 = rate > 5 ? rate / 20 : rate;
-      const clamped = Math.max(0, Math.min(5, rating5));
-      // IMPORTANT: Always express rating in /5 format (no percentages)
-      productDetails.push(`דירוג מעולה: ${clamped.toFixed(1)} מתוך 5`);
-    }
-
-    if (orders > 0) {
-      // Round up to nice numbers: 299 → "מעל 300", 1234 → "מעל 1300"
-      const roundUpTo = (n: number, base: number) => Math.ceil(n / base) * base;
-      let roundedOrders: number;
-      if (orders >= 10000) {
-        roundedOrders = roundUpTo(orders, 1000); // Round to nearest 1000
-      } else if (orders >= 1000) {
-        roundedOrders = roundUpTo(orders, 100); // Round to nearest 100
-      } else if (orders >= 100) {
-        roundedOrders = roundUpTo(orders, 50); // Round to nearest 50
-      } else if (orders >= 10) {
-        roundedOrders = roundUpTo(orders, 10); // Round to nearest 10
-      } else {
-        roundedOrders = orders;
-      }
-      const ordersText = roundedOrders >= 1000 ? `${(roundedOrders/1000).toFixed(roundedOrders % 1000 === 0 ? 0 : 1)}K+` : String(roundedOrders);
-      productDetails.push(`הזמנות: מעל ${ordersText}`);
-    }
-
-    // Only include rating/orders context for style #1.
-    const includeSocialProof = promptIndex === 0;
+    // Build product context - title only, no prices
     const userPrompt = `מוצר: ${t}
-${includeSocialProof && productDetails.length > 0 ? `\nנתונים מה-API:\n${productDetails.join("\n")}` : ""}
 
-כתוב תיאור מוצר קצר. בלי מחיר, בלי קופון, בלי קישור.`;
+כתוב תיאור מוצר קצר. אסור לציין מחירים, מטבעות, סכומים כספיים, קופונים או קישורים.`;
 
     console.log("[generate-hebrew-post] Generating for user:", user.email);
 
@@ -246,49 +180,50 @@ ${includeSocialProof && productDetails.length > 0 ? `\nנתונים מה-API:\n$
   // Remove AI preamble text like "בטח, הנה רשימת יתרונות..."
   content = content.replace(/^(בטח|הנה|זה|להלן|בוודאי|כמובן)[,،\.]?\s*(הנה\s*)?(רשימת?\s*)?(יתרונות|תיאור|פוסט)?[^:\n]*[:：]?\s*/i, '');
   content = content.replace(/^(בטח|הנה|זה|להלן|בוודאי|כמובן)[,،]?\s+/i, '');
-
-  // If style is NOT #1, aggressively remove any rating/orders/social-proof lines
-  if (promptIndex !== 0) {
-    const bannedLine = /(דירוג|כוכב|כוכבים|אחוז\s*חיובי|הזמנות|orders|rating|⭐|👥)/i;
-    content = content
-      .split(/\r?\n/)
-      .filter((line: string) => !bannedLine.test(line))
-      .join("\n")
-      .trim();
-  }
   
-  // Remove placeholder brackets from prompt template (e.g., [שם המותג, אם יש], [קישור])
-  content = content.replace(/\s*\|\s*\[.*?\]/g, ''); // Remove " | [placeholder]" patterns
-  content = content.replace(/\[שם המותג.*?\]/gi, ''); // Specific brand placeholder
-  content = content.replace(/\[קישור\]/gi, ''); // Link placeholder
-  content = content.replace(/\[.*?אם יש.*?\]/gi, ''); // Any "if exists" placeholders
-  content = content.replace(/\[Brand.*?\]/gi, ''); // English brand placeholders
+  // Remove placeholder brackets from prompt template
+  content = content.replace(/\s*\|\s*\[.*?\]/g, '');
+  content = content.replace(/\[שם המותג.*?\]/gi, '');
+  content = content.replace(/\[קישור\]/gi, '');
+  content = content.replace(/\[.*?אם יש.*?\]/gi, '');
+  content = content.replace(/\[Brand.*?\]/gi, '');
   
   // Remove English sentences - look for lines that are mostly English
   const lines = content.split(/\r?\n/);
   const hebrewLines = lines.filter((line: string) => {
     const trimmed = line.trim();
-    if (!trimmed) return true; // Keep empty lines
-    // Count Hebrew vs English characters
+    if (!trimmed) return true;
     const hebrewChars = (trimmed.match(/[\u0590-\u05FF]/g) || []).length;
     const englishChars = (trimmed.match(/[a-zA-Z]/g) || []).length;
-    // Keep line if it has more Hebrew than English, or if it's mostly symbols/emojis
     return hebrewChars >= englishChars || (hebrewChars === 0 && englishChars === 0);
   });
   content = hebrewLines.join('\n');
   
+  // Remove URLs and links
   content = content.replace(/https?:\/\/[^\s]+/g, '');
   content = content.replace(/👉[^\n]*/g, '');
   content = content.replace(/🔗[^\n]*/g, '');
   content = content.replace(/לרכישה[:\s]*/gi, '');
   content = content.replace(/לחץ כאן[^\n]*/gi, '');
-  // Remove price lines
+  
+  // AGGRESSIVE: Remove ALL price/money mentions
   content = content.replace(/💰[^\n]*/g, '');
-  content = content.replace(/מחיר[:\s]*[\d\.\$₪]+[^\n]*/gi, '');
+  content = content.replace(/מחיר[^\n]*/gi, '');
+  content = content.replace(/₪[\d,\.]+/g, '');
+  content = content.replace(/\$[\d,\.]+/g, '');
+  content = content.replace(/[\d,\.]+\s*₪/g, '');
+  content = content.replace(/[\d,\.]+\s*שקל/gi, '');
+  content = content.replace(/[\d,\.]+\s*דולר/gi, '');
+  content = content.replace(/רק\s*[\d,\.]+/gi, '');
+  content = content.replace(/ב-?\s*[\d,\.]+/gi, '');
+  content = content.replace(/USD|ILS|EUR/gi, '');
+  
   // Remove coupon lines
   content = content.replace(/🎟️[^\n]*/g, '');
   content = content.replace(/קופון[:\s]*[^\n]*/gi, '');
   content = content.replace(/קוד[:\s]*[A-Z0-9]+[^\n]*/gi, '');
+  content = content.replace(/הנחה[^\n]*/gi, '');
+  
   // Clean up extra newlines and spaces
   content = content.replace(/\n{3,}/g, '\n\n').trim();
   content = content.replace(/\s{2,}/g, ' ').trim();
