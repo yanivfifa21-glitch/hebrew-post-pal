@@ -172,9 +172,10 @@ const AddProduct = () => {
         throw new Error(hebResp?.error || "Failed to generate Hebrew content");
       }
 
-      // AI generates description only, app appends the link
+      // AI generates description only, app appends the link with random CTA
       const aiDescription = hebResp.hebrewDescription as string;
-      const hebrewDescription = `${aiDescription}\n\n👉 לרכישה: ${affiliateLink}`;
+      const { formatProductLink } = await import("@/lib/ctaUtils");
+      const hebrewDescription = `${aiDescription}\n\n${formatProductLink(affiliateLink)}`;
 
       // Save as draft immediately
       setFetchStatus("Saving draft...");

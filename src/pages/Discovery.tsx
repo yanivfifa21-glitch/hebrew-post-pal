@@ -366,7 +366,9 @@ const Discovery = () => {
         if (hebErr) throw new Error(hebErr.message);
         if (!hebResp?.success) throw new Error(hebResp?.error || "Failed to generate Hebrew content");
 
-        const hebrewDescription = `${hebResp.hebrewDescription}\n\n👉 לרכישה: ${affiliateLink}`;
+        const ctaOptions = ["לרכישה", "להזמנה", "להזמנה מאליאקספרס"];
+        const randomCta = ctaOptions[Math.floor(Math.random() * ctaOptions.length)];
+        const hebrewDescription = `${hebResp.hebrewDescription}\n\n👇 ${randomCta}: ${affiliateLink}`;
 
         // Normalize rating to 0-5 scale
         let normalizedRating = product.rating ?? 0;
@@ -455,7 +457,9 @@ const Discovery = () => {
           }
         }
 
-        const finalDescription = `${hebrewDescription}\n\n👉 להזמנה: ${affiliateLink}`;
+        const ctaOptionsExcel = ["לרכישה", "להזמנה", "להזמנה מאליאקספרס"];
+        const randomCtaExcel = ctaOptionsExcel[Math.floor(Math.random() * ctaOptionsExcel.length)];
+        const finalDescription = `${hebrewDescription}\n\n👇 ${randomCtaExcel}: ${affiliateLink}`;
 
         // Save to queue
         const { error: saveErr } = await supabase.from("products").insert({
@@ -549,8 +553,10 @@ const Discovery = () => {
         }
       }
 
-      // Add affiliate link at the end
-      const finalDescription = `${hebrewDescription}\n\n👉 להזמנה: ${affiliateLink}`;
+      // Add affiliate link at the end with random CTA
+      const ctaOptionsQuick = ["לרכישה", "להזמנה", "להזמנה מאליאקספרס"];
+      const randomCtaQuick = ctaOptionsQuick[Math.floor(Math.random() * ctaOptionsQuick.length)];
+      const finalDescription = `${hebrewDescription}\n\n👇 ${randomCtaQuick}: ${affiliateLink}`;
 
       // Save to queue
       const { error: saveErr } = await supabase.from("products").insert({
@@ -671,7 +677,9 @@ const Discovery = () => {
       if (hebErr) throw new Error(hebErr.message);
       if (!hebResp?.success) throw new Error(hebResp?.error || "Failed to generate Hebrew content");
 
-      const hebrewDescription = `${hebResp.hebrewDescription}\n\n👉 לרכישה: ${affiliateLink}`;
+      const ctaOptionsSingle = ["לרכישה", "להזמנה", "להזמנה מאליאקספרס"];
+      const randomCtaSingle = ctaOptionsSingle[Math.floor(Math.random() * ctaOptionsSingle.length)];
+      const hebrewDescription = `${hebResp.hebrewDescription}\n\n👇 ${randomCtaSingle}: ${affiliateLink}`;
 
       // Normalize rating to 0-5 scale
       let normalizedRating = product.rating ?? 0;

@@ -192,11 +192,15 @@ const FreeSearch = () => {
               }
             }
             
-            hebrewDescription = `${hebrewDescription}\n\n👉 לרכישה: ${affiliateLink}`;
+            // Random CTA with pointing down emoji
+            const ctaOptions = ["לרכישה", "להזמנה", "להזמנה מאליאקספרס"];
+            const randomCta = ctaOptions[Math.floor(Math.random() * ctaOptions.length)];
+            hebrewDescription = `${hebrewDescription}\n\n👇 ${randomCta}: ${affiliateLink}`;
           } else {
             // Fallback template if generation fails (style 1 format)
             const rating5 = product.rating && product.rating > 5 ? product.rating / 20 : (product.rating || 0);
-            hebrewDescription = `🔥 ${product.title}\n\n📦 מעל ${(product.sales_count || 0).toLocaleString()} הזמנות\n⭐ דירוג: ${Math.min(5, rating5).toFixed(1)} מתוך 5\n\n👉 לרכישה: ${affiliateLink}`;
+            const ctaFallback = ["לרכישה", "להזמנה", "להזמנה מאליאקספרס"][Math.floor(Math.random() * 3)];
+            hebrewDescription = `🔥 ${product.title}\n\n📦 מעל ${(product.sales_count || 0).toLocaleString()} הזמנות\n⭐ דירוג: ${Math.min(5, rating5).toFixed(1)} מתוך 5\n\n👇 ${ctaFallback}: ${affiliateLink}`;
           }
 
           // Normalize rating to 0-5 scale

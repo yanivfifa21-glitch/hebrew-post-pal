@@ -12,39 +12,38 @@ type ApiErr = { success: false; error: string; code?: string };
 // 3 prompt styles - randomly selected each time
 // CRITICAL: No prices, currencies, or monetary conversions in any output
 const PROMPT_TEMPLATES = [
-  // Prompt 1: Clear and trustworthy Telegram post
+  // Prompt 1: Clear and trustworthy Telegram post - NO CTA
   `צור פוסט טלגרם קצר וברור בעברית מלאה.
 
 כלול כותרת מושכת עם אימוג'י אחד בלבד.
 הוסף תיאור של 2–3 שורות: מה המוצר ולמה הוא שווה.
 הדגש יתרון מרכזי אחד או שניים.
 הוסף שורת אמינות (ביקורות, פופולריות או שימוש נפוץ).
-סיים בשורת קריאה לפעולה עם קישור.
 הטון צריך להיות טבעי, אמין ולא שיווקי מדי.
 
-אסור לציין מחירים, מטבעות או סכומים כספיים.`,
+אסור לציין מחירים, מטבעות או סכומים כספיים.
+אסור לכלול קריאה לפעולה, קישורים או הנחיות להזמנה.`,
 
-  // Prompt 2: Recommendation style
+  // Prompt 2: Recommendation style - NO CTA
   `כתוב פוסט טלגרם בעברית בסגנון המלצה.
 
 פתח במשפט שמסביר למה שווה לבדוק את המוצר.
 הוסף 2–3 שורות יתרונות בשפה פשוטה.
 הימנע מהגזמות ומילים שיווקיות חזקות.
 שלב אלמנט של אמינות או שימוש יומיומי.
-סיים בקישור להזמנה.
 
-אסור לציין מחירים, מטבעות או סכומים כספיים.`,
+אסור לציין מחירים, מטבעות או סכומים כספיים.
+אסור לכלול קישורים, קריאה לפעולה או הנחיות רכישה.`,
 
-  // Prompt 3: Template style - short and readable
+  // Prompt 3: Template style - short and readable - NO CTA
   `צור טמפלט פוסט לטלגרם למוצר אונליין.
 
 הפוסט צריך להיות קצר, קריא ונעים לעין.
 כלול כותרת עם אימוג'י אחד.
 הוסף תיאור של עד 4 שורות בעברית טבעית.
 הדגש ערך או פתרון שהמוצר נותן.
-סיים במשפט שמעודד בדיקה ולחיצה על הקישור.
 
-אסור לכלול מחירים, מטבעות או מספרים כספיים.`
+אין לכלול מחירים, מספרים כספיים, קישורים או הנחיות להזמנה.`
 ];
 
 // Pure random rotation - each call gets one of the 3 prompts randomly
@@ -181,12 +180,19 @@ serve(async (req) => {
   content = content.replace(/^(בטח|הנה|זה|להלן|בוודאי|כמובן)[,،\.]?\s*(הנה\s*)?(רשימת?\s*)?(יתרונות|תיאור|פוסט)?[^:\n]*[:：]?\s*/i, '');
   content = content.replace(/^(בטח|הנה|זה|להלן|בוודאי|כמובן)[,،]?\s+/i, '');
   
-  // Remove placeholder brackets from prompt template
+  // AGGRESSIVE: Remove ALL placeholder brackets and internal instructions
   content = content.replace(/\s*\|\s*\[.*?\]/g, '');
   content = content.replace(/\[שם המותג.*?\]/gi, '');
-  content = content.replace(/\[קישור\]/gi, '');
+  content = content.replace(/\[קישור[^\]]*\]/gi, '');
   content = content.replace(/\[.*?אם יש.*?\]/gi, '');
   content = content.replace(/\[Brand.*?\]/gi, '');
+  content = content.replace(/\[כאן יבוא.*?\]/gi, '');
+  content = content.replace(/\(כאן יבוא[^)]*\)/gi, '');
+  content = content.replace(/\[קישור מוצר\]/gi, '');
+  content = content.replace(/\[לינק\]/gi, '');
+  content = content.replace(/\*\*[^*]*היכנסו לכאן[^*]*\*\*/gi, '');
+  content = content.replace(/היכנסו לכאן[:\s]*/gi, '');
+  content = content.replace(/לחצו כאן[:\s]*/gi, '');
   
   // Remove English sentences - look for lines that are mostly English
   const lines = content.split(/\r?\n/);
@@ -199,12 +205,20 @@ serve(async (req) => {
   });
   content = hebrewLines.join('\n');
   
-  // Remove URLs and links
+  // AGGRESSIVE: Remove ALL CTA lines and link mentions
   content = content.replace(/https?:\/\/[^\s]+/g, '');
   content = content.replace(/👉[^\n]*/g, '');
   content = content.replace(/🔗[^\n]*/g, '');
-  content = content.replace(/לרכישה[:\s]*/gi, '');
+  content = content.replace(/👇[^\n]*/g, '');
+  content = content.replace(/☝️[^\n]*/g, '');
+  content = content.replace(/לרכישה[:\s]*[^\n]*/gi, '');
+  content = content.replace(/להזמנה[:\s]*[^\n]*/gi, '');
   content = content.replace(/לחץ כאן[^\n]*/gi, '');
+  content = content.replace(/לפרטים נוספים[^\n]*/gi, '');
+  content = content.replace(/פרטים והזמנה[^\n]*/gi, '');
+  content = content.replace(/רטים והזמנה[^\n]*/gi, '');
+  content = content.replace(/לקנייה[:\s]*[^\n]*/gi, '');
+  content = content.replace(/לצפייה[:\s]*[^\n]*/gi, '');
   
   // AGGRESSIVE: Remove ALL price/money mentions
   content = content.replace(/💰[^\n]*/g, '');
