@@ -368,7 +368,7 @@ const Discovery = () => {
 
         const ctaOptions = ["לרכישה", "להזמנה", "להזמנה מאליאקספרס"];
         const randomCta = ctaOptions[Math.floor(Math.random() * ctaOptions.length)];
-        const hebrewDescription = `${hebResp.hebrewDescription}\n\n👇 ${randomCta}: ${affiliateLink}`;
+        const hebrewDescription = `${hebResp.hebrewDescription}\n\n👇 ${randomCta}:\n${affiliateLink}`;
 
         // Normalize rating to 0-5 scale
         let normalizedRating = product.rating ?? 0;
@@ -459,7 +459,7 @@ const Discovery = () => {
 
         const ctaOptionsExcel = ["לרכישה", "להזמנה", "להזמנה מאליאקספרס"];
         const randomCtaExcel = ctaOptionsExcel[Math.floor(Math.random() * ctaOptionsExcel.length)];
-        const finalDescription = `${hebrewDescription}\n\n👇 ${randomCtaExcel}: ${affiliateLink}`;
+        const finalDescription = `${hebrewDescription}\n\n👇 ${randomCtaExcel}:\n${affiliateLink}`;
 
         // Save to queue
         const { error: saveErr } = await supabase.from("products").insert({
@@ -556,7 +556,7 @@ const Discovery = () => {
       // Add affiliate link at the end with random CTA
       const ctaOptionsQuick = ["לרכישה", "להזמנה", "להזמנה מאליאקספרס"];
       const randomCtaQuick = ctaOptionsQuick[Math.floor(Math.random() * ctaOptionsQuick.length)];
-      const finalDescription = `${hebrewDescription}\n\n👇 ${randomCtaQuick}: ${affiliateLink}`;
+      const finalDescription = `${hebrewDescription}\n\n👇 ${randomCtaQuick}:\n${affiliateLink}`;
 
       // Save to queue
       const { error: saveErr } = await supabase.from("products").insert({
@@ -679,7 +679,7 @@ const Discovery = () => {
 
       const ctaOptionsSingle = ["לרכישה", "להזמנה", "להזמנה מאליאקספרס"];
       const randomCtaSingle = ctaOptionsSingle[Math.floor(Math.random() * ctaOptionsSingle.length)];
-      const hebrewDescription = `${hebResp.hebrewDescription}\n\n👇 ${randomCtaSingle}: ${affiliateLink}`;
+      const hebrewDescription = `${hebResp.hebrewDescription}\n\n👇 ${randomCtaSingle}:\n${affiliateLink}`;
 
       // Normalize rating to 0-5 scale
       let normalizedRating = product.rating ?? 0;

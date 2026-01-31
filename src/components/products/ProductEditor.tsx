@@ -134,7 +134,7 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
       // Random CTA with pointing down emoji
       const ctaOptions = ["לרכישה", "להזמנה", "להזמנה מאליאקספרס"];
       const randomCta = ctaOptions[Math.floor(Math.random() * ctaOptions.length)];
-      parts.push(`👇 ${randomCta}: ${affiliateLink}`);
+       parts.push(`👇 ${randomCta}:\n${affiliateLink}`);
       
       setHebrewDescription(parts.join("\n\n"));
       toast({
