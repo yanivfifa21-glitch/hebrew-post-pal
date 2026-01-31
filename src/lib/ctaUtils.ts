@@ -12,5 +12,6 @@ export function getRandomCTA(): string {
 
 export function formatProductLink(affiliateLink: string): string {
   const cta = getRandomCTA();
-  return `👇 ${cta}: ${affiliateLink}`;
+  // Keep the link on its own line for cleaner formatting in Telegram/WhatsApp
+  return `👇 ${cta}:\n${affiliateLink}`;
 }
