@@ -176,6 +176,35 @@ serve(async (req) => {
   // Clean up - remove any links, prices, or CTAs the AI might have added
   content = String(content).trim();
   
+  // CRITICAL FIX: If AI returned multiple "options", extract only the first one
+  // Look for patterns like "אפשרות 1", "אפשרות 2", "דגשים כלליים", "---" separators
+  if (content.includes('אפשרות 1') || content.includes('**אפשרות')) {
+    // Split by option markers and take the first real content block
+    const optionMatch = content.match(/\*\*אפשרות 1[^*]*\*\*[:\s]*([\s\S]*?)(?=\*\*אפשרות 2|\*\*דגשים|---|$)/i);
+    if (optionMatch && optionMatch[1]) {
+      content = optionMatch[1].trim();
+    } else {
+      // Fallback: take everything before "אפשרות 2" or "---"
+      const firstOptionEnd = content.search(/(\*\*אפשרות 2|\*\*דגשים|^---|דגשים כלליים)/i);
+      if (firstOptionEnd > 0) {
+        content = content.substring(0, firstOptionEnd).trim();
+        // Remove the "אפשרות 1" header if it exists
+        content = content.replace(/^\*\*אפשרות 1[^*]*\*\*[:\s]*/i, '');
+      }
+    }
+  }
+  
+  // Remove any "---" dividers and everything after
+  const dividerIndex = content.indexOf('---');
+  if (dividerIndex > 0) {
+    content = content.substring(0, dividerIndex).trim();
+  }
+  
+  // Remove "דגשים כלליים" sections and any meta-commentary
+  content = content.replace(/\*\*דגשים כלליים[^*]*\*\*[\s\S]*/gi, '');
+  content = content.replace(/דגשים כלליים[\s\S]*/gi, '');
+  content = content.replace(/\* \*\*[^:]+:\*\*[^\n]*/g, ''); // Remove bullet meta-notes like "* **כותרת:**"
+  
   // Remove AI preamble text like "בטח, הנה רשימת יתרונות..."
   content = content.replace(/^(בטח|הנה|זה|להלן|בוודאי|כמובן)[,،\.]?\s*(הנה\s*)?(רשימת?\s*)?(יתרונות|תיאור|פוסט)?[^:\n]*[:：]?\s*/i, '');
   content = content.replace(/^(בטח|הנה|זה|להלן|בוודאי|כמובן)[,،]?\s+/i, '');
@@ -193,6 +222,10 @@ serve(async (req) => {
   content = content.replace(/\*\*[^*]*היכנסו לכאן[^*]*\*\*/gi, '');
   content = content.replace(/היכנסו לכאן[:\s]*/gi, '');
   content = content.replace(/לחצו כאן[:\s]*/gi, '');
+  
+  // Remove any meta text about the post structure
+  content = content.replace(/\(מתמקד[^\)]*\)/gi, '');
+  content = content.replace(/\*\*\(מתמקד[^\)]*\)\*\*/gi, '');
   
   // Remove English sentences - look for lines that are mostly English
   const lines = content.split(/\r?\n/);
