@@ -83,13 +83,44 @@ function trimDanglingEndings(text: string): string {
   t = t.replace(/\s*(מתאים|מתאימה)\s*$/g, "");
   t = t.replace(/\s*(הוא\s+מתאים|היא\s+מתאימה)\s*$/g, "");
 
-  // If it still doesn't end with punctuation, trim to last sentence-like punctuation.
-  // Covers: . ! ? … and Hebrew gershayim can appear but we focus on sentence endings.
-  const m = t.match(/[\s\S]*[\.!\?…]\s*$/);
-  if (!m) {
-    const lastPunct = Math.max(t.lastIndexOf("."), t.lastIndexOf("!"), t.lastIndexOf("?"), t.lastIndexOf("…"));
-    if (lastPunct > 0) t = t.slice(0, lastPunct + 1).trim();
+  // Check if text ends with proper punctuation (not a decimal point like "4.")
+  // A decimal point is one that's preceded by a digit and followed by nothing or more digits
+  const endsWithSentencePunct = /[\.!\?…]\s*$/.test(t);
+  const endsWithDecimal = /\d\.\s*$/.test(t); // e.g., "4." at the end
+  
+  if (!endsWithSentencePunct || endsWithDecimal) {
+    // Find the last REAL sentence-ending punctuation (not a decimal point)
+    // Look for punctuation that's NOT preceded by a digit (to avoid decimals)
+    let lastValidPunct = -1;
+    for (let i = t.length - 1; i >= 0; i--) {
+      const char = t[i];
+      if (char === '.' || char === '!' || char === '?' || char === '…') {
+        // Check if this is NOT a decimal point (digit before the dot)
+        if (char === '.' && i > 0 && /\d/.test(t[i - 1])) {
+          // This might be a decimal - check if it's followed by a digit
+          // If it's at the end or followed by non-digit, it could be sentence end
+          // But "4." at end is likely incomplete decimal, so skip
+          if (i === t.length - 1 || !/\d/.test(t[i + 1] || '')) {
+            // Check if this looks like a rating that got cut off (e.g., "דירוג: 4.")
+            const before = t.slice(Math.max(0, i - 15), i);
+            if (/דירוג|rating|\d\s*מתוך/i.test(before)) {
+              continue; // Skip this - it's an incomplete rating
+            }
+          }
+        }
+        lastValidPunct = i;
+        break;
+      }
+    }
+    
+    if (lastValidPunct > 0) {
+      t = t.slice(0, lastValidPunct + 1).trim();
+    }
   }
+
+  // Final cleanup: if we end with an incomplete rating like "דירוג: 4." remove that line
+  t = t.replace(/\n[^\n]*דירוג[:\s]*\d+\.\s*$/gi, '');
+  t = t.replace(/⭐\s*דירוג[:\s]*\d+\.\s*$/gi, '');
 
   return t.trim();
 }
