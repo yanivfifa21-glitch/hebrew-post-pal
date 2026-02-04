@@ -12,7 +12,8 @@ import {
   TrendingUp,
   Sparkles,
   Shield,
-  Search
+  Search,
+  Send
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ const navItems = [
   { icon: TrendingUp, label: "Discovery", path: "/discovery" },
   { icon: Search, label: "חיפוש חופשי", path: "/free-search" },
   { icon: Plus, label: "Add Product", path: "/add-product" },
+  { icon: Send, label: "שליחה ידנית", path: "/manual-send" },
   { icon: List, label: "Queue", path: "/queue" },
   { icon: History, label: "History", path: "/history" },
   { icon: Settings, label: "Settings", path: "/settings" },

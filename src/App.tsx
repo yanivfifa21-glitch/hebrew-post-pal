@@ -11,6 +11,7 @@ import History from "./pages/History";
 import Settings from "./pages/Settings";
 import Discovery from "./pages/Discovery";
 import FreeSearch from "./pages/FreeSearch";
+import ManualSend from "./pages/ManualSend";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import Admin from "./pages/Admin";
@@ -35,6 +36,7 @@ const App = () => (
           <Route path="/settings" element={<AuthGuard><Settings /></AuthGuard>} />
           <Route path="/discovery" element={<AuthGuard><Discovery /></AuthGuard>} />
           <Route path="/free-search" element={<AuthGuard><FreeSearch /></AuthGuard>} />
+          <Route path="/manual-send" element={<AuthGuard><ManualSend /></AuthGuard>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

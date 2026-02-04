@@ -9,7 +9,8 @@ import {
   TrendingUp,
   Menu,
   X,
-  LogOut
+  LogOut,
+  Send
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -26,6 +27,7 @@ const navItems = [
   { icon: LayoutDashboard, label: "דאשבורד", path: "/" },
   { icon: TrendingUp, label: "גילוי מוצרים", path: "/discovery" },
   { icon: Plus, label: "הוסף מוצר", path: "/add-product" },
+  { icon: Send, label: "שליחה ידנית", path: "/manual-send" },
   { icon: List, label: "תור פרסום", path: "/queue" },
   { icon: History, label: "היסטוריה", path: "/history" },
   { icon: Settings, label: "הגדרות", path: "/settings" },
