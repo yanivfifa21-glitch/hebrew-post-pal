@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       app_settings: {
         Row: {
+          ai_rewrite_template: string | null
           aliexpress_tracking_id: string | null
           automation_enabled: boolean | null
           created_at: string
@@ -44,6 +45,7 @@ export type Database = {
           whatsapp_interval_start_time: string | null
         }
         Insert: {
+          ai_rewrite_template?: string | null
           aliexpress_tracking_id?: string | null
           automation_enabled?: boolean | null
           created_at?: string
@@ -72,6 +74,7 @@ export type Database = {
           whatsapp_interval_start_time?: string | null
         }
         Update: {
+          ai_rewrite_template?: string | null
           aliexpress_tracking_id?: string | null
           automation_enabled?: boolean | null
           created_at?: string
