@@ -17,11 +17,20 @@ import {
   Plus,
   Layers,
   Trash2,
-  Clock
+  Clock,
+  Eye,
+  AlertCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { he } from "date-fns/locale";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 
 interface MessagingAccount {
   id: string;
@@ -49,6 +58,7 @@ export default function ManualSend() {
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
   const [mediaType, setMediaType] = useState<"image" | "video" | null>(null);
+  const [allAccounts, setAllAccounts] = useState<MessagingAccount[]>([]);
   const [accounts, setAccounts] = useState<MessagingAccount[]>([]);
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -57,6 +67,7 @@ export default function ManualSend() {
   const [manualQueue, setManualQueue] = useState<ManualQueueItem[]>([]);
   const [loadingQueue, setLoadingQueue] = useState(true);
   const [sendingItemId, setSendingItemId] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     fetchAccounts();
@@ -79,8 +90,8 @@ export default function ManualSend() {
       const { data, error } = await supabase.rpc("get_my_messaging_accounts_safe");
       if (error) throw error;
       
-      const activeAccounts = (data || []).filter((acc: MessagingAccount) => {
-        if (!acc.is_active) return false;
+      // Store all accounts that have credentials configured
+      const configuredAccounts = (data || []).filter((acc: MessagingAccount) => {
         if (acc.account_type === "telegram") {
           return acc.has_bot_token && acc.telegram_chat_id;
         }
@@ -90,7 +101,11 @@ export default function ManualSend() {
         return false;
       });
       
-      setAccounts(activeAccounts);
+      setAllAccounts(configuredAccounts);
+      setAccounts(configuredAccounts);
+      
+      // Pre-select only active accounts by default
+      const activeAccounts = configuredAccounts.filter((acc: MessagingAccount) => acc.is_active);
       setSelectedAccounts(activeAccounts.map((acc: MessagingAccount) => acc.id));
     } catch (error) {
       console.error("Error fetching accounts:", error);
@@ -167,8 +182,9 @@ export default function ManualSend() {
     );
   };
 
-  const selectAll = () => setSelectedAccounts(accounts.map(acc => acc.id));
+  const selectAll = () => setSelectedAccounts(allAccounts.map(acc => acc.id));
   const deselectAll = () => setSelectedAccounts([]);
+  const selectActiveOnly = () => setSelectedAccounts(allAccounts.filter(acc => acc.is_active).map(acc => acc.id));
 
   const uploadMediaToStorage = async (file: File): Promise<string | null> => {
     try {
@@ -200,7 +216,7 @@ export default function ManualSend() {
     const results = { success: 0, failed: 0 };
 
     for (const accountId of targetAccounts) {
-      const account = accounts.find(acc => acc.id === accountId);
+      const account = allAccounts.find(acc => acc.id === accountId);
       if (!account) continue;
 
       try {
@@ -413,11 +429,90 @@ export default function ManualSend() {
     }
   };
 
-  const telegramAccounts = accounts.filter(acc => acc.account_type === "telegram");
-  const whatsappAccounts = accounts.filter(acc => acc.account_type === "whatsapp");
+  const telegramAccounts = allAccounts.filter(acc => acc.account_type === "telegram");
+  const whatsappAccounts = allAccounts.filter(acc => acc.account_type === "whatsapp");
+
+  // Preview Modal Component
+  const PreviewModal = () => (
+    <Dialog open={showPreview} onOpenChange={setShowPreview}>
+      <DialogContent className="max-w-md" dir="rtl">
+        <DialogHeader>
+          <DialogTitle className="font-hebrew text-right">תצוגה מקדימה</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          {/* Media Preview */}
+          {mediaPreview && (
+            <div className="rounded-lg overflow-hidden border border-border">
+              {mediaType === "image" ? (
+                <img src={mediaPreview} alt="Preview" className="w-full object-contain max-h-64" />
+              ) : (
+                <video src={mediaPreview} className="w-full max-h-64" controls />
+              )}
+            </div>
+          )}
+          
+          {/* Message Preview */}
+          {message.trim() && (
+            <div className="p-4 rounded-lg bg-muted/50 border border-border">
+              <p className="font-hebrew text-right whitespace-pre-wrap leading-relaxed" dir="rtl">
+                {message}
+              </p>
+            </div>
+          )}
+          
+          {!message.trim() && !mediaPreview && (
+            <div className="text-center py-8 text-muted-foreground font-hebrew">
+              <AlertCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p>אין תוכן להצגה</p>
+            </div>
+          )}
+          
+          {/* Selected Groups */}
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-muted-foreground font-hebrew">ישלח ל:</p>
+            <div className="flex flex-wrap gap-2">
+              {selectedAccounts.length === 0 ? (
+                <span className="text-sm text-muted-foreground font-hebrew">לא נבחרו קבוצות</span>
+              ) : (
+                selectedAccounts.map(accId => {
+                  const acc = allAccounts.find(a => a.id === accId);
+                  if (!acc) return null;
+                  return (
+                    <Badge 
+                      key={accId} 
+                      variant={acc.is_active ? "default" : "secondary"}
+                      className="font-hebrew"
+                    >
+                      {acc.account_type === "telegram" ? "📱" : "💬"} {acc.account_name}
+                      {!acc.is_active && " (לא פעיל)"}
+                    </Badge>
+                  );
+                })
+              )}
+            </div>
+          </div>
+          
+          {/* Send Button */}
+          <Button
+            onClick={() => {
+              setShowPreview(false);
+              handleSendNow();
+            }}
+            disabled={loading || (!message.trim() && !mediaFile) || selectedAccounts.length === 0}
+            className="w-full"
+            size="lg"
+          >
+            {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+            <span className="font-hebrew">שלח עכשיו ({selectedAccounts.length})</span>
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 
   return (
     <MainLayout>
+      <PreviewModal />
       <div className="space-y-6 pb-20 md:pb-6">
         {/* Header */}
         <div className="flex items-center gap-3">
@@ -492,14 +587,25 @@ export default function ManualSend() {
 
                 {/* Action Buttons */}
                 <div className="flex flex-col gap-2 pt-2">
-                  <Button
-                    onClick={handleSendNow}
-                    disabled={loading || (!message.trim() && !mediaFile) || selectedAccounts.length === 0}
-                    size="lg"
-                  >
-                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-                    <span className="font-hebrew">שלח עכשיו ({selectedAccounts.length})</span>
-                  </Button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      onClick={handleSendNow}
+                      disabled={loading || (!message.trim() && !mediaFile) || selectedAccounts.length === 0}
+                      size="lg"
+                    >
+                      {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+                      <span className="font-hebrew">שלח ({selectedAccounts.length})</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowPreview(true)}
+                      disabled={!message.trim() && !mediaFile}
+                      size="lg"
+                    >
+                      <Eye className="h-5 w-5" />
+                      <span className="font-hebrew">תצוגה מקדימה</span>
+                    </Button>
+                  </div>
                   
                   <div className="grid grid-cols-2 gap-2">
                     <Button
@@ -602,11 +708,14 @@ export default function ManualSend() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="font-hebrew">קבוצות יעד</CardTitle>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="sm" onClick={selectAll} className="text-xs font-hebrew">
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="sm" onClick={selectAll} className="text-xs font-hebrew px-2">
                     הכל
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={deselectAll} className="text-xs font-hebrew">
+                  <Button variant="ghost" size="sm" onClick={selectActiveOnly} className="text-xs font-hebrew px-2">
+                    פעילים
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={deselectAll} className="text-xs font-hebrew px-2">
                     נקה
                   </Button>
                 </div>
@@ -617,13 +726,16 @@ export default function ManualSend() {
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
-              ) : accounts.length === 0 ? (
+              ) : allAccounts.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground font-hebrew">
-                  <p>אין קבוצות פעילות</p>
+                  <p>אין קבוצות מוגדרות</p>
                   <p className="text-sm mt-1">הגדר חשבונות בהגדרות</p>
                 </div>
               ) : (
                 <>
+                  <p className="text-xs text-muted-foreground font-hebrew text-center">
+                    קבוצות לא פעילות מסומנות באפור (לא יקבלו אוטומציה)
+                  </p>
                   {telegramAccounts.length > 0 && (
                     <div className="space-y-2">
                       <h3 className="text-sm font-medium text-muted-foreground font-hebrew flex items-center gap-2">
@@ -634,18 +746,22 @@ export default function ManualSend() {
                         <label
                           key={account.id}
                           className={cn(
-                            "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
+                            "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all relative",
                             selectedAccounts.includes(account.id)
                               ? "border-primary/50 bg-primary/5"
-                              : "border-border hover:border-primary/30"
+                              : "border-border hover:border-primary/30",
+                            !account.is_active && "opacity-60"
                           )}
                         >
                           <Checkbox
                             checked={selectedAccounts.includes(account.id)}
                             onCheckedChange={() => toggleAccount(account.id)}
                           />
-                          <span className="font-hebrew text-sm flex-1 text-right">
+                          <span className="font-hebrew text-sm flex-1 text-right flex items-center gap-2">
                             {account.account_name}
+                            {!account.is_active && (
+                              <Badge variant="outline" className="text-xs font-hebrew">לא פעיל</Badge>
+                            )}
                           </span>
                         </label>
                       ))}
@@ -662,18 +778,22 @@ export default function ManualSend() {
                         <label
                           key={account.id}
                           className={cn(
-                            "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
+                            "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all relative",
                             selectedAccounts.includes(account.id)
                               ? "border-primary/50 bg-primary/5"
-                              : "border-border hover:border-primary/30"
+                              : "border-border hover:border-primary/30",
+                            !account.is_active && "opacity-60"
                           )}
                         >
                           <Checkbox
                             checked={selectedAccounts.includes(account.id)}
                             onCheckedChange={() => toggleAccount(account.id)}
                           />
-                          <span className="font-hebrew text-sm flex-1 text-right">
+                          <span className="font-hebrew text-sm flex-1 text-right flex items-center gap-2">
                             {account.account_name}
+                            {!account.is_active && (
+                              <Badge variant="outline" className="text-xs font-hebrew">לא פעיל</Badge>
+                            )}
                           </span>
                         </label>
                       ))}
