@@ -6,12 +6,39 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-type ApiOk = { success: true; hebrewDescription: string; promptStyle: number };
+type ApiOk = { success: true; hebrewDescription: string; promptStyle: number; mode: string };
 type ApiErr = { success: false; error: string; code?: string };
 
-// 3 prompt styles - randomly selected each time
-// CRITICAL: No prices, currencies, or monetary conversions in any output
-// CRITICAL: No philosophical/aspirational closing sentences - focus on product only
+// Default AI Rewrite template - Telegram style marketing
+const DEFAULT_AI_REWRITE_TEMPLATE = `אתה עורך תוכן מקצועי לקבוצות טלגרם ישראליות.
+המידע שמתקבל הוא תיאור מוצר בכל שפה. המשימה שלך היא לכתוב מחדש את התוכן כפוסט שיווקי בעברית טבעית.
+
+זה לא תרגום - זו כתיבה מחדש כמו שאדם ישראלי היה כותב.
+
+מבנה הפוסט:
+[אימוג'י אחד + כותרת מוצר קצרה וקליטה בעברית]
+
+[2-3 שורות קצרות שמסבירות:
+- מה זה המוצר
+- למה כדאי לבדוק אותו
+- יתרון מרכזי או שימוש פרקטי]
+
+[אופציונלי: אלמנט אמון - פופולריות / שימושיות יומיומית]
+
+כללים קריטיים:
+- עברית בלבד
+- טון ישראלי טבעי ופשוט
+- משפטים קצרים
+- פורמט טלגרם נקי
+- אסור מחירים אלא אם נאמר במפורש
+- אסור ניסוחים רובוטיים או "סגנון אליאקספרס"
+- שימוש מינימלי באימוג'י - רק אחד בכותרת
+- אסור קריאות לפעולה (CTA) - הקישור יתווסף אוטומטית
+- אסור לכתוב "לחץ כאן", "להזמנה", "לרכישה" וכד'
+
+המטרה: הפוסט צריך להיראות כאילו נכתב ע"י עורך תוכן אנושי, לא כתרגום.`;
+
+// 3 prompt styles for standard translation - randomly selected each time
 const PROMPT_TEMPLATES = [
   // Prompt 1: Detailed product description
   `צור פוסט טלגרם בעברית למוצר.
@@ -77,33 +104,23 @@ function removeGenericUsageLines(text: string): string {
 function trimDanglingEndings(text: string): string {
   let t = text.trim();
 
-  // Remove common dangling fragments at the very end
   t = t.replace(/\s*(הוא|היא)\s*$/g, "");
   t = t.replace(/\s*(מתאים|מתאימה)\s*$/g, "");
   t = t.replace(/\s*(הוא\s+מתאים|היא\s+מתאימה)\s*$/g, "");
 
-  // Check if text ends with proper punctuation (not a decimal point like "4.")
-  // A decimal point is one that's preceded by a digit and followed by nothing or more digits
   const endsWithSentencePunct = /[\.!\?…]\s*$/.test(t);
-  const endsWithDecimal = /\d\.\s*$/.test(t); // e.g., "4." at the end
+  const endsWithDecimal = /\d\.\s*$/.test(t);
   
   if (!endsWithSentencePunct || endsWithDecimal) {
-    // Find the last REAL sentence-ending punctuation (not a decimal point)
-    // Look for punctuation that's NOT preceded by a digit (to avoid decimals)
     let lastValidPunct = -1;
     for (let i = t.length - 1; i >= 0; i--) {
       const char = t[i];
       if (char === '.' || char === '!' || char === '?' || char === '…') {
-        // Check if this is NOT a decimal point (digit before the dot)
         if (char === '.' && i > 0 && /\d/.test(t[i - 1])) {
-          // This might be a decimal - check if it's followed by a digit
-          // If it's at the end or followed by non-digit, it could be sentence end
-          // But "4." at end is likely incomplete decimal, so skip
           if (i === t.length - 1 || !/\d/.test(t[i + 1] || '')) {
-            // Check if this looks like a rating that got cut off (e.g., "דירוג: 4.")
             const before = t.slice(Math.max(0, i - 15), i);
             if (/דירוג|rating|\d\s*מתוך/i.test(before)) {
-              continue; // Skip this - it's an incomplete rating
+              continue;
             }
           }
         }
@@ -117,23 +134,125 @@ function trimDanglingEndings(text: string): string {
     }
   }
 
-  // Final cleanup: if we end with an incomplete rating like "דירוג: 4." remove that line
   t = t.replace(/\n[^\n]*דירוג[:\s]*\d+\.\s*$/gi, '');
   t = t.replace(/⭐\s*דירוג[:\s]*\d+\.\s*$/gi, '');
 
   return t.trim();
 }
 
-// Pure random rotation - each call gets one of the 3 prompts randomly
 function getPromptIndex(): number {
   return Math.floor(Math.random() * 3);
+}
+
+function cleanAiOutput(content: string): string {
+  let result = String(content).trim();
+  
+  // Remove multiple "options" if AI returned them
+  if (result.includes('אפשרות 1') || result.includes('**אפשרות')) {
+    const optionMatch = result.match(/\*\*אפשרות 1[^*]*\*\*[:\s]*([\s\S]*?)(?=\*\*אפשרות 2|\*\*דגשים|---|$)/i);
+    if (optionMatch && optionMatch[1]) {
+      result = optionMatch[1].trim();
+    } else {
+      const firstOptionEnd = result.search(/(\*\*אפשרות 2|\*\*דגשים|^---|דגשים כלליים)/i);
+      if (firstOptionEnd > 0) {
+        result = result.substring(0, firstOptionEnd).trim();
+        result = result.replace(/^\*\*אפשרות 1[^*]*\*\*[:\s]*/i, '');
+      }
+    }
+  }
+  
+  // Remove dividers
+  const dividerIndex = result.indexOf('---');
+  if (dividerIndex > 0) {
+    result = result.substring(0, dividerIndex).trim();
+  }
+  
+  // Remove meta sections
+  result = result.replace(/\*\*דגשים כלליים[^*]*\*\*[\s\S]*/gi, '');
+  result = result.replace(/דגשים כלליים[\s\S]*/gi, '');
+  result = result.replace(/\* \*\*[^:]+:\*\*[^\n]*/g, '');
+  
+  // Remove AI preamble
+  result = result.replace(/^(בטח|הנה|זה|להלן|בוודאי|כמובן)[,،\.]?\s*(הנה\s*)?(רשימת?\s*)?(יתרונות|תיאור|פוסט)?[^:\n]*[:：]?\s*/i, '');
+  result = result.replace(/^(בטח|הנה|זה|להלן|בוודאי|כמובן)[,،]?\s+/i, '');
+  
+  // Remove placeholders and internal instructions
+  result = result.replace(/\s*\|\s*\[.*?\]/g, '');
+  result = result.replace(/\[שם המותג.*?\]/gi, '');
+  result = result.replace(/\[קישור[^\]]*\]/gi, '');
+  result = result.replace(/\[.*?אם יש.*?\]/gi, '');
+  result = result.replace(/\[Brand.*?\]/gi, '');
+  result = result.replace(/\[כאן יבוא.*?\]/gi, '');
+  result = result.replace(/\(כאן יבוא[^)]*\)/gi, '');
+  result = result.replace(/\[קישור מוצר\]/gi, '');
+  result = result.replace(/\[לינק\]/gi, '');
+  result = result.replace(/\*\*[^*]*היכנסו לכאן[^*]*\*\*/gi, '');
+  result = result.replace(/היכנסו לכאן[:\s]*/gi, '');
+  result = result.replace(/לחצו כאן[:\s]*/gi, '');
+  result = result.replace(/\(מתמקד[^\)]*\)/gi, '');
+  result = result.replace(/\*\*\(מתמקד[^\)]*\)\*\*/gi, '');
+  
+  // Remove English-heavy lines
+  const lines = result.split(/\r?\n/);
+  const hebrewLines = lines.filter((line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed) return true;
+    const hebrewChars = (trimmed.match(/[\u0590-\u05FF]/g) || []).length;
+    const englishChars = (trimmed.match(/[a-zA-Z]/g) || []).length;
+    return hebrewChars >= englishChars || (hebrewChars === 0 && englishChars === 0);
+  });
+  result = hebrewLines.join('\n');
+  
+  // Remove ALL CTA lines and link mentions
+  result = result.replace(/https?:\/\/[^\s]+/g, '');
+  result = result.replace(/👉[^\n]*/g, '');
+  result = result.replace(/🔗[^\n]*/g, '');
+  result = result.replace(/👇[^\n]*/g, '');
+  result = result.replace(/☝️[^\n]*/g, '');
+  result = result.replace(/לרכישה[:\s]*[^\n]*/gi, '');
+  result = result.replace(/להזמנה[:\s]*[^\n]*/gi, '');
+  result = result.replace(/לחץ כאן[^\n]*/gi, '');
+  result = result.replace(/לפרטים נוספים[^\n]*/gi, '');
+  result = result.replace(/פרטים והזמנה[^\n]*/gi, '');
+  result = result.replace(/רטים והזמנה[^\n]*/gi, '');
+  result = result.replace(/לקנייה[:\s]*[^\n]*/gi, '');
+  result = result.replace(/לצפייה[:\s]*[^\n]*/gi, '');
+  
+  // Remove ALL price/money mentions
+  result = result.replace(/💰[^\n]*/g, '');
+  result = result.replace(/מחיר[^\n]*/gi, '');
+  result = result.replace(/₪[\d,\.]+/g, '');
+  result = result.replace(/\$[\d,\.]+/g, '');
+  result = result.replace(/[\d,\.]+\s*₪/g, '');
+  result = result.replace(/[\d,\.]+\s*שקל/gi, '');
+  result = result.replace(/[\d,\.]+\s*דולר/gi, '');
+  result = result.replace(/רק\s*[\d,\.]+/gi, '');
+  result = result.replace(/ב-?\s*[\d,\.]+/gi, '');
+  result = result.replace(/USD|ILS|EUR/gi, '');
+  
+  // Remove coupon lines
+  result = result.replace(/🎟️[^\n]*/g, '');
+  result = result.replace(/קופון[:\s]*[^\n]*/gi, '');
+  result = result.replace(/קוד[:\s]*[A-Z0-9]+[^\n]*/gi, '');
+  result = result.replace(/הנחה[^\n]*/gi, '');
+
+  // Remove generic lifestyle/activity lines
+  result = removeGenericUsageLines(result);
+
+  // Ensure we don't return a dangling/unfinished ending
+  result = trimDanglingEndings(result);
+  
+  // Clean up extra newlines and spaces
+  result = result.replace(/\n{3,}/g, '\n\n').trim();
+  result = result.replace(/\s{2,}/g, ' ').trim();
+  
+  return result;
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    // SECURITY: Verify the user from JWT token
     const authHeader = req.headers.get("authorization");
     if (!authHeader) {
       console.error("[generate-hebrew-post] Missing authorization header");
@@ -145,7 +264,6 @@ serve(async (req) => {
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
-    // Verify user with anon key
     const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(
       authHeader.replace("Bearer ", "")
@@ -162,19 +280,17 @@ serve(async (req) => {
       title, 
       ordersCount, 
       rating, 
-      userId
+      userId,
+      mode = "standard" // "standard" or "aiRewrite"
     } = body;
     
     const t = String(title || "").trim();
-    const orders = Number(ordersCount) || 0;
-    const rate = Number(rating) || 0;
 
     if (!t) {
       const payload: ApiErr = { success: false, error: "title is required" };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // SECURITY: Verify the userId matches the authenticated user
     if (userId && userId !== user.id) {
       console.error("[generate-hebrew-post] User ID mismatch - potential attack");
       const payload: ApiErr = { success: false, error: "Forbidden: Cannot access other users' data" };
@@ -189,33 +305,40 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Custom prompt only affects the first style
+    // Fetch user settings for custom prompts
     const { data: settings } = await supabase
       .from("app_settings")
-      .select("custom_ai_prompt")
+      .select("custom_ai_prompt, ai_rewrite_template")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    const customPrompt = settings?.custom_ai_prompt?.trim() || "";
-    const effectiveTemplates = [
-      customPrompt || PROMPT_TEMPLATES[0],
-      PROMPT_TEMPLATES[1],
-      PROMPT_TEMPLATES[2],
-    ];
+    let systemPrompt: string;
+    let promptIndex = 0;
 
-    // Select random prompt for variety (1 of 3)
-    const promptIndex = getPromptIndex();
-    const systemPrompt = effectiveTemplates[promptIndex];
-    console.log(
-      `[generate-hebrew-post] Using prompt style ${promptIndex + 1} of 3${promptIndex === 0 && customPrompt ? " (custom)" : ""}`,
-    );
+    if (mode === "aiRewrite") {
+      // AI Rewrite mode - use Telegram-style template
+      const customRewriteTemplate = settings?.ai_rewrite_template?.trim();
+      systemPrompt = customRewriteTemplate || DEFAULT_AI_REWRITE_TEMPLATE;
+      console.log(`[generate-hebrew-post] Using AI Rewrite mode${customRewriteTemplate ? " (custom template)" : " (default template)"}`);
+    } else {
+      // Standard translation mode - use rotating prompts
+      const customPrompt = settings?.custom_ai_prompt?.trim() || "";
+      const effectiveTemplates = [
+        customPrompt || PROMPT_TEMPLATES[0],
+        PROMPT_TEMPLATES[1],
+        PROMPT_TEMPLATES[2],
+      ];
+      promptIndex = getPromptIndex();
+      systemPrompt = effectiveTemplates[promptIndex];
+      console.log(`[generate-hebrew-post] Using standard mode, prompt style ${promptIndex + 1} of 3${promptIndex === 0 && customPrompt ? " (custom)" : ""}`);
+    }
 
-    // Build product context - title only, no prices
+    // Build user prompt
     const userPrompt = `מוצר: ${t}
 
 כתוב תיאור מוצר קצר. אסור לציין מחירים, מטבעות, סכומים כספיים, קופונים או קישורים.`;
 
-    console.log("[generate-hebrew-post] Generating for user:", user.email);
+    console.log("[generate-hebrew-post] Generating for user:", user.email, "mode:", mode);
 
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -243,133 +366,32 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-  const data = await resp.json();
-  let content = data?.choices?.[0]?.message?.content;
+    const data = await resp.json();
+    let content = data?.choices?.[0]?.message?.content;
 
-  if (!content) {
-    const payload: ApiErr = { success: false, error: "AI returned empty response" };
-    return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  }
-
-  // Clean up - remove any links, prices, or CTAs the AI might have added
-  content = String(content).trim();
-  
-  // CRITICAL FIX: If AI returned multiple "options", extract only the first one
-  // Look for patterns like "אפשרות 1", "אפשרות 2", "דגשים כלליים", "---" separators
-  if (content.includes('אפשרות 1') || content.includes('**אפשרות')) {
-    // Split by option markers and take the first real content block
-    const optionMatch = content.match(/\*\*אפשרות 1[^*]*\*\*[:\s]*([\s\S]*?)(?=\*\*אפשרות 2|\*\*דגשים|---|$)/i);
-    if (optionMatch && optionMatch[1]) {
-      content = optionMatch[1].trim();
-    } else {
-      // Fallback: take everything before "אפשרות 2" or "---"
-      const firstOptionEnd = content.search(/(\*\*אפשרות 2|\*\*דגשים|^---|דגשים כלליים)/i);
-      if (firstOptionEnd > 0) {
-        content = content.substring(0, firstOptionEnd).trim();
-        // Remove the "אפשרות 1" header if it exists
-        content = content.replace(/^\*\*אפשרות 1[^*]*\*\*[:\s]*/i, '');
-      }
+    if (!content) {
+      const payload: ApiErr = { success: false, error: "AI returned empty response" };
+      return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-  }
-  
-  // Remove any "---" dividers and everything after
-  const dividerIndex = content.indexOf('---');
-  if (dividerIndex > 0) {
-    content = content.substring(0, dividerIndex).trim();
-  }
-  
-  // Remove "דגשים כלליים" sections and any meta-commentary
-  content = content.replace(/\*\*דגשים כלליים[^*]*\*\*[\s\S]*/gi, '');
-  content = content.replace(/דגשים כלליים[\s\S]*/gi, '');
-  content = content.replace(/\* \*\*[^:]+:\*\*[^\n]*/g, ''); // Remove bullet meta-notes like "* **כותרת:**"
-  
-  // Remove AI preamble text like "בטח, הנה רשימת יתרונות..."
-  content = content.replace(/^(בטח|הנה|זה|להלן|בוודאי|כמובן)[,،\.]?\s*(הנה\s*)?(רשימת?\s*)?(יתרונות|תיאור|פוסט)?[^:\n]*[:：]?\s*/i, '');
-  content = content.replace(/^(בטח|הנה|זה|להלן|בוודאי|כמובן)[,،]?\s+/i, '');
-  
-  // AGGRESSIVE: Remove ALL placeholder brackets and internal instructions
-  content = content.replace(/\s*\|\s*\[.*?\]/g, '');
-  content = content.replace(/\[שם המותג.*?\]/gi, '');
-  content = content.replace(/\[קישור[^\]]*\]/gi, '');
-  content = content.replace(/\[.*?אם יש.*?\]/gi, '');
-  content = content.replace(/\[Brand.*?\]/gi, '');
-  content = content.replace(/\[כאן יבוא.*?\]/gi, '');
-  content = content.replace(/\(כאן יבוא[^)]*\)/gi, '');
-  content = content.replace(/\[קישור מוצר\]/gi, '');
-  content = content.replace(/\[לינק\]/gi, '');
-  content = content.replace(/\*\*[^*]*היכנסו לכאן[^*]*\*\*/gi, '');
-  content = content.replace(/היכנסו לכאן[:\s]*/gi, '');
-  content = content.replace(/לחצו כאן[:\s]*/gi, '');
-  
-  // Remove any meta text about the post structure
-  content = content.replace(/\(מתמקד[^\)]*\)/gi, '');
-  content = content.replace(/\*\*\(מתמקד[^\)]*\)\*\*/gi, '');
-  
-  // Remove English sentences - look for lines that are mostly English
-  const lines = content.split(/\r?\n/);
-  const hebrewLines = lines.filter((line: string) => {
-    const trimmed = line.trim();
-    if (!trimmed) return true;
-    const hebrewChars = (trimmed.match(/[\u0590-\u05FF]/g) || []).length;
-    const englishChars = (trimmed.match(/[a-zA-Z]/g) || []).length;
-    return hebrewChars >= englishChars || (hebrewChars === 0 && englishChars === 0);
-  });
-  content = hebrewLines.join('\n');
-  
-  // AGGRESSIVE: Remove ALL CTA lines and link mentions
-  content = content.replace(/https?:\/\/[^\s]+/g, '');
-  content = content.replace(/👉[^\n]*/g, '');
-  content = content.replace(/🔗[^\n]*/g, '');
-  content = content.replace(/👇[^\n]*/g, '');
-  content = content.replace(/☝️[^\n]*/g, '');
-  content = content.replace(/לרכישה[:\s]*[^\n]*/gi, '');
-  content = content.replace(/להזמנה[:\s]*[^\n]*/gi, '');
-  content = content.replace(/לחץ כאן[^\n]*/gi, '');
-  content = content.replace(/לפרטים נוספים[^\n]*/gi, '');
-  content = content.replace(/פרטים והזמנה[^\n]*/gi, '');
-  content = content.replace(/רטים והזמנה[^\n]*/gi, '');
-  content = content.replace(/לקנייה[:\s]*[^\n]*/gi, '');
-  content = content.replace(/לצפייה[:\s]*[^\n]*/gi, '');
-  
-  // AGGRESSIVE: Remove ALL price/money mentions
-  content = content.replace(/💰[^\n]*/g, '');
-  content = content.replace(/מחיר[^\n]*/gi, '');
-  content = content.replace(/₪[\d,\.]+/g, '');
-  content = content.replace(/\$[\d,\.]+/g, '');
-  content = content.replace(/[\d,\.]+\s*₪/g, '');
-  content = content.replace(/[\d,\.]+\s*שקל/gi, '');
-  content = content.replace(/[\d,\.]+\s*דולר/gi, '');
-  content = content.replace(/רק\s*[\d,\.]+/gi, '');
-  content = content.replace(/ב-?\s*[\d,\.]+/gi, '');
-  content = content.replace(/USD|ILS|EUR/gi, '');
-  
-  // Remove coupon lines
-  content = content.replace(/🎟️[^\n]*/g, '');
-  content = content.replace(/קופון[:\s]*[^\n]*/gi, '');
-  content = content.replace(/קוד[:\s]*[A-Z0-9]+[^\n]*/gi, '');
-  content = content.replace(/הנחה[^\n]*/gi, '');
 
-  // Remove generic lifestyle/activity lines the user doesn't want
-  content = removeGenericUsageLines(content);
+    // Clean and sanitize the output
+    content = cleanAiOutput(content);
+    
+    // Validation: Check if content is too short
+    const hebrewContentLength = (content.match(/[\u0590-\u05FF]/g) || []).length;
+    if (hebrewContentLength < 20) {
+      console.error("[generate-hebrew-post] Content too short, possibly incomplete:", content);
+      const payload: ApiErr = { success: false, error: "Generated content too short - try again" };
+      return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
-  // Ensure we don't return a dangling/unfinished ending (e.g., "היא מתאימה")
-  content = trimDanglingEndings(content);
-  
-  // Clean up extra newlines and spaces
-  content = content.replace(/\n{3,}/g, '\n\n').trim();
-  content = content.replace(/\s{2,}/g, ' ').trim();
-  
-  // Validation: Check if content is too short (incomplete generation)
-  const hebrewContentLength = (content.match(/[\u0590-\u05FF]/g) || []).length;
-  if (hebrewContentLength < 20) {
-    console.error("[generate-hebrew-post] Content too short, possibly incomplete:", content);
-    // Try to regenerate or return error
-    const payload: ApiErr = { success: false, error: "Generated content too short - try again" };
+    const payload: ApiOk = { 
+      success: true, 
+      hebrewDescription: content, 
+      promptStyle: promptIndex + 1,
+      mode 
+    };
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  }
-
-  const payload: ApiOk = { success: true, hebrewDescription: content, promptStyle: promptIndex + 1 };
-  return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: unknown) {
     console.error("[generate-hebrew-post] Error:", e);
     const payload: ApiErr = { success: false, error: e instanceof Error ? e.message : "Unknown error" };

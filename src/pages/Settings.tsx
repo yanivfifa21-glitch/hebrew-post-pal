@@ -141,7 +141,7 @@ interface AccountCredentialsStatus {
   has_whatsapp_chat_id?: boolean;
 }
 
-// Fixed default prompt template
+// Fixed default prompt template for standard translation
 const DEFAULT_PROMPT = `אתה משווק שותפים ישראלי. המידע שמתקבל הוא Product Desc באנגלית.
 
 מטרה: כתוב פוסט שיווקי בעברית בלבד (מותר להשאיר שם מותג באנגלית אם חייב).
@@ -164,6 +164,35 @@ const DEFAULT_PROMPT = `אתה משווק שותפים ישראלי. המידע 
 - אל תוסיף קישור (הקישור יתווסף אוטומטית)
 - אל תכתוב משפטי CTA כמו "לחץ כאן"
 - הקישור יתווסף אוטומטית - רק כתוב [קישור] כ-placeholder`;
+
+// Default AI Rewrite template - Telegram style marketing
+const DEFAULT_AI_REWRITE_TEMPLATE = `אתה עורך תוכן מקצועי לקבוצות טלגרם ישראליות.
+המידע שמתקבל הוא תיאור מוצר בכל שפה. המשימה שלך היא לכתוב מחדש את התוכן כפוסט שיווקי בעברית טבעית.
+
+זה לא תרגום - זו כתיבה מחדש כמו שאדם ישראלי היה כותב.
+
+מבנה הפוסט:
+[אימוג'י אחד + כותרת מוצר קצרה וקליטה בעברית]
+
+[2-3 שורות קצרות שמסבירות:
+- מה זה המוצר
+- למה כדאי לבדוק אותו
+- יתרון מרכזי או שימוש פרקטי]
+
+[אופציונלי: אלמנט אמון - פופולריות / שימושיות יומיומית]
+
+כללים קריטיים:
+- עברית בלבד
+- טון ישראלי טבעי ופשוט
+- משפטים קצרים
+- פורמט טלגרם נקי
+- אסור מחירים אלא אם נאמר במפורש
+- אסור ניסוחים רובוטיים או "סגנון אליאקספרס"
+- שימוש מינימלי באימוג'י - רק אחד בכותרת
+- אסור קריאות לפעולה (CTA) - הקישור יתווסף אוטומטית
+- אסור לכתוב "לחץ כאן", "להזמנה", "לרכישה" וכד'
+
+המטרה: הפוסט צריך להיראות כאילו נכתב ע"י עורך תוכן אנושי, לא כתרגום.`;
 
 const Settings = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -229,6 +258,9 @@ const Settings = () => {
 
   // Custom AI prompt
   const [customAiPrompt, setCustomAiPrompt] = useState('');
+
+  // AI Rewrite template
+  const [aiRewriteTemplate, setAiRewriteTemplate] = useState('');
 
   // USD Exchange rate
   const [usdExchangeRate, setUsdExchangeRate] = useState<number>(3.7);
@@ -342,7 +374,7 @@ const Settings = () => {
       // Fetch app settings (non-sensitive data only)
       const { data, error } = await supabase
         .from('app_settings')
-        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, posting_interval_hours, posting_interval_minutes, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, interval_start_time, interval_end_time, usd_exchange_rate, whatsapp_interval_minutes, telegram_interval_minutes, whatsapp_interval_start_time, whatsapp_interval_end_time, telegram_interval_start_time, telegram_interval_end_time')
+        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, ai_rewrite_template, posting_interval_hours, posting_interval_minutes, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, interval_start_time, interval_end_time, usd_exchange_rate, whatsapp_interval_minutes, telegram_interval_minutes, whatsapp_interval_start_time, whatsapp_interval_end_time, telegram_interval_start_time, telegram_interval_end_time')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -380,9 +412,15 @@ const Settings = () => {
         setCustomAiPrompt(data.custom_ai_prompt && data.custom_ai_prompt.trim() !== '' 
           ? data.custom_ai_prompt 
           : DEFAULT_PROMPT);
+        
+        // Set AI Rewrite template - use saved value or default
+        setAiRewriteTemplate((data as any).ai_rewrite_template && (data as any).ai_rewrite_template.trim() !== '' 
+          ? (data as any).ai_rewrite_template 
+          : DEFAULT_AI_REWRITE_TEMPLATE);
       } else {
-        // No settings yet - use default prompt
+        // No settings yet - use defaults
         setCustomAiPrompt(DEFAULT_PROMPT);
+        setAiRewriteTemplate(DEFAULT_AI_REWRITE_TEMPLATE);
       }
 
       // Fetch credentials status (boolean flags only)
@@ -427,6 +465,7 @@ const Settings = () => {
         publishing_days: publishingDays,
         aliexpress_tracking_id: aliexpressTrackingId || null,
         custom_ai_prompt: customAiPrompt || null,
+        ai_rewrite_template: aiRewriteTemplate || null,
         posting_interval_minutes: useIntervalPosting && !useSeparateIntervals ? postingIntervalMinutes : null,
         posting_interval_hours: null, // Clear old column
         shabbat_mode_enabled: shabbatModeEnabled,
@@ -1779,13 +1818,49 @@ const Settings = () => {
             <Textarea
               value={customAiPrompt || DEFAULT_PROMPT}
               onChange={(e) => setCustomAiPrompt(e.target.value)}
-              className="min-h-[300px] font-mono text-sm"
+              className="min-h-[250px] font-mono text-sm"
               dir="rtl"
             />
             <div className="bg-muted/50 p-3 rounded-lg border border-border">
               <p className="text-xs text-muted-foreground" dir="rtl">
                 💡 <strong>טיפ:</strong> הקישור והמחיר יתווספו אוטומטית בסוף הפוסט
               </p>
+            </div>
+
+            {/* AI Rewrite Template Section */}
+            <div className="pt-6 border-t border-border">
+              <div className="flex items-center justify-between mb-3">
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-purple-500" />
+                    AI Rewrite Template
+                  </Label>
+                  <p className="text-xs text-muted-foreground" dir="rtl">
+                    טמפלייט לכתיבה מחדש בסגנון טלגרם ישראלי
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAiRewriteTemplate(DEFAULT_AI_REWRITE_TEMPLATE)}
+                >
+                  <RotateCcw className="h-4 w-4 mr-1" />
+                  אפס לברירת מחדל
+                </Button>
+              </div>
+              
+              <Textarea
+                value={aiRewriteTemplate || DEFAULT_AI_REWRITE_TEMPLATE}
+                onChange={(e) => setAiRewriteTemplate(e.target.value)}
+                className="min-h-[250px] font-mono text-sm"
+                dir="rtl"
+              />
+              <div className="bg-gradient-to-r from-purple-500/10 to-primary/10 p-3 rounded-lg border border-purple-500/20 mt-3">
+                <p className="text-xs text-muted-foreground" dir="rtl">
+                  ✨ <strong>AI Rewrite</strong> כותב את התוכן מחדש בסגנון טבעי כמו עורך תוכן אנושי - לא תרגום מילולי
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>

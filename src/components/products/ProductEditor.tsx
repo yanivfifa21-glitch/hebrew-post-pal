@@ -8,6 +8,7 @@ import { Sparkles, Save, Send, Loader2, Plus, Trash2, Wand2 } from "lucide-react
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { PostEmojiPicker } from "@/components/products/PostEmojiPicker";
+import { TranslationModeSelector, TranslationMode } from "@/components/products/TranslationModeSelector";
 
 export interface Coupon {
   code: string;
@@ -35,6 +36,7 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
   const [postEmoji, setPostEmoji] = useState<string>("🔥");
   const [isEnhancingImage, setIsEnhancingImage] = useState(false);
   const [enhancedImageUrl, setEnhancedImageUrl] = useState<string | null>(null);
+  const [translationMode, setTranslationMode] = useState<TranslationMode>("standard");
 
   // Current image to display (enhanced or original)
   const currentImageUrl = enhancedImageUrl || productData.image_url;
@@ -116,6 +118,7 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
           title, 
           ordersCount: productData.orders_count,
           rating: productData.rating,
+          mode: translationMode,
         },
       });
 
@@ -382,6 +385,14 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
         </div>
 
         <div className="space-y-4">
+          {/* Translation Mode Selector */}
+          <TranslationModeSelector
+            mode={translationMode}
+            onChange={setTranslationMode}
+            disabled={isGenerating}
+            compact
+          />
+          
           <div className="flex items-center justify-between">
             <Label htmlFor="hebrew">Hebrew Marketing Post</Label>
             <div className="flex gap-2">
@@ -391,7 +402,7 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
               />
               <Button variant="outline" size="sm" onClick={handleGenerateHebrew} disabled={isGenerating}>
                 {isGenerating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-                Regenerate
+                {translationMode === "aiRewrite" ? "AI Rewrite" : "Regenerate"}
               </Button>
             </div>
           </div>

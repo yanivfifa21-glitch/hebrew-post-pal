@@ -19,7 +19,8 @@ import {
   Trash2,
   Clock,
   Eye,
-  AlertCircle
+  AlertCircle,
+  Sparkles
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -31,6 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { TranslationModeSelector, TranslationMode } from "@/components/products/TranslationModeSelector";
 
 interface MessagingAccount {
   id: string;
@@ -68,6 +70,8 @@ export default function ManualSend() {
   const [loadingQueue, setLoadingQueue] = useState(true);
   const [sendingItemId, setSendingItemId] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [translationMode, setTranslationMode] = useState<TranslationMode>("aiRewrite");
+  const [isRewriting, setIsRewriting] = useState(false);
 
   useEffect(() => {
     fetchAccounts();
@@ -432,6 +436,41 @@ export default function ManualSend() {
   const telegramAccounts = allAccounts.filter(acc => acc.account_type === "telegram");
   const whatsappAccounts = allAccounts.filter(acc => acc.account_type === "whatsapp");
 
+  // AI Rewrite handler for manual send
+  const handleAiRewrite = async () => {
+    if (!message.trim()) {
+      toast({ title: "נא להזין טקסט לכתיבה מחדש", variant: "destructive" });
+      return;
+    }
+
+    setIsRewriting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-hebrew-post", {
+        body: { 
+          title: message.trim(),
+          mode: translationMode,
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || "Failed to rewrite content");
+
+      setMessage(data.hebrewDescription);
+      toast({
+        title: translationMode === "aiRewrite" ? "✨ התוכן נכתב מחדש" : "✅ התוכן תורגם",
+        description: "התוכן מוכן לעריכה לפני השליחה",
+      });
+    } catch (e) {
+      toast({
+        title: "שגיאה בכתיבה מחדש",
+        description: e instanceof Error ? e.message : "נסה שוב",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRewriting(false);
+    }
+  };
+
   // Preview Modal Component
   const PreviewModal = () => (
     <Dialog open={showPreview} onOpenChange={setShowPreview}>
@@ -538,8 +577,36 @@ export default function ManualSend() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* AI Rewrite Mode Selector */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <TranslationModeSelector
+                      mode={translationMode}
+                      onChange={setTranslationMode}
+                      disabled={isRewriting}
+                      compact
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAiRewrite}
+                      disabled={isRewriting || !message.trim()}
+                      className="gap-2"
+                    >
+                      {isRewriting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-4 w-4" />
+                      )}
+                      <span className="font-hebrew">
+                        {translationMode === "aiRewrite" ? "כתוב מחדש" : "תרגם"}
+                      </span>
+                    </Button>
+                  </div>
+                </div>
+                
                 <Textarea
-                  placeholder="כתוב את ההודעה שלך כאן..."
+                  placeholder="כתוב את ההודעה שלך כאן או הדבק תיאור מוצר לכתיבה מחדש..."
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   className="min-h-[150px] font-hebrew text-right resize-none"
