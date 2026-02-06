@@ -219,12 +219,15 @@ export default function ManualSend() {
   ): Promise<{ success: number; failed: number }> => {
     const results = { success: 0, failed: 0 };
 
-    for (const accountId of targetAccounts) {
+    // Process accounts in parallel with Promise.allSettled for better reliability
+    const sendPromises = targetAccounts.map(async (accountId) => {
       const account = allAccounts.find(acc => acc.id === accountId);
-      if (!account) continue;
+      if (!account) return { success: false, accountName: "unknown" };
 
       try {
         const endpoint = account.account_type === "telegram" ? "send-telegram" : "send-whatsapp";
+
+        console.log(`[ManualSend] Sending to ${account.account_name} via ${endpoint}`);
 
         const { data, error } = await supabase.functions.invoke(endpoint, {
           body: {
@@ -238,14 +241,30 @@ export default function ManualSend() {
           }
         });
 
-        if (error || !data?.success) {
-          console.error(`Error sending to ${account.account_name}:`, error || data?.error);
-          results.failed++;
-        } else {
-          results.success++;
+        if (error) {
+          console.error(`[ManualSend] Edge function error for ${account.account_name}:`, error);
+          return { success: false, accountName: account.account_name, error: error.message };
         }
+
+        if (!data?.success) {
+          console.error(`[ManualSend] API error for ${account.account_name}:`, data?.error);
+          return { success: false, accountName: account.account_name, error: data?.error };
+        }
+
+        console.log(`[ManualSend] Success for ${account.account_name}`);
+        return { success: true, accountName: account.account_name };
       } catch (err) {
-        console.error(`Error sending to ${account.account_name}:`, err);
+        console.error(`[ManualSend] Exception for ${account.account_name}:`, err);
+        return { success: false, accountName: account.account_name, error: String(err) };
+      }
+    });
+
+    const settledResults = await Promise.allSettled(sendPromises);
+    
+    for (const result of settledResults) {
+      if (result.status === "fulfilled" && result.value.success) {
+        results.success++;
+      } else {
         results.failed++;
       }
     }
@@ -380,6 +399,47 @@ export default function ManualSend() {
       fetchManualQueue();
     } catch (error) {
       console.error("Error adding to both queues:", error);
+      toast({ title: "שגיאה בהוספה", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Action: Add to Automation Queue Only (products table)
+  const handleAddToAutomationOnly = async () => {
+    if (!message.trim() && !mediaFile) {
+      toast({ title: "נא להזין הודעה או להעלות מדיה", variant: "destructive" });
+      return;
+    }
+    if (!userId) {
+      toast({ title: "לא מחובר", variant: "destructive" });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      let mediaUrl: string | null = null;
+      if (mediaFile) {
+        mediaUrl = await uploadMediaToStorage(mediaFile);
+        if (!mediaUrl) throw new Error("Failed to upload media");
+      }
+
+      // Add only to products (automatic queue)
+      const { error: productError } = await supabase.from("products").insert({
+        user_id: userId,
+        original_url: "manual-entry",
+        title: message.trim().substring(0, 100) || "פוסט ידני",
+        hebrew_description: message.trim() || null,
+        image_url: mediaUrl,
+        status: "Scheduled"
+      });
+
+      if (productError) throw productError;
+
+      toast({ title: "נוסף למחסנית האוטומטית" });
+      clearForm();
+    } catch (error) {
+      console.error("Error adding to automation queue:", error);
       toast({ title: "שגיאה בהוספה", variant: "destructive" });
     } finally {
       setLoading(false);
@@ -674,22 +734,33 @@ export default function ManualSend() {
                     </Button>
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <Button
                       variant="secondary"
                       onClick={handleAddToManualQueue}
                       disabled={loading || (!message.trim() && !mediaFile)}
+                      className="text-xs sm:text-sm"
                     >
-                      <Plus className="h-4 w-4" />
-                      <span className="font-hebrew">הוסף למחסנית</span>
+                      <Plus className="h-4 w-4 shrink-0" />
+                      <span className="font-hebrew truncate">ידנית</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleAddToAutomationOnly}
+                      disabled={loading || (!message.trim() && !mediaFile)}
+                      className="text-xs sm:text-sm"
+                    >
+                      <Clock className="h-4 w-4 shrink-0" />
+                      <span className="font-hebrew truncate">אוטומט</span>
                     </Button>
                     <Button
                       variant="outline"
                       onClick={handleAddToBoth}
                       disabled={loading || (!message.trim() && !mediaFile)}
+                      className="text-xs sm:text-sm"
                     >
-                      <Layers className="h-4 w-4" />
-                      <span className="font-hebrew">הוסף לשתיהן</span>
+                      <Layers className="h-4 w-4 shrink-0" />
+                      <span className="font-hebrew truncate">שתיהן</span>
                     </Button>
                   </div>
                 </div>
