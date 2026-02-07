@@ -382,13 +382,14 @@ export default function ManualSend() {
 
       if (manualError) throw manualError;
 
-      // Add to products (automatic queue)
+      // Add to products (automatic queue) with video support
       const { error: productError } = await supabase.from("products").insert({
         user_id: userId,
         original_url: "manual-entry",
         title: message.trim().substring(0, 100) || "פוסט ידני",
         hebrew_description: message.trim() || null,
         image_url: mediaUrl,
+        media_type: mediaType || "image",
         status: "Scheduled"
       });
 
@@ -424,13 +425,14 @@ export default function ManualSend() {
         if (!mediaUrl) throw new Error("Failed to upload media");
       }
 
-      // Add only to products (automatic queue)
+      // Add only to products (automatic queue) with video support
       const { error: productError } = await supabase.from("products").insert({
         user_id: userId,
         original_url: "manual-entry",
         title: message.trim().substring(0, 100) || "פוסט ידני",
         hebrew_description: message.trim() || null,
         image_url: mediaUrl,
+        media_type: mediaType || "image",
         status: "Scheduled"
       });
 

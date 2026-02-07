@@ -3,6 +3,7 @@ export interface Product {
   original_url: string;
   affiliate_link: string | null;
   image_url: string | null;
+  media_type?: 'image' | 'video';
   title: string;
   hebrew_description: string | null;
   price: number | null;

@@ -244,6 +244,7 @@ export type Database = {
           hebrew_description: string | null
           id: string
           image_url: string | null
+          media_type: string | null
           orders_count: number | null
           original_url: string
           price: number | null
@@ -261,6 +262,7 @@ export type Database = {
           hebrew_description?: string | null
           id?: string
           image_url?: string | null
+          media_type?: string | null
           orders_count?: number | null
           original_url: string
           price?: number | null
@@ -278,6 +280,7 @@ export type Database = {
           hebrew_description?: string | null
           id?: string
           image_url?: string | null
+          media_type?: string | null
           orders_count?: number | null
           original_url?: string
           price?: number | null

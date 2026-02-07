@@ -174,17 +174,15 @@ const DEFAULT_AI_REWRITE_TEMPLATE = `אתה עורך תוכן מקצועי לק�
 מבנה הפוסט:
 [אימוג'י אחד + כותרת מוצר קצרה וקליטה בעברית]
 
-[2-3 שורות קצרות שמסבירות:
-- מה זה המוצר
-- למה כדאי לבדוק אותו
-- יתרון מרכזי או שימוש פרקטי]
-
-[אופציונלי: אלמנט אמון - פופולריות / שימושיות יומיומית]
+[2-3 משפטים קצרים:
+- משפט 1: תכונה טכנית מרכזית (חומרים, גודל, עוצמה)
+- משפט 2: יתרון פרקטי ספציפי
+- משפט 3: עוד תכונה או יתרון]
 
 כללים קריטיים:
 - עברית בלבד
 - טון ישראלי טבעי ופשוט
-- משפטים קצרים
+- משפטים קצרים וטכניים
 - פורמט טלגרם נקי
 - אסור מחירים אלא אם נאמר במפורש
 - אסור ניסוחים רובוטיים או "סגנון אליאקספרס"
@@ -192,7 +190,13 @@ const DEFAULT_AI_REWRITE_TEMPLATE = `אתה עורך תוכן מקצועי לק�
 - אסור קריאות לפעולה (CTA) - הקישור יתווסף אוטומטית
 - אסור לכתוב "לחץ כאן", "להזמנה", "לרכישה" וכד'
 
-המטרה: הפוסט צריך להיראות כאילו נכתב ע"י עורך תוכן אנושי, לא כתרגום.`;
+** אסור לגמרי **
+- אסור משפטי השראה כמו: "שקט נפשי", "חוויה", "תהנו מ...", "תשכחו מ...", "פתחו את הדלת ל..."
+- אסור משפטים גנריים כמו: "מתאים לשימוש יומיומי", "איכות מעולה", "מחיר משתלם"
+- אסור לפתוח משפט עם: "זוהי", "זהו", "הוא", "היא", "מדובר ב"
+- אסור לסיים עם משפטי סיכום או עידוד
+
+המטרה: הפוסט צריך להיראות כאילו נכתב ע"י עורך תוכן טכני, לא כתרגום או פרסומת.`;
 
 const Settings = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -966,20 +970,22 @@ const Settings = () => {
                   <Label className="text-sm font-medium">שלח כל</Label>
                   <Badge variant="outline" className="text-lg font-bold">
                     {postingIntervalMinutes && postingIntervalMinutes >= 60 
-                      ? `${postingIntervalMinutes / 60} שעות` 
+                      ? postingIntervalMinutes % 60 === 0 
+                        ? `${postingIntervalMinutes / 60} שעות` 
+                        : `${Math.floor(postingIntervalMinutes / 60)} שעות ו-${postingIntervalMinutes % 60} דקות`
                       : `${postingIntervalMinutes || 30} דקות`}
                   </Badge>
                 </div>
                 <Slider
                   value={[postingIntervalMinutes || 60]}
                   onValueChange={([val]) => setPostingIntervalMinutes(val)}
-                  min={30}
+                  min={15}
                   max={720}
-                  step={30}
+                  step={15}
                   className="w-full"
                 />
                 <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>כל 30 דק'</span>
+                  <span>כל 15 דק'</span>
                   <span>כל 12 שעות</span>
                 </div>
 
@@ -1032,16 +1038,18 @@ const Settings = () => {
                           <Label className="text-sm">שלח כל</Label>
                           <Badge variant="outline" className="font-bold border-success/50 text-success">
                             {whatsappIntervalMinutes && whatsappIntervalMinutes >= 60 
-                              ? `${whatsappIntervalMinutes / 60} שעות` 
+                              ? whatsappIntervalMinutes % 60 === 0 
+                                ? `${whatsappIntervalMinutes / 60} שעות` 
+                                : `${Math.floor(whatsappIntervalMinutes / 60)} שעות ו-${whatsappIntervalMinutes % 60} דקות`
                               : `${whatsappIntervalMinutes || 60} דקות`}
                           </Badge>
                         </div>
                         <Slider
                           value={[whatsappIntervalMinutes || 60]}
                           onValueChange={([val]) => setWhatsappIntervalMinutes(val)}
-                          min={30}
+                          min={15}
                           max={720}
-                          step={30}
+                          step={15}
                           className="w-full"
                         />
                         <div className="grid grid-cols-2 gap-3">
@@ -1076,16 +1084,18 @@ const Settings = () => {
                           <Label className="text-sm">שלח כל</Label>
                           <Badge variant="outline" className="font-bold border-primary/50 text-primary">
                             {telegramIntervalMinutes && telegramIntervalMinutes >= 60 
-                              ? `${telegramIntervalMinutes / 60} שעות` 
+                              ? telegramIntervalMinutes % 60 === 0 
+                                ? `${telegramIntervalMinutes / 60} שעות` 
+                                : `${Math.floor(telegramIntervalMinutes / 60)} שעות ו-${telegramIntervalMinutes % 60} דקות`
                               : `${telegramIntervalMinutes || 60} דקות`}
                           </Badge>
                         </div>
                         <Slider
                           value={[telegramIntervalMinutes || 60]}
                           onValueChange={([val]) => setTelegramIntervalMinutes(val)}
-                          min={30}
+                          min={15}
                           max={720}
-                          step={30}
+                          step={15}
                           className="w-full"
                         />
                         <div className="grid grid-cols-2 gap-3">

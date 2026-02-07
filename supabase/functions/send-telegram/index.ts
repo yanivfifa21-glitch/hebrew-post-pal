@@ -14,6 +14,7 @@ interface TelegramRequest {
   affiliateLink: string | null;
   userId: string;
   accountId?: string; // Optional: specific account to use
+  mediaType?: 'image' | 'video'; // Optional: type of media
 }
 
 serve(async (req) => {
@@ -50,7 +51,7 @@ serve(async (req) => {
       );
     }
 
-    const { title, hebrewDescription, price, imageUrl, affiliateLink, userId, accountId }: TelegramRequest = await req.json();
+    const { title, hebrewDescription, price, imageUrl, affiliateLink, userId, accountId, mediaType }: TelegramRequest = await req.json();
 
     // SECURITY: Verify the userId matches the authenticated user
     if (userId !== user.id) {
@@ -125,23 +126,46 @@ serve(async (req) => {
 
     let result;
 
-    // If there's an image, use sendPhoto, otherwise sendMessage
+    // Determine media type and send accordingly
     if (imageUrl) {
-      const response = await fetch(
-        `https://api.telegram.org/bot${botToken}/sendPhoto`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            photo: imageUrl,
-            caption: caption,
-            parse_mode: "HTML",
-          }),
-        }
-      );
-      result = await response.json();
-      console.log("[send-telegram] sendPhoto response:", JSON.stringify(result));
+      const isVideo = mediaType === 'video' || 
+        imageUrl.match(/\.(mp4|mov|avi|webm|mkv)(\?|$)/i) !== null;
+      
+      if (isVideo) {
+        // Send video
+        const response = await fetch(
+          `https://api.telegram.org/bot${botToken}/sendVideo`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: chatId,
+              video: imageUrl,
+              caption: caption,
+              parse_mode: "HTML",
+            }),
+          }
+        );
+        result = await response.json();
+        console.log("[send-telegram] sendVideo response:", JSON.stringify(result));
+      } else {
+        // Send photo
+        const response = await fetch(
+          `https://api.telegram.org/bot${botToken}/sendPhoto`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: chatId,
+              photo: imageUrl,
+              caption: caption,
+              parse_mode: "HTML",
+            }),
+          }
+        );
+        result = await response.json();
+        console.log("[send-telegram] sendPhoto response:", JSON.stringify(result));
+      }
     } else {
       const response = await fetch(
         `https://api.telegram.org/bot${botToken}/sendMessage`,
