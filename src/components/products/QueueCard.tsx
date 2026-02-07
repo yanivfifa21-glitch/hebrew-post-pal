@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Rocket, Trash2, Loader2, ExternalLink, Star, ShoppingCart, Copy, Check, Clock } from "lucide-react";
+import { Rocket, Trash2, Loader2, ExternalLink, Star, ShoppingCart, Copy, Check, Clock, RotateCcw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -19,10 +19,11 @@ interface QueueCardProps {
   showCheckbox?: boolean;
 }
 
-export const QueueCard = ({ product, onSent, onDeleted, isSelected = false, onSelectionChange, showCheckbox = false }: QueueCardProps) => {
+export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelected = false, onSelectionChange, showCheckbox = false }: QueueCardProps) => {
   const [hebrewDescription, setHebrewDescription] = useState(product.hebrew_description || "");
   const [isSending, setIsSending] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isReturning, setIsReturning] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
 
   const handleCopyToClipboard = async () => {
@@ -155,6 +156,28 @@ export const QueueCard = ({ product, onSent, onDeleted, isSelected = false, onSe
     }
   };
 
+  const handleReturnToQueue = async () => {
+    setIsReturning(true);
+    try {
+      const { error } = await supabase
+        .from("products")
+        .update({ status: "Scheduled" })
+        .eq("id", product.id);
+
+      if (error) throw error;
+
+      toast({ 
+        title: "חזר לתור!",
+        description: "המוצר הועבר בחזרה לתור השליחה"
+      });
+      onStatusChanged?.(product.id, "Scheduled");
+    } catch {
+      toast({ title: "Failed to return to queue", variant: "destructive" });
+    } finally {
+      setIsReturning(false);
+    }
+  };
+
   const getStatusVariant = (status: string) => {
     switch (status) {
       case 'Scheduled': return 'scheduled';
@@ -280,29 +303,52 @@ export const QueueCard = ({ product, onSent, onDeleted, isSelected = false, onSe
 
           {/* Action Buttons */}
           <div className="flex gap-3 mt-auto">
-            <Button
-              variant="success"
-              className="flex-1 btn-glow-success"
-              onClick={handleSendNow}
-              disabled={isSending || isDeleting}
-            >
-              {isSending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Sending...</span>
-                </>
-              ) : (
-                <>
-                  <Rocket className="h-4 w-4" />
-                  <span>Send Now</span>
-                </>
-              )}
-            </Button>
+            {product.status === "Sent" ? (
+              /* Return to Queue button for Sent items */
+              <Button
+                variant="outline"
+                className="flex-1 border-primary/50 text-primary hover:bg-primary/10"
+                onClick={handleReturnToQueue}
+                disabled={isReturning || isDeleting}
+              >
+                {isReturning ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>מחזיר...</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="h-4 w-4" />
+                    <span>החזר לתור</span>
+                  </>
+                )}
+              </Button>
+            ) : (
+              /* Send Now button for Scheduled items */
+              <Button
+                variant="success"
+                className="flex-1 btn-glow-success"
+                onClick={handleSendNow}
+                disabled={isSending || isDeleting}
+              >
+                {isSending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Sending...</span>
+                  </>
+                ) : (
+                  <>
+                    <Rocket className="h-4 w-4" />
+                    <span>Send Now</span>
+                  </>
+                )}
+              </Button>
+            )}
             <Button
               variant="ghost-destructive"
               size="icon"
               onClick={handleDelete}
-              disabled={isSending || isDeleting}
+              disabled={isSending || isDeleting || isReturning}
               className="flex-shrink-0"
             >
               {isDeleting ? (
