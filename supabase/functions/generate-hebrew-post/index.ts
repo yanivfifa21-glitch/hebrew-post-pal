@@ -42,54 +42,26 @@ const DEFAULT_AI_REWRITE_TEMPLATE = `אתה עורך תוכן מקצועי לק�
 
 המטרה: הפוסט צריך להיראות כאילו נכתב ע"י עורך תוכן טכני, לא כתרגום או פרסומת.`;
 
-// 3 prompt styles for standard translation - randomly selected each time
-const PROMPT_TEMPLATES = [
-  // Prompt 1: Detailed product description
-  `צור פוסט טלגרם בעברית למוצר.
+// Single unified prompt for standard translation
+const UNIFIED_PROMPT = `צור פוסט טלגרם בעברית למוצר.
 
 מבנה הפוסט:
-1. כותרת מושכת עם אימוג'י אחד ושם המוצר
-2. תיאור של בדיוק 3 משפטים:
-   - תכונה טכנית מרכזית (חומרים, עוצמה, מידות)
-   - יתרון פרקטי ספציפי
-   - עוד תכונה או יתרון
+[אימוג'י אחד + שם המוצר בקצרה]
 
-חוקים קריטיים:
+[2–3 שורות קצרות:
+מה זה המוצר ולמה שווה לבדוק אותו]
+
+[הדגשת 1–2 יתרונות מרכזיים בשפה פשוטה ויומיומית]
+
+כללים קריטיים:
+- עברית טבעית ופשוטה
 - אסור לפתוח משפט עם "זוהי", "זהו", "הוא", "היא", "מדובר ב"
 - אסור: מחירים, קישורים, קריאות לפעולה
 - אסור לגמרי: "שקט נפשי", "תהנו מ...", "תשכחו מ...", "פתחו את הדלת ל...", "חוויה"
 - אסור: "מתאים לשימוש יומיומי", "איכות מעולה", "משתלב בצורה חלקה"
-- חובה לסיים במשפט שלם עם נקודה`,
-
-  // Prompt 2: Benefits-focused style
-  `כתוב פוסט טלגרם בעברית שמדגיש יתרונות טכניים.
-
-מבנה:
-1. כותרת עם אימוג'י ושם המוצר
-2. בדיוק 3 משפטים על תכונות ויתרונות טכניים ספציפיים
-
-אסור לגמרי:
-- לפתוח עם "זוהי/זהו/הוא/היא"
-- מחירים או מטבעות
-- קישורים או "לחץ כאן"
-- "מתאים לשימוש יומיומי", "איכות מעולה"
-- "שקט נפשי", "חוויה", "משתלב בצורה חלקה"
-- סיום עם השראה/מוטיבציה`,
-
-  // Prompt 3: Feature showcase style
-  `צור פוסט טלגרם בעברית שמציג תכונות מוצר.
-
-מבנה:
-1. כותרת עם אימוג'י אחד ושם המוצר
-2. בדיוק 3 משפטים על מפרט טכני ויתרונות
-
-כללים קריטיים:
-- לא לפתוח משפטים עם "זהו/זוהי/הוא/היא/מדובר ב"
-- לא מחירים, קישורים, או הנחיות רכישה
-- לא משפטי השראה: "תהנו", "תשכחו", "שקט נפשי", "חוויה", "פתחו את הדלת"
-- לא ביטויים גנריים: "משתלב בצורה חלקה", "ידידותי למשתמש", "איכות מעולה"
-- לסיים במשפט שלם עם נקודה`
-];
+- אסור לכתוב "לחץ כאן", "להזמנה", "לרכישה" וכד'
+- חובה לסיים במשפט שלם עם נקודה
+- לא להוסיף סטטיסטיקות (הזמנות/דירוג) - יתווספו אוטומטית`;
 
 function removeGenericUsageLines(text: string): string {
   const patterns: RegExp[] = [
@@ -147,9 +119,6 @@ function trimDanglingEndings(text: string): string {
   return t.trim();
 }
 
-function getPromptIndex(): number {
-  return Math.floor(Math.random() * 3);
-}
 
 function cleanAiOutput(content: string): string {
   let result = String(content).trim();
@@ -330,7 +299,6 @@ serve(async (req) => {
       .maybeSingle();
 
     let systemPrompt: string;
-    let promptIndex = 0;
 
     if (mode === "aiRewrite") {
       // AI Rewrite mode - use Telegram-style template
@@ -338,16 +306,10 @@ serve(async (req) => {
       systemPrompt = customRewriteTemplate || DEFAULT_AI_REWRITE_TEMPLATE;
       console.log(`[generate-hebrew-post] Using AI Rewrite mode${customRewriteTemplate ? " (custom template)" : " (default template)"}`);
     } else {
-      // Standard translation mode - use rotating prompts
+      // Standard translation mode - use unified prompt
       const customPrompt = settings?.custom_ai_prompt?.trim() || "";
-      const effectiveTemplates = [
-        customPrompt || PROMPT_TEMPLATES[0],
-        PROMPT_TEMPLATES[1],
-        PROMPT_TEMPLATES[2],
-      ];
-      promptIndex = getPromptIndex();
-      systemPrompt = effectiveTemplates[promptIndex];
-      console.log(`[generate-hebrew-post] Using standard mode, prompt style ${promptIndex + 1} of 3${promptIndex === 0 && customPrompt ? " (custom)" : ""}`);
+      systemPrompt = customPrompt || UNIFIED_PROMPT;
+      console.log(`[generate-hebrew-post] Using standard mode${customPrompt ? " (custom)" : " (unified prompt)"}`);
     }
 
     // Build user prompt
@@ -402,10 +364,33 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // Add statistics if provided (rounded orders and rating)
+    const statsLines: string[] = [];
+    
+    // Add rounded orders count (round up to nearest 100)
+    if (ordersCount && Number(ordersCount) > 0) {
+      const orders = Number(ordersCount);
+      const roundedOrders = Math.ceil(orders / 100) * 100;
+      statsLines.push(`👥 מעל ${roundedOrders.toLocaleString()} הזמנות`);
+    }
+    
+    // Add rating if provided
+    if (rating && Number(rating) > 0) {
+      let r = Number(rating);
+      // Normalize from percentage to 5-star scale if needed
+      if (r > 5) r = r / 20;
+      statsLines.push(`⭐ דירוג: ${r.toFixed(1)} מתוך 5`);
+    }
+    
+    // Append stats to content
+    if (statsLines.length > 0) {
+      content = content.trim() + "\n\n" + statsLines.join("\n");
+    }
+
     const payload: ApiOk = { 
       success: true, 
       hebrewDescription: content, 
-      promptStyle: promptIndex + 1,
+      promptStyle: 1,
       mode 
     };
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
