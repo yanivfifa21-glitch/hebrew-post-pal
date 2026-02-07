@@ -68,7 +68,7 @@ function buildMessage(product: Record<string, unknown>): string {
   return parts.join("\n");
 }
 
-// Telegram sender - uses HTML parse mode, supports video, falls back to text on media failure
+// Telegram sender - uses HTML parse mode, supports video, retries once on failure
 async function sendToTelegram(token: string, chatId: string, product: any, text: string) {
   const imageUrl = product.image_url;
   const mediaType = product.media_type || 'image';
@@ -77,7 +77,7 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
   const isVideo = mediaType === 'video' || 
     (imageUrl && imageUrl.match(/\.(mp4|mov|avi|webm|mkv)(\?|$)/i) !== null);
   
-  // Try with media first if available
+  // Send with media if available
   if (imageUrl) {
     let url: string;
     const body: any = { chat_id: chatId, parse_mode: "HTML" };
@@ -92,7 +92,8 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
       body.caption = text;
     }
 
-    const res = await fetch(url, {
+    // First attempt
+    let res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -102,12 +103,29 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
       return; // Success with media
     }
     
-    // Media failed - log and fall back to text only
-    const errorText = await res.text();
-    console.log(`[sendToTelegram] Media send failed (${isVideo ? 'video' : 'photo'}), falling back to text. Error: ${errorText}`);
+    // First attempt failed - wait 2 seconds and retry once
+    const firstError = await res.text();
+    console.log(`[sendToTelegram] First attempt failed, retrying in 2s. Error: ${firstError}`);
+    
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    
+    if (res.ok) {
+      console.log(`[sendToTelegram] Retry succeeded`);
+      return; // Success on retry
+    }
+    
+    // Both attempts failed - throw error (don't send without image)
+    const secondError = await res.text();
+    throw new Error(`שליחת ${isVideo ? 'וידאו' : 'תמונה'} נכשלה: ${secondError}`);
   }
   
-  // Send as text message (either no media or media failed)
+  // No media - send as text message
   const textUrl = `https://api.telegram.org/bot${token}/sendMessage`;
   const textBody = { chat_id: chatId, parse_mode: "HTML", text };
   
