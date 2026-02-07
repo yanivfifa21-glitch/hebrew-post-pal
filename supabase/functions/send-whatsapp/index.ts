@@ -14,6 +14,7 @@ interface WhatsAppRequest {
   affiliateLink: string | null;
   userId: string;
   accountId?: string; // Optional: specific account to use
+  mediaType?: 'image' | 'video'; // Optional: type of media
 }
 
 serve(async (req) => {
@@ -50,7 +51,7 @@ serve(async (req) => {
       );
     }
 
-    const { title, hebrewDescription, price, imageUrl, affiliateLink, userId, accountId }: WhatsAppRequest = await req.json();
+    const { title, hebrewDescription, price, imageUrl, affiliateLink, userId, accountId, mediaType }: WhatsAppRequest = await req.json();
 
     // SECURITY: Verify the userId matches the authenticated user
     if (userId !== user.id) {
@@ -137,8 +138,12 @@ serve(async (req) => {
 
     console.log("[send-whatsapp] Message preview:", message.substring(0, 100) + "...");
 
-    // If there's an image, send image with caption
+    // If there's an image/video, send file with caption
     if (imageUrl) {
+      // Determine if video based on mediaType or file extension
+      const isVideo = mediaType === 'video' || 
+        imageUrl.match(/\.(mp4|mov|avi|webm|mkv)(\?|$)/i) !== null;
+      
       const imageResponse = await fetch(
         `https://api.greenapi.com/waInstance${instanceId}/sendFileByUrl/${apiToken}`,
         {
@@ -147,7 +152,7 @@ serve(async (req) => {
           body: JSON.stringify({
             chatId: chatId,
             urlFile: imageUrl,
-            fileName: "product.jpg",
+            fileName: isVideo ? "video.mp4" : "product.jpg",
             caption: message,
           }),
         }

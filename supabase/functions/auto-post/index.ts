@@ -411,15 +411,30 @@ function buildMessage(product: Record<string, unknown>): string {
   return parts.join("\n");
 }
 
-// Telegram sender - uses HTML parse mode
+// Telegram sender - uses HTML parse mode, supports video
 async function sendToTelegram(token: string, chatId: string, product: any, text: string) {
-  const url = `https://api.telegram.org/bot${token}/${product.image_url ? "sendPhoto" : "sendMessage"}`;
+  const imageUrl = product.image_url;
+  const mediaType = product.media_type || 'image';
+  
+  // Determine if video based on media_type or file extension
+  const isVideo = mediaType === 'video' || 
+    (imageUrl && imageUrl.match(/\.(mp4|mov|avi|webm|mkv)(\?|$)/i) !== null);
+  
+  let url: string;
   const body: any = { chat_id: chatId, parse_mode: "HTML" };
 
-  if (product.image_url) {
-    body.photo = product.image_url;
-    body.caption = text;
+  if (imageUrl) {
+    if (isVideo) {
+      url = `https://api.telegram.org/bot${token}/sendVideo`;
+      body.video = imageUrl;
+      body.caption = text;
+    } else {
+      url = `https://api.telegram.org/bot${token}/sendPhoto`;
+      body.photo = imageUrl;
+      body.caption = text;
+    }
   } else {
+    url = `https://api.telegram.org/bot${token}/sendMessage`;
     body.text = text;
   }
 
@@ -431,17 +446,24 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
   if (!res.ok) throw new Error(await res.text());
 }
 
-// WhatsApp sender (GreenAPI)
+// WhatsApp sender (GreenAPI) - supports video
 async function sendToWhatsApp(instance: string, token: string, chatId: string, product: any, text: string) {
   if (!chatId.includes("@")) chatId = `${chatId}@${chatId.length > 15 ? "g.us" : "c.us"}`;
 
   const baseUrl = `https://api.green-api.com/waInstance${instance}`;
-  const url = product.image_url ? `${baseUrl}/sendFileByUrl/${token}` : `${baseUrl}/sendMessage/${token}`;
+  const imageUrl = product.image_url;
+  const mediaType = product.media_type || 'image';
+  
+  // Determine if video based on media_type or file extension
+  const isVideo = mediaType === 'video' || 
+    (imageUrl && imageUrl.match(/\.(mp4|mov|avi|webm|mkv)(\?|$)/i) !== null);
+  
+  const url = imageUrl ? `${baseUrl}/sendFileByUrl/${token}` : `${baseUrl}/sendMessage/${token}`;
 
   const body: any = { chatId };
-  if (product.image_url) {
-    body.urlFile = product.image_url;
-    body.fileName = "image.jpg";
+  if (imageUrl) {
+    body.urlFile = imageUrl;
+    body.fileName = isVideo ? "video.mp4" : "image.jpg";
     body.caption = text;
   } else {
     body.message = text;
