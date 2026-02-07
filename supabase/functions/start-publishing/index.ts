@@ -229,59 +229,58 @@ serve(async (req) => {
       });
     }
 
-    // Check if product has affiliate link - if not, generate one
+    // Check if product has affiliate link - if not, try to generate one (only for valid AliExpress URLs)
     if (!product.affiliate_link) {
-      console.log(`[start-publishing] Product ${product.id} has no affiliate link, generating...`);
+      const originalUrl = product.original_url?.trim() || "";
+      const isValidAliExpressUrl = originalUrl.includes("aliexpress.com") || 
+                                   originalUrl.includes("a.aliexpress.com") || 
+                                   originalUrl.includes("s.click.aliexpress.com");
       
-      // Try to generate affiliate link
-      const { data: credentials } = await supabase
-        .rpc("get_decrypted_user_credentials", { p_user_id: userId });
+      if (isValidAliExpressUrl) {
+        console.log(`[start-publishing] Product ${product.id} has no affiliate link, generating...`);
+        
+        // Try to generate affiliate link
+        const { data: credentials } = await supabase
+          .rpc("get_decrypted_user_credentials", { p_user_id: userId });
 
-      const appKey = credentials?.aliexpress_app_key?.trim();
-      const appSecret = credentials?.aliexpress_app_secret?.trim();
-      const trackingId = settings.aliexpress_tracking_id?.trim() || "TELEGRAM";
+        const appKey = credentials?.aliexpress_app_key?.trim();
+        const appSecret = credentials?.aliexpress_app_secret?.trim();
+        const trackingId = settings.aliexpress_tracking_id?.trim() || "TELEGRAM";
 
-      if (!appKey || !appSecret) {
-        return new Response(JSON.stringify({ 
-          success: false, 
-          error: "נא להגדיר את פרטי ה-API של AliExpress בהגדרות" 
-        }), { 
-          headers: { ...corsHeaders, "Content-Type": "application/json" } 
-        });
+        if (appKey && appSecret) {
+          // Generate affiliate link using the API
+          const affiliateResponse = await fetch(`${supabaseUrl}/functions/v1/generate-affiliate-link`, {
+            method: 'POST',
+            headers: {
+              'Authorization': authHeader,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              productUrl: originalUrl,
+              userId: userId
+            })
+          });
+
+          const affiliateData = await affiliateResponse.json();
+          
+          if (affiliateData.success) {
+            // Update product with affiliate link
+            await supabase
+              .from("products")
+              .update({ affiliate_link: affiliateData.affiliateLink })
+              .eq("id", product.id);
+
+            product.affiliate_link = affiliateData.affiliateLink;
+            console.log(`[start-publishing] Generated affiliate link for product ${product.id}`);
+          } else {
+            console.log(`[start-publishing] Failed to generate affiliate link: ${affiliateData.error}, continuing without it`);
+          }
+        } else {
+          console.log(`[start-publishing] No AliExpress credentials, skipping affiliate link generation`);
+        }
+      } else {
+        console.log(`[start-publishing] Product ${product.id} has non-AliExpress URL (${originalUrl}), skipping affiliate link generation`);
       }
-
-      // Generate affiliate link using the API
-      const affiliateResponse = await fetch(`${supabaseUrl}/functions/v1/generate-affiliate-link`, {
-        method: 'POST',
-        headers: {
-          'Authorization': authHeader,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          productUrl: product.original_url,
-          userId: userId
-        })
-      });
-
-      const affiliateData = await affiliateResponse.json();
-      
-      if (!affiliateData.success) {
-        return new Response(JSON.stringify({ 
-          success: false, 
-          error: `שגיאה ביצירת קישור שותף: ${affiliateData.error}` 
-        }), { 
-          headers: { ...corsHeaders, "Content-Type": "application/json" } 
-        });
-      }
-
-      // Update product with affiliate link
-      await supabase
-        .from("products")
-        .update({ affiliate_link: affiliateData.affiliateLink })
-        .eq("id", product.id);
-
-      product.affiliate_link = affiliateData.affiliateLink;
-      console.log(`[start-publishing] Generated affiliate link for product ${product.id}`);
     }
 
     // Lock product
