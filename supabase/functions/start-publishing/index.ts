@@ -68,7 +68,7 @@ function buildMessage(product: Record<string, unknown>): string {
   return parts.join("\n");
 }
 
-// Telegram sender - uses HTML parse mode, supports video
+// Telegram sender - uses HTML parse mode, supports video, falls back to text on media failure
 async function sendToTelegram(token: string, chatId: string, product: any, text: string) {
   const imageUrl = product.image_url;
   const mediaType = product.media_type || 'image';
@@ -77,10 +77,11 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
   const isVideo = mediaType === 'video' || 
     (imageUrl && imageUrl.match(/\.(mp4|mov|avi|webm|mkv)(\?|$)/i) !== null);
   
-  let url: string;
-  const body: any = { chat_id: chatId, parse_mode: "HTML" };
-
+  // Try with media first if available
   if (imageUrl) {
+    let url: string;
+    const body: any = { chat_id: chatId, parse_mode: "HTML" };
+    
     if (isVideo) {
       url = `https://api.telegram.org/bot${token}/sendVideo`;
       body.video = imageUrl;
@@ -90,17 +91,33 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
       body.photo = imageUrl;
       body.caption = text;
     }
-  } else {
-    url = `https://api.telegram.org/bot${token}/sendMessage`;
-    body.text = text;
-  }
 
-  const res = await fetch(url, {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    
+    if (res.ok) {
+      return; // Success with media
+    }
+    
+    // Media failed - log and fall back to text only
+    const errorText = await res.text();
+    console.log(`[sendToTelegram] Media send failed (${isVideo ? 'video' : 'photo'}), falling back to text. Error: ${errorText}`);
+  }
+  
+  // Send as text message (either no media or media failed)
+  const textUrl = `https://api.telegram.org/bot${token}/sendMessage`;
+  const textBody = { chat_id: chatId, parse_mode: "HTML", text };
+  
+  const textRes = await fetch(textUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(textBody),
   });
-  if (!res.ok) throw new Error(await res.text());
+  
+  if (!textRes.ok) throw new Error(await textRes.text());
 }
 
 // WhatsApp sender - supports video
