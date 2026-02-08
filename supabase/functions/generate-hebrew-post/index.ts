@@ -281,7 +281,7 @@ serve(async (req) => {
 
 כתוב תיאור מוצר קצר. אסור לציין מחירים, מטבעות, סכומים כספיים, קופונים או קישורים.`;
 
-    console.log("[generate-hebrew-post] Generating for user:", user.email, "mode:", mode);
+    console.log("[generate-hebrew-post] Generating for user:", user.email);
 
     const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
