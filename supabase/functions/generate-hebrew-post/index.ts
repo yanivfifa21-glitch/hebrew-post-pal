@@ -9,18 +9,14 @@ const corsHeaders = {
 type ApiOk = { success: true; hebrewDescription: string; promptStyle: number; mode: string };
 type ApiErr = { success: false; error: string; code?: string };
 
-// Unified template structure for product posts
-// 1. Headline (Short & Catchy) - single line with emoji + product name
-// 2. Short Description (1-2 lines) - what the product is and why it's useful
-// 3. Key Benefits (3-4 bullet points with ✔️) - main advantages
-// CTA will be added automatically by the system
+// Single unified prompt for ALL product posts
+// Structure: Headline → Short Description → Key Benefits (bullet points)
+// CTA and stats are added automatically by the system
 
-const DEFAULT_AI_REWRITE_TEMPLATE = `אתה עורך תוכן מקצועי לקבוצות טלגרם ישראליות.
-המידע שמתקבל הוא תיאור מוצר בכל שפה. המשימה שלך היא לכתוב מחדש את התוכן כפוסט שיווקי בעברית טבעית.
+const UNIFIED_PROMPT = `אתה עורך תוכן מקצועי לקבוצות טלגרם ישראליות.
+המידע שמתקבל הוא תיאור מוצר בכל שפה. המשימה שלך היא לכתוב פוסט שיווקי בעברית טבעית.
 
-זה לא תרגום - זו כתיבה מחדש כמו שאדם ישראלי היה כותב.
-
-מבנה הפוסט (חובה לעקוב):
+מבנה הפוסט (חובה לעקוב בדיוק):
 
 [אימוג'י אחד + כותרת מוצר קצרה וקליטה בעברית]
 
@@ -35,47 +31,21 @@ const DEFAULT_AI_REWRITE_TEMPLATE = `אתה עורך תוכן מקצועי לק�
 
 כללים קריטיים:
 - עברית טבעית ופשוטה
+- כל יתרון בשורה נפרדת עם ✔️
 - משפטים קצרים וברורים
 - פורמט טלגרם נקי
-- אסור מחירים אלא אם נאמר במפורש
-- אסור ניסוחים רובוטיים או "סגנון אליאקספרס"
 - שימוש מינימלי באימוג'י - רק אחד בכותרת
-- אסור קריאות לפעולה (CTA) - הקישור יתווסף אוטומטית
+- אסור: מחירים, קישורים, קריאות לפעולה
 - אסור לכתוב "לחץ כאן", "להזמנה", "לרכישה" וכד'
 
 ** אסור לגמרי **
 - אסור משפטי השראה כמו: "שקט נפשי", "חוויה", "תהנו מ...", "תשכחו מ...", "פתחו את הדלת ל..."
-- אסור משפטים גנריים כמו: "מתאים לשימוש יומיומי", "איכות מעולה", "מחיר משתלם"
+- אסור משפטים גנריים כמו: "מתאים לשימוש יומיומי", "איכות מעולה", "מחיר משתלם", "משתלב בצורה חלקה"
 - אסור לפתוח משפט עם: "זוהי", "זהו", "הוא", "היא", "מדובר ב"
 - אסור לסיים עם משפטי סיכום או עידוד
+- לא להוסיף סטטיסטיקות (הזמנות/דירוג) - יתווספו אוטומטית
 
 המטרה: הפוסט צריך להיראות כאילו נכתב ע"י עורך תוכן מקצועי, ברור וסריק.`;
-
-// Single unified prompt for standard translation
-const UNIFIED_PROMPT = `צור פוסט טלגרם בעברית למוצר.
-
-מבנה הפוסט (חובה לעקוב בדיוק):
-
-[אימוג'י אחד + שם המוצר בקצרה - כותרת קליטה בשורה אחת]
-
-[1-2 שורות קצרות:
-מה זה המוצר ולמה הוא שימושי, בשפה פשוטה]
-
-[3-4 יתרונות מרכזיים בפורמט ברור:
-✔️ יתרון ראשון
-✔️ יתרון שני
-✔️ יתרון שלישי
-✔️ יתרון רביעי (אופציונלי)]
-
-כללים קריטיים:
-- עברית טבעית ופשוטה
-- כל יתרון בשורה נפרדת עם ✔️
-- אסור לפתוח משפט עם "זוהי", "זהו", "הוא", "היא", "מדובר ב"
-- אסור: מחירים, קישורים, קריאות לפעולה
-- אסור לגמרי: "שקט נפשי", "תהנו מ...", "תשכחו מ...", "פתחו את הדלת ל...", "חוויה"
-- אסור: "מתאים לשימוש יומיומי", "איכות מעולה", "משתלב בצורה חלקה"
-- אסור לכתוב "לחץ כאן", "להזמנה", "לרכישה" וכד'
-- לא להוסיף סטטיסטיקות (הזמנות/דירוג) - יתווספו אוטומטית`;
 
 function removeGenericUsageLines(text: string): string {
   const patterns: RegExp[] = [
@@ -280,8 +250,7 @@ serve(async (req) => {
       title, 
       ordersCount, 
       rating, 
-      userId,
-      mode = "standard" // "standard" or "aiRewrite"
+      userId
     } = body;
     
     const t = String(title || "").trim();
@@ -303,28 +272,9 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Fetch user settings for custom prompts
-    const { data: settings } = await supabase
-      .from("app_settings")
-      .select("custom_ai_prompt, ai_rewrite_template")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    let systemPrompt: string;
-
-    if (mode === "aiRewrite") {
-      // AI Rewrite mode - use Telegram-style template
-      const customRewriteTemplate = settings?.ai_rewrite_template?.trim();
-      systemPrompt = customRewriteTemplate || DEFAULT_AI_REWRITE_TEMPLATE;
-      console.log(`[generate-hebrew-post] Using AI Rewrite mode${customRewriteTemplate ? " (custom template)" : " (default template)"}`);
-    } else {
-      // Standard translation mode - use unified prompt
-      const customPrompt = settings?.custom_ai_prompt?.trim() || "";
-      systemPrompt = customPrompt || UNIFIED_PROMPT;
-      console.log(`[generate-hebrew-post] Using standard mode${customPrompt ? " (custom)" : " (unified prompt)"}`);
-    }
+    // Always use the single unified prompt
+    const systemPrompt = UNIFIED_PROMPT;
+    console.log("[generate-hebrew-post] Using unified prompt");
 
     // Build user prompt
     const userPrompt = `מוצר: ${t}
@@ -405,7 +355,7 @@ serve(async (req) => {
       success: true, 
       hebrewDescription: content, 
       promptStyle: 1,
-      mode 
+      mode: "unified"
     };
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: unknown) {
