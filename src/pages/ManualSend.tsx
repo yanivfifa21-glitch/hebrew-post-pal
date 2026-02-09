@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -12,6 +13,7 @@ import {
   Image as ImageIcon, 
   Video, 
   X, 
+  Link,
   Loader2,
   MessageSquare,
   Plus,
@@ -60,6 +62,9 @@ export default function ManualSend() {
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
   const [mediaType, setMediaType] = useState<"image" | "video" | null>(null);
+  const [imageUrl, setImageUrl] = useState("");
+  const [imageUrlPreview, setImageUrlPreview] = useState<string | null>(null);
+  const [loadingImageUrl, setLoadingImageUrl] = useState(false);
   const [allAccounts, setAllAccounts] = useState<MessagingAccount[]>([]);
   const [accounts, setAccounts] = useState<MessagingAccount[]>([]);
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
@@ -171,11 +176,42 @@ export default function ManualSend() {
     setMediaFile(null);
     setMediaPreview(null);
     setMediaType(null);
+    setImageUrl("");
+    setImageUrlPreview(null);
   };
 
   const clearForm = () => {
     setMessage("");
     clearMedia();
+  };
+
+  // Get the effective media URL and type (file upload takes priority, then image URL)
+  const effectiveMediaPreview = mediaPreview || imageUrlPreview;
+  const effectiveMediaType = mediaType || (imageUrlPreview ? "image" : null);
+  const hasMedia = !!mediaFile || !!imageUrlPreview;
+
+  const handleImageUrlLoad = () => {
+    const url = imageUrl.trim();
+    if (!url) return;
+    
+    setLoadingImageUrl(true);
+    const img = new Image();
+    img.onload = () => {
+      setImageUrlPreview(url);
+      setMediaFile(null);
+      setMediaPreview(null);
+      setMediaType(null);
+      setLoadingImageUrl(false);
+    };
+    img.onerror = () => {
+      setLoadingImageUrl(false);
+      toast({
+        title: "לא ניתן לטעון את התמונה",
+        description: "בדוק שהקישור תקין ומוביל לתמונה",
+        variant: "destructive",
+      });
+    };
+    img.src = url;
   };
 
   const toggleAccount = (accountId: string) => {
@@ -272,9 +308,22 @@ export default function ManualSend() {
     return results;
   };
 
+  // Resolve media URL: upload file or use image URL directly
+  const resolveMediaUrl = async (): Promise<string | null> => {
+    if (mediaFile) {
+      const url = await uploadMediaToStorage(mediaFile);
+      if (!url) throw new Error("Failed to upload media");
+      return url;
+    }
+    if (imageUrlPreview) {
+      return imageUrlPreview;
+    }
+    return null;
+  };
+
   // Action: Send Now
   const handleSendNow = async () => {
-    if (!message.trim() && !mediaFile) {
+    if (!message.trim() && !hasMedia) {
       toast({ title: "נא להזין הודעה או להעלות מדיה", variant: "destructive" });
       return;
     }
@@ -289,12 +338,7 @@ export default function ManualSend() {
 
     setLoading(true);
     try {
-      let mediaUrl: string | null = null;
-      if (mediaFile) {
-        mediaUrl = await uploadMediaToStorage(mediaFile);
-        if (!mediaUrl) throw new Error("Failed to upload media");
-      }
-
+      const mediaUrl = await resolveMediaUrl();
       const results = await sendToAccounts(message, mediaUrl);
 
       if (results.success > 0) {
@@ -316,7 +360,7 @@ export default function ManualSend() {
 
   // Action: Add to Manual Queue
   const handleAddToManualQueue = async () => {
-    if (!message.trim() && !mediaFile) {
+    if (!message.trim() && !hasMedia) {
       toast({ title: "נא להזין הודעה או להעלות מדיה", variant: "destructive" });
       return;
     }
@@ -327,17 +371,13 @@ export default function ManualSend() {
 
     setLoading(true);
     try {
-      let mediaUrl: string | null = null;
-      if (mediaFile) {
-        mediaUrl = await uploadMediaToStorage(mediaFile);
-        if (!mediaUrl) throw new Error("Failed to upload media");
-      }
+      const mediaUrl = await resolveMediaUrl();
 
       const { error } = await supabase.from("manual_queue").insert({
         user_id: userId,
         message: message.trim() || null,
         media_url: mediaUrl,
-        media_type: mediaType
+        media_type: effectiveMediaType
       });
 
       if (error) throw error;
@@ -355,7 +395,7 @@ export default function ManualSend() {
 
   // Action: Add to Both Queues
   const handleAddToBoth = async () => {
-    if (!message.trim() && !mediaFile) {
+    if (!message.trim() && !hasMedia) {
       toast({ title: "נא להזין הודעה או להעלות מדיה", variant: "destructive" });
       return;
     }
@@ -366,18 +406,14 @@ export default function ManualSend() {
 
     setLoading(true);
     try {
-      let mediaUrl: string | null = null;
-      if (mediaFile) {
-        mediaUrl = await uploadMediaToStorage(mediaFile);
-        if (!mediaUrl) throw new Error("Failed to upload media");
-      }
+      const mediaUrl = await resolveMediaUrl();
 
       // Add to manual queue
       const { error: manualError } = await supabase.from("manual_queue").insert({
         user_id: userId,
         message: message.trim() || null,
         media_url: mediaUrl,
-        media_type: mediaType
+        media_type: effectiveMediaType
       });
 
       if (manualError) throw manualError;
@@ -389,7 +425,7 @@ export default function ManualSend() {
         title: message.trim().substring(0, 100) || "פוסט ידני",
         hebrew_description: message.trim() || null,
         image_url: mediaUrl,
-        media_type: mediaType || "image",
+        media_type: effectiveMediaType || "image",
         status: "Scheduled"
       });
 
@@ -408,7 +444,7 @@ export default function ManualSend() {
 
   // Action: Add to Automation Queue Only (products table)
   const handleAddToAutomationOnly = async () => {
-    if (!message.trim() && !mediaFile) {
+    if (!message.trim() && !hasMedia) {
       toast({ title: "נא להזין הודעה או להעלות מדיה", variant: "destructive" });
       return;
     }
@@ -419,20 +455,15 @@ export default function ManualSend() {
 
     setLoading(true);
     try {
-      let mediaUrl: string | null = null;
-      if (mediaFile) {
-        mediaUrl = await uploadMediaToStorage(mediaFile);
-        if (!mediaUrl) throw new Error("Failed to upload media");
-      }
+      const mediaUrl = await resolveMediaUrl();
 
-      // Add only to products (automatic queue) with video support
       const { error: productError } = await supabase.from("products").insert({
         user_id: userId,
         original_url: "manual-entry",
         title: message.trim().substring(0, 100) || "פוסט ידני",
         hebrew_description: message.trim() || null,
         image_url: mediaUrl,
-        media_type: mediaType || "image",
+        media_type: effectiveMediaType || "image",
         status: "Scheduled"
       });
 
@@ -448,7 +479,6 @@ export default function ManualSend() {
     }
   };
 
-  // Send item from manual queue
   const handleSendQueueItem = async (item: ManualQueueItem) => {
     if (selectedAccounts.length === 0) {
       toast({ title: "נא לבחור לפחות קבוצה אחת", variant: "destructive" });
@@ -542,12 +572,12 @@ export default function ManualSend() {
         </DialogHeader>
         <div className="space-y-4">
           {/* Media Preview */}
-          {mediaPreview && (
+          {effectiveMediaPreview && (
             <div className="rounded-lg overflow-hidden border border-border">
-              {mediaType === "image" ? (
-                <img src={mediaPreview} alt="Preview" className="w-full object-contain max-h-64" />
+              {effectiveMediaType === "video" ? (
+                <video src={effectiveMediaPreview} className="w-full max-h-64" controls />
               ) : (
-                <video src={mediaPreview} className="w-full max-h-64" controls />
+                <img src={effectiveMediaPreview} alt="Preview" className="w-full object-contain max-h-64" />
               )}
             </div>
           )}
@@ -561,7 +591,7 @@ export default function ManualSend() {
             </div>
           )}
           
-          {!message.trim() && !mediaPreview && (
+          {!message.trim() && !effectiveMediaPreview && (
             <div className="text-center py-8 text-muted-foreground font-hebrew">
               <AlertCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
               <p>אין תוכן להצגה</p>
@@ -599,7 +629,7 @@ export default function ManualSend() {
               setShowPreview(false);
               handleSendNow();
             }}
-            disabled={loading || (!message.trim() && !mediaFile) || selectedAccounts.length === 0}
+            disabled={loading || (!message.trim() && !hasMedia) || selectedAccounts.length === 0}
             className="w-full"
             size="lg"
           >
@@ -679,37 +709,65 @@ export default function ManualSend() {
                 <div className="space-y-3">
                   <Label className="font-hebrew">מדיה (אופציונלי)</Label>
                   
-                  {mediaPreview ? (
+                  {effectiveMediaPreview ? (
                     <div className="relative inline-block">
-                      {mediaType === "image" ? (
-                        <img src={mediaPreview} alt="Preview" className="max-h-48 rounded-lg border border-border" />
+                      {effectiveMediaType === "video" ? (
+                        <video src={effectiveMediaPreview} className="max-h-48 rounded-lg border border-border" controls />
                       ) : (
-                        <video src={mediaPreview} className="max-h-48 rounded-lg border border-border" controls />
+                        <img src={effectiveMediaPreview} alt="Preview" className="max-h-48 rounded-lg border border-border" />
                       )}
                       <Button variant="destructive" size="icon-sm" className="absolute -top-2 -right-2" onClick={clearMedia}>
                         <X className="h-4 w-4" />
                       </Button>
                     </div>
                   ) : (
-                    <div className="flex gap-2">
-                      <label className="cursor-pointer">
-                        <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-                        <Button variant="outline" asChild>
-                          <span className="flex items-center gap-2">
-                            <ImageIcon className="h-4 w-4" />
-                            <span className="font-hebrew">תמונה</span>
-                          </span>
+                    <div className="space-y-3">
+                      {/* Image URL input */}
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="הדבק קישור לתמונה..."
+                          value={imageUrl}
+                          onChange={(e) => setImageUrl(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && handleImageUrlLoad()}
+                          dir="ltr"
+                          className="flex-1"
+                        />
+                        <Button 
+                          variant="outline" 
+                          onClick={handleImageUrlLoad}
+                          disabled={!imageUrl.trim() || loadingImageUrl}
+                        >
+                          {loadingImageUrl ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Link className="h-4 w-4" />
+                          )}
+                          <span className="font-hebrew">טען</span>
                         </Button>
-                      </label>
-                      <label className="cursor-pointer">
-                        <input type="file" accept="video/*" className="hidden" onChange={handleFileChange} />
-                        <Button variant="outline" asChild>
-                          <span className="flex items-center gap-2">
-                            <Video className="h-4 w-4" />
-                            <span className="font-hebrew">וידאו</span>
-                          </span>
-                        </Button>
-                      </label>
+                      </div>
+                      
+                      {/* Or upload file */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground font-hebrew">או העלה קובץ:</span>
+                        <label className="cursor-pointer">
+                          <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+                          <Button variant="outline" size="sm" asChild>
+                            <span className="flex items-center gap-2">
+                              <ImageIcon className="h-4 w-4" />
+                              <span className="font-hebrew">תמונה</span>
+                            </span>
+                          </Button>
+                        </label>
+                        <label className="cursor-pointer">
+                          <input type="file" accept="video/*" className="hidden" onChange={handleFileChange} />
+                          <Button variant="outline" size="sm" asChild>
+                            <span className="flex items-center gap-2">
+                              <Video className="h-4 w-4" />
+                              <span className="font-hebrew">וידאו</span>
+                            </span>
+                          </Button>
+                        </label>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -719,7 +777,7 @@ export default function ManualSend() {
                   <div className="grid grid-cols-2 gap-2">
                     <Button
                       onClick={handleSendNow}
-                      disabled={loading || (!message.trim() && !mediaFile) || selectedAccounts.length === 0}
+                      disabled={loading || (!message.trim() && !hasMedia) || selectedAccounts.length === 0}
                       size="lg"
                     >
                       {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
@@ -728,7 +786,7 @@ export default function ManualSend() {
                     <Button
                       variant="outline"
                       onClick={() => setShowPreview(true)}
-                      disabled={!message.trim() && !mediaFile}
+                      disabled={!message.trim() && !hasMedia}
                       size="lg"
                     >
                       <Eye className="h-5 w-5" />
@@ -740,7 +798,7 @@ export default function ManualSend() {
                     <Button
                       variant="secondary"
                       onClick={handleAddToManualQueue}
-                      disabled={loading || (!message.trim() && !mediaFile)}
+                      disabled={loading || (!message.trim() && !hasMedia)}
                       className="text-xs sm:text-sm"
                     >
                       <Plus className="h-4 w-4 shrink-0" />
@@ -749,7 +807,7 @@ export default function ManualSend() {
                     <Button
                       variant="outline"
                       onClick={handleAddToAutomationOnly}
-                      disabled={loading || (!message.trim() && !mediaFile)}
+                      disabled={loading || (!message.trim() && !hasMedia)}
                       className="text-xs sm:text-sm"
                     >
                       <Clock className="h-4 w-4 shrink-0" />
@@ -758,7 +816,7 @@ export default function ManualSend() {
                     <Button
                       variant="outline"
                       onClick={handleAddToBoth}
-                      disabled={loading || (!message.trim() && !mediaFile)}
+                      disabled={loading || (!message.trim() && !hasMedia)}
                       className="text-xs sm:text-sm"
                     >
                       <Layers className="h-4 w-4 shrink-0" />
