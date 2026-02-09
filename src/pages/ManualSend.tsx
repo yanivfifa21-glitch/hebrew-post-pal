@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -62,9 +62,8 @@ export default function ManualSend() {
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
   const [mediaType, setMediaType] = useState<"image" | "video" | null>(null);
-  const [imageUrl, setImageUrl] = useState("");
   const [imageUrlPreview, setImageUrlPreview] = useState<string | null>(null);
-  const [loadingImageUrl, setLoadingImageUrl] = useState(false);
+  const [loadingImageFromLink, setLoadingImageFromLink] = useState(false);
   const [allAccounts, setAllAccounts] = useState<MessagingAccount[]>([]);
   const [accounts, setAccounts] = useState<MessagingAccount[]>([]);
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
@@ -176,7 +175,6 @@ export default function ManualSend() {
     setMediaFile(null);
     setMediaPreview(null);
     setMediaType(null);
-    setImageUrl("");
     setImageUrlPreview(null);
   };
 
@@ -190,28 +188,44 @@ export default function ManualSend() {
   const effectiveMediaType = mediaType || (imageUrlPreview ? "image" : null);
   const hasMedia = !!mediaFile || !!imageUrlPreview;
 
-  const handleImageUrlLoad = () => {
-    const url = imageUrl.trim();
-    if (!url) return;
+  // Detect AliExpress link in message text
+  const detectAliLink = (text: string): string | null => {
+    const match = text.match(/https?:\/\/(?:s\.click\.aliexpress\.com|a\.aliexpress\.com|www\.aliexpress\.com|aliexpress\.com)\S+/i);
+    return match ? match[0] : null;
+  };
+
+  const detectedLink = detectAliLink(message);
+
+  const handleFetchImageFromLink = async () => {
+    if (!detectedLink) return;
     
-    setLoadingImageUrl(true);
-    const img = new Image();
-    img.onload = () => {
-      setImageUrlPreview(url);
-      setMediaFile(null);
-      setMediaPreview(null);
-      setMediaType(null);
-      setLoadingImageUrl(false);
-    };
-    img.onerror = () => {
-      setLoadingImageUrl(false);
+    setLoadingImageFromLink(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("fetch-ali-product", {
+        body: { productUrl: detectedLink },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || "Failed to fetch product");
+
+      if (data.data?.image_url) {
+        setImageUrlPreview(data.data.image_url);
+        setMediaFile(null);
+        setMediaPreview(null);
+        setMediaType(null);
+        toast({ title: "✅ התמונה נטענה מהקישור" });
+      } else {
+        toast({ title: "לא נמצאה תמונה למוצר", variant: "destructive" });
+      }
+    } catch (e) {
       toast({
-        title: "לא ניתן לטעון את התמונה",
-        description: "בדוק שהקישור תקין ומוביל לתמונה",
+        title: "שגיאה בטעינת תמונה",
+        description: e instanceof Error ? e.message : "נסה שוב",
         variant: "destructive",
       });
-    };
-    img.src = url;
+    } finally {
+      setLoadingImageFromLink(false);
+    }
   };
 
   const toggleAccount = (accountId: string) => {
@@ -705,7 +719,7 @@ export default function ManualSend() {
                   dir="rtl"
                 />
 
-                {/* Media Upload */}
+                {/* Media */}
                 <div className="space-y-3">
                   <Label className="font-hebrew">מדיה (אופציונלי)</Label>
                   
@@ -722,33 +736,29 @@ export default function ManualSend() {
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {/* Image URL input */}
-                      <div className="flex gap-2">
-                        <Input
-                          placeholder="הדבק קישור לתמונה..."
-                          value={imageUrl}
-                          onChange={(e) => setImageUrl(e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && handleImageUrlLoad()}
-                          dir="ltr"
-                          className="flex-1"
-                        />
-                        <Button 
-                          variant="outline" 
-                          onClick={handleImageUrlLoad}
-                          disabled={!imageUrl.trim() || loadingImageUrl}
+                      {/* Auto-detect AliExpress link */}
+                      {detectedLink && (
+                        <Button
+                          variant="outline"
+                          onClick={handleFetchImageFromLink}
+                          disabled={loadingImageFromLink}
+                          className="w-full gap-2"
                         >
-                          {loadingImageUrl ? (
+                          {loadingImageFromLink ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
                             <Link className="h-4 w-4" />
                           )}
-                          <span className="font-hebrew">טען</span>
+                          <span className="font-hebrew">
+                            {loadingImageFromLink ? "טוען תמונה מהקישור..." : "🔗 טען תמונה מקישור אליאקספרס"}
+                          </span>
                         </Button>
-                      </div>
+                      )}
                       
-                      {/* Or upload file */}
+                      {/* Upload file */}
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground font-hebrew">או העלה קובץ:</span>
+                        {!detectedLink && <span className="text-xs text-muted-foreground font-hebrew">העלה קובץ:</span>}
+                        {detectedLink && <span className="text-xs text-muted-foreground font-hebrew">או העלה קובץ:</span>}
                         <label className="cursor-pointer">
                           <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
                           <Button variant="outline" size="sm" asChild>
