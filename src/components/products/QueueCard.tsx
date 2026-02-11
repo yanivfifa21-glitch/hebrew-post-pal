@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { Product } from "@/types/product";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Rocket, Trash2, Loader2, ExternalLink, Star, ShoppingCart, Copy, Check, Clock, RotateCcw } from "lucide-react";
+import { Rocket, Trash2, Loader2, ExternalLink, Star, ShoppingCart, Copy, Check, Clock, RotateCcw, Edit, Save, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -25,6 +27,50 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelec
   const [isDeleting, setIsDeleting] = useState(false);
   const [isReturning, setIsReturning] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editTitle, setEditTitle] = useState(product.title);
+  const [editPrice, setEditPrice] = useState(product.price?.toString() || "");
+  const [editAffiliateLink, setEditAffiliateLink] = useState(product.affiliate_link || "");
+  const [editImageUrl, setEditImageUrl] = useState(product.image_url || "");
+
+  const handleSaveEdit = async () => {
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .from("products")
+        .update({
+          title: editTitle,
+          price: editPrice ? parseFloat(editPrice) : null,
+          affiliate_link: editAffiliateLink || null,
+          image_url: editImageUrl || null,
+          hebrew_description: hebrewDescription,
+        })
+        .eq("id", product.id);
+
+      if (error) throw error;
+      product.title = editTitle;
+      product.price = editPrice ? parseFloat(editPrice) : null;
+      product.affiliate_link = editAffiliateLink || null;
+      product.image_url = editImageUrl || null;
+      product.hebrew_description = hebrewDescription;
+      setIsEditing(false);
+      toast({ title: "✅ נשמר בהצלחה!" });
+    } catch {
+      toast({ title: "שמירה נכשלה", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditTitle(product.title);
+    setEditPrice(product.price?.toString() || "");
+    setEditAffiliateLink(product.affiliate_link || "");
+    setEditImageUrl(product.image_url || "");
+    setHebrewDescription(product.hebrew_description || "");
+    setIsEditing(false);
+  };
 
   const handleCopyToClipboard = async () => {
     try {
@@ -202,10 +248,10 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelec
         )}
         {/* Product Image */}
         <div className="relative w-full md:w-44 h-44 flex-shrink-0 overflow-hidden">
-          {product.image_url ? (
+          {(isEditing ? editImageUrl : product.image_url) ? (
             <img
-              src={product.image_url}
-              alt={product.title}
+              src={isEditing ? editImageUrl : product.image_url!}
+              alt={isEditing ? editTitle : product.title}
               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
             />
           ) : (
@@ -227,7 +273,7 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelec
           {/* Price Badge */}
           <div className="absolute bottom-3 left-3">
             <div className="bg-primary/90 backdrop-blur-sm text-primary-foreground px-3 py-1.5 rounded-lg font-bold text-sm shadow-glow-sm">
-              ${product.price?.toFixed(2)}
+              ${isEditing ? (parseFloat(editPrice) || 0).toFixed(2) : product.price?.toFixed(2)}
             </div>
           </div>
         </div>
@@ -236,45 +282,70 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelec
         <div className="flex-1 p-5 flex flex-col gap-4">
           {/* Header */}
           <div className="space-y-2">
-            <h3 className="font-semibold text-foreground line-clamp-2 text-base leading-snug">
-              {product.title}
-            </h3>
-            
-            {/* Stats Row */}
-            <div className="flex flex-wrap items-center gap-4 text-sm">
-              {product.rating && product.rating > 0 && (
-                <div className="flex items-center gap-1.5 text-warning">
-                  <Star className="h-4 w-4 fill-current" />
-                  <span className="font-medium">{product.rating.toFixed(1)}</span>
+            {isEditing ? (
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs">כותרת</Label>
+                  <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="mt-1" />
                 </div>
-              )}
-              {product.orders_count && product.orders_count > 0 && (
-                <div className="flex items-center gap-1.5 text-muted-foreground">
-                  <ShoppingCart className="h-4 w-4" />
-                  <span>{product.orders_count.toLocaleString()} sold</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs">מחיר ($)</Label>
+                    <Input type="number" step="0.01" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} className="mt-1" />
+                  </div>
                 </div>
-              )}
-              {product.scheduled_time && (
-                <div className="flex items-center gap-1.5 text-primary">
-                  <Clock className="h-4 w-4" />
-                  <span className="font-medium">
-                    {format(new Date(product.scheduled_time), 'MMM dd, HH:mm')}
-                  </span>
+                <div>
+                  <Label className="text-xs">קישור שותף</Label>
+                  <Input value={editAffiliateLink} onChange={(e) => setEditAffiliateLink(e.target.value)} className="mt-1" dir="ltr" />
                 </div>
-              )}
-              {product.affiliate_link && (
-                <a 
-                  href={product.affiliate_link} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-primary hover:text-primary/80 transition-colors"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  <span className="text-xs">Link</span>
-                </a>
-              )}
-            </div>
+                <div>
+                  <Label className="text-xs">קישור תמונה</Label>
+                  <Input value={editImageUrl} onChange={(e) => setEditImageUrl(e.target.value)} className="mt-1" dir="ltr" placeholder="https://..." />
+                </div>
+              </div>
+            ) : (
+              <>
+                <h3 className="font-semibold text-foreground line-clamp-2 text-base leading-snug">
+                  {product.title}
+                </h3>
+                
+                {/* Stats Row */}
+                <div className="flex flex-wrap items-center gap-4 text-sm">
+                  {product.rating && product.rating > 0 && (
+                    <div className="flex items-center gap-1.5 text-warning">
+                      <Star className="h-4 w-4 fill-current" />
+                      <span className="font-medium">{product.rating.toFixed(1)}</span>
+                    </div>
+                  )}
+                  {product.orders_count && product.orders_count > 0 && (
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <ShoppingCart className="h-4 w-4" />
+                      <span>{product.orders_count.toLocaleString()} sold</span>
+                    </div>
+                  )}
+                  {product.scheduled_time && (
+                    <div className="flex items-center gap-1.5 text-primary">
+                      <Clock className="h-4 w-4" />
+                      <span className="font-medium">
+                        {format(new Date(product.scheduled_time), 'MMM dd, HH:mm')}
+                      </span>
+                    </div>
+                  )}
+                  {product.affiliate_link && (
+                    <a 
+                      href={product.affiliate_link} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-primary hover:text-primary/80 transition-colors"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      <span className="text-xs">Link</span>
+                    </a>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Editable Hebrew Description */}
@@ -303,60 +374,95 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelec
 
           {/* Action Buttons */}
           <div className="flex gap-3 mt-auto">
-            {product.status === "Sent" ? (
-              /* Return to Queue button for Sent items */
-              <Button
-                variant="outline"
-                className="flex-1 border-primary/50 text-primary hover:bg-primary/10"
-                onClick={handleReturnToQueue}
-                disabled={isReturning || isDeleting}
-              >
-                {isReturning ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>מחזיר...</span>
-                  </>
-                ) : (
-                  <>
-                    <RotateCcw className="h-4 w-4" />
-                    <span>החזר לתור</span>
-                  </>
-                )}
-              </Button>
+            {isEditing ? (
+              <>
+                <Button
+                  variant="gradient"
+                  className="flex-1"
+                  onClick={handleSaveEdit}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-1" />
+                  )}
+                  שמור
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleCancelEdit}
+                  disabled={isSaving}
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  ביטול
+                </Button>
+              </>
             ) : (
-              /* Send Now button for Scheduled items */
-              <Button
-                variant="success"
-                className="flex-1 btn-glow-success"
-                onClick={handleSendNow}
-                disabled={isSending || isDeleting}
-              >
-                {isSending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Sending...</span>
-                  </>
+              <>
+                {product.status === "Sent" ? (
+                  <Button
+                    variant="outline"
+                    className="flex-1 border-primary/50 text-primary hover:bg-primary/10"
+                    onClick={handleReturnToQueue}
+                    disabled={isReturning || isDeleting}
+                  >
+                    {isReturning ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>מחזיר...</span>
+                      </>
+                    ) : (
+                      <>
+                        <RotateCcw className="h-4 w-4" />
+                        <span>החזר לתור</span>
+                      </>
+                    )}
+                  </Button>
                 ) : (
-                  <>
-                    <Rocket className="h-4 w-4" />
-                    <span>Send Now</span>
-                  </>
+                  <Button
+                    variant="success"
+                    className="flex-1 btn-glow-success"
+                    onClick={handleSendNow}
+                    disabled={isSending || isDeleting}
+                  >
+                    {isSending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>Sending...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Rocket className="h-4 w-4" />
+                        <span>Send Now</span>
+                      </>
+                    )}
+                  </Button>
                 )}
-              </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setIsEditing(true)}
+                  className="flex-shrink-0"
+                  title="ערוך"
+                >
+                  <Edit className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost-destructive"
+                  size="icon"
+                  onClick={handleDelete}
+                  disabled={isSending || isDeleting || isReturning}
+                  className="flex-shrink-0"
+                >
+                  {isDeleting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                </Button>
+              </>
             )}
-            <Button
-              variant="ghost-destructive"
-              size="icon"
-              onClick={handleDelete}
-              disabled={isSending || isDeleting || isReturning}
-              className="flex-shrink-0"
-            >
-              {isDeleting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Trash2 className="h-4 w-4" />
-              )}
-            </Button>
           </div>
         </div>
       </div>
