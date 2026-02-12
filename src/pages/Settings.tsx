@@ -285,6 +285,12 @@ const Settings = () => {
   const [isFetchingRate, setIsFetchingRate] = useState(false);
   const [isStartingPublish, setIsStartingPublish] = useState(false);
 
+  // Custom emoji settings
+  const [useCustomEmoji, setUseCustomEmoji] = useState(true);
+  const [emojiMappings, setEmojiMappings] = useState<{id: string; emoji: string; custom_emoji_id: string}[]>([]);
+  const [newEmoji, setNewEmoji] = useState('');
+  const [newEmojiId, setNewEmojiId] = useState('');
+
   const fetchBankIsraelRate = async () => {
     setIsFetchingRate(true);
     try {
@@ -378,7 +384,7 @@ const Settings = () => {
       // Fetch app settings (non-sensitive data only)
       const { data, error } = await supabase
         .from('app_settings')
-        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, ai_rewrite_template, posting_interval_hours, posting_interval_minutes, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, interval_start_time, interval_end_time, usd_exchange_rate, whatsapp_interval_minutes, telegram_interval_minutes, whatsapp_interval_start_time, whatsapp_interval_end_time, telegram_interval_start_time, telegram_interval_end_time')
+        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, ai_rewrite_template, posting_interval_hours, posting_interval_minutes, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, interval_start_time, interval_end_time, usd_exchange_rate, whatsapp_interval_minutes, telegram_interval_minutes, whatsapp_interval_start_time, whatsapp_interval_end_time, telegram_interval_start_time, telegram_interval_end_time, use_custom_emoji')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -421,11 +427,21 @@ const Settings = () => {
         setAiRewriteTemplate((data as any).ai_rewrite_template && (data as any).ai_rewrite_template.trim() !== '' 
           ? (data as any).ai_rewrite_template 
           : DEFAULT_AI_REWRITE_TEMPLATE);
+        // Custom emoji toggle
+        setUseCustomEmoji((data as any).use_custom_emoji !== false);
       } else {
         // No settings yet - use defaults
         setCustomAiPrompt(DEFAULT_PROMPT);
         setAiRewriteTemplate(DEFAULT_AI_REWRITE_TEMPLATE);
       }
+
+      // Fetch emoji mappings
+      const { data: emojiData } = await supabase
+        .from('custom_emoji_mappings')
+        .select('id, emoji, custom_emoji_id')
+        .eq('user_id', user.id);
+      
+      setEmojiMappings(emojiData || []);
 
       // Fetch credentials status (boolean flags only)
       const { data: credStatus, error: credError } = await supabase.rpc('get_my_credentials_status');
@@ -471,14 +487,14 @@ const Settings = () => {
         custom_ai_prompt: customAiPrompt || null,
         ai_rewrite_template: aiRewriteTemplate || null,
         posting_interval_minutes: useIntervalPosting && !useSeparateIntervals ? postingIntervalMinutes : null,
-        posting_interval_hours: null, // Clear old column
+        posting_interval_hours: null,
         shabbat_mode_enabled: shabbatModeEnabled,
         shabbat_start_time: shabbatStartTime,
         shabbat_end_time: shabbatEndTime,
         interval_start_time: intervalStartTime,
         interval_end_time: intervalEndTime,
         usd_exchange_rate: usdExchangeRate,
-        // Separate channel intervals
+        use_custom_emoji: useCustomEmoji,
         whatsapp_interval_minutes: useSeparateIntervals ? whatsappIntervalMinutes : null,
         telegram_interval_minutes: useSeparateIntervals ? telegramIntervalMinutes : null,
         whatsapp_interval_start_time: useSeparateIntervals ? whatsappIntervalStart : '08:00',
@@ -1875,7 +1891,110 @@ const Settings = () => {
           </CardContent>
         </Card>
 
-        {/* Save Button */}
+        {/* Custom Emoji Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              Telegram Custom Emoji
+            </CardTitle>
+            <CardDescription dir="rtl">
+              החלפת אימוג'י רגילים באימוג'י מונפשים (Telegram Premium) בעת שליחת פוסטים
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border">
+              <div className="flex items-center gap-2">
+                <Zap className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">השתמש באימוג'י מונפשים</span>
+              </div>
+              <Switch
+                checked={useCustomEmoji}
+                onCheckedChange={setUseCustomEmoji}
+              />
+            </div>
+
+            {useCustomEmoji && (
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">מיפוי אימוג'י</Label>
+                
+                {/* Existing mappings */}
+                {emojiMappings.map((mapping) => (
+                  <div key={mapping.id} className="flex items-center gap-2 p-2 rounded-lg bg-muted/20 border">
+                    <span className="text-2xl w-10 text-center">{mapping.emoji}</span>
+                    <span className="text-xs text-muted-foreground flex-1 font-mono truncate">{mapping.custom_emoji_id}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={async () => {
+                        await supabase.from('custom_emoji_mappings').delete().eq('id', mapping.id);
+                        setEmojiMappings(prev => prev.filter(m => m.id !== mapping.id));
+                        toast({ title: "אימוג'י נמחק" });
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+
+                {/* Add new mapping */}
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={newEmoji}
+                    onChange={(e) => setNewEmoji(e.target.value)}
+                    placeholder="🔥"
+                    className="w-16 text-center text-lg"
+                    maxLength={4}
+                  />
+                  <Input
+                    value={newEmojiId}
+                    onChange={(e) => setNewEmojiId(e.target.value)}
+                    placeholder="Custom Emoji ID"
+                    className="flex-1 font-mono text-sm"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!newEmoji || !newEmojiId || !userId}
+                    onClick={async () => {
+                      if (!userId) return;
+                      const { data, error } = await supabase
+                        .from('custom_emoji_mappings')
+                        .upsert({ user_id: userId, emoji: newEmoji, custom_emoji_id: newEmojiId }, { onConflict: 'user_id,emoji' })
+                        .select('id, emoji, custom_emoji_id')
+                        .single();
+                      if (error) {
+                        toast({ title: "שגיאה בהוספת אימוג'י", variant: "destructive" });
+                        return;
+                      }
+                      setEmojiMappings(prev => {
+                        const existing = prev.findIndex(m => m.emoji === newEmoji);
+                        if (existing >= 0) {
+                          const updated = [...prev];
+                          updated[existing] = data;
+                          return updated;
+                        }
+                        return [...prev, data];
+                      });
+                      setNewEmoji('');
+                      setNewEmojiId('');
+                      toast({ title: "אימוג'י נוסף!" });
+                    }}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <div className="bg-muted/50 p-3 rounded-lg border text-xs text-muted-foreground" dir="rtl">
+                  💡 ניתן למצוא Custom Emoji ID דרך בוט @GetCustomEmojiBot בטלגרם
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <Button
           onClick={handleSave}
           disabled={isSaving}
