@@ -13,8 +13,85 @@ interface TelegramRequest {
   imageUrl: string | null;
   affiliateLink: string | null;
   userId: string;
-  accountId?: string; // Optional: specific account to use
-  mediaType?: 'image' | 'video'; // Optional: type of media
+  accountId?: string;
+  mediaType?: 'image' | 'video';
+}
+
+function replaceWithCustomEmoji(text: string, emojiMap: Record<string, string>): string {
+  for (const [emoji, id] of Object.entries(emojiMap)) {
+    text = text.replaceAll(emoji, `<tg-emoji emoji-id="${id}">${emoji}</tg-emoji>`);
+  }
+  return text;
+}
+
+function stripCustomEmojiTags(text: string): string {
+  return text.replace(/<tg-emoji emoji-id="[^"]*">([^<]*)<\/tg-emoji>/g, '$1');
+}
+
+async function sendTelegramMessage(
+  botToken: string,
+  chatId: string,
+  caption: string,
+  imageUrl: string | null,
+  mediaType: string | undefined
+): Promise<any> {
+  if (imageUrl) {
+    const isVideo = mediaType === 'video' || 
+      imageUrl.match(/\.(mp4|mov|avi|webm|mkv)(\?|$)/i) !== null;
+    
+    if (isVideo) {
+      console.log("[send-telegram] Downloading video for upload...");
+      try {
+        const videoResponse = await fetch(imageUrl);
+        if (!videoResponse.ok) throw new Error(`Failed to download video: ${videoResponse.status}`);
+        const videoBlob = await videoResponse.blob();
+        console.log("[send-telegram] Video downloaded, size:", videoBlob.size);
+
+        const formData = new FormData();
+        formData.append("chat_id", chatId);
+        formData.append("caption", caption);
+        formData.append("parse_mode", "HTML");
+        formData.append("video", videoBlob, "video.mp4");
+
+        const response = await fetch(
+          `https://api.telegram.org/bot${botToken}/sendVideo`,
+          { method: "POST", body: formData }
+        );
+        return await response.json();
+      } catch (downloadErr) {
+        console.error("[send-telegram] Video download failed, trying URL method:", downloadErr);
+        const response = await fetch(
+          `https://api.telegram.org/bot${botToken}/sendVideo`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: chatId, video: imageUrl, caption, parse_mode: "HTML" }),
+          }
+        );
+        return await response.json();
+      }
+    } else {
+      const response = await fetch(
+        `https://api.telegram.org/bot${botToken}/sendPhoto`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: chatId, photo: imageUrl, caption, parse_mode: "HTML" }),
+        }
+      );
+      return await response.json();
+    }
+  } else {
+    const response = await fetch(
+      `https://api.telegram.org/bot${botToken}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, text: caption, parse_mode: "HTML" }),
+      }
+    );
+    return await response.json();
+  }
 }
 
 serve(async (req) => {
@@ -23,10 +100,8 @@ serve(async (req) => {
   }
 
   try {
-    // SECURITY: Verify the user from JWT token
     const authHeader = req.headers.get("authorization");
     if (!authHeader) {
-      console.error("[send-telegram] Missing authorization header");
       return new Response(
         JSON.stringify({ success: false, error: "Unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -37,14 +112,12 @@ serve(async (req) => {
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
-    // Verify user with anon key
     const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(
       authHeader.replace("Bearer ", "")
     );
 
     if (authError || !user) {
-      console.error("[send-telegram] Auth verification failed:", authError);
       return new Response(
         JSON.stringify({ success: false, error: "Unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -53,34 +126,25 @@ serve(async (req) => {
 
     const { title, hebrewDescription, price, imageUrl, affiliateLink, userId, accountId, mediaType }: TelegramRequest = await req.json();
 
-    // SECURITY: Verify the userId matches the authenticated user
     if (userId !== user.id) {
-      console.error("[send-telegram] User ID mismatch - potential attack");
       return new Response(
         JSON.stringify({ success: false, error: "Forbidden: Cannot access other users' data" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Use service role to fetch credentials
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     let botToken: string | null = null;
     let chatId: string | null = null;
 
-    // If accountId is provided, fetch from messaging_accounts using secure RPC
     if (accountId) {
-      console.log("[send-telegram] Fetching credentials for account:", accountId);
-      
-      // Use the new secure RPC that decrypts credentials server-side
       const { data: credentials, error: credError } = await supabase
         .rpc("get_decrypted_messaging_account_credentials", { 
-          p_account_id: accountId,
-          p_user_id: user.id
+          p_account_id: accountId, p_user_id: user.id
         });
 
       if (credError || credentials?.error) {
-        console.error("[send-telegram] Error fetching account credentials:", credError || credentials?.error);
         return new Response(
           JSON.stringify({ success: false, error: credentials?.error || "Failed to fetch account credentials" }),
           { status: credentials?.error === "Account not found" ? 404 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -89,17 +153,11 @@ serve(async (req) => {
 
       botToken = credentials?.telegram_bot_token?.trim() || null;
       chatId = credentials?.telegram_chat_id?.trim() || null;
-      
-      console.log("[send-telegram] Credentials retrieved - botToken:", !!botToken, "chatId:", !!chatId);
-
     } else {
-      // Fallback: fetch from user_credentials (legacy)
-      console.log("[send-telegram] Using legacy user_credentials");
       const { data: credentials, error: credentialsError } = await supabase
         .rpc("get_decrypted_user_credentials", { p_user_id: user.id });
 
       if (credentialsError || credentials?.error) {
-        console.error("[send-telegram] Error fetching credentials:", credentialsError || credentials?.error);
         return new Response(
           JSON.stringify({ success: false, error: "Failed to fetch user credentials" }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -111,93 +169,53 @@ serve(async (req) => {
     }
 
     if (!botToken || !chatId) {
-      console.error("[send-telegram] Missing credentials - botToken:", !!botToken, "chatId:", !!chatId);
       return new Response(
         JSON.stringify({ success: false, error: "הגדר Bot Token ו-Chat ID בהגדרות הטלגרם" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Use hebrewDescription as-is (it already contains the affiliate link)
-    const caption = hebrewDescription;
+    // Fetch user's custom emoji settings
+    const { data: settingsData } = await supabase
+      .from("app_settings")
+      .select("use_custom_emoji")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const useCustomEmoji = settingsData?.use_custom_emoji !== false; // default true
+
+    let caption = hebrewDescription;
+    let usedCustomEmoji = false;
+
+    if (useCustomEmoji) {
+      // Fetch emoji mappings for this user
+      const { data: emojiMappings } = await supabase
+        .from("custom_emoji_mappings")
+        .select("emoji, custom_emoji_id")
+        .eq("user_id", user.id);
+
+      if (emojiMappings && emojiMappings.length > 0) {
+        const emojiMap: Record<string, string> = {};
+        for (const m of emojiMappings) {
+          emojiMap[m.emoji] = m.custom_emoji_id;
+        }
+        caption = replaceWithCustomEmoji(caption, emojiMap);
+        usedCustomEmoji = true;
+        console.log("[send-telegram] Applied custom emoji replacements");
+      }
+    }
 
     console.log("[send-telegram] Sending for user:", user.email);
-    console.log("[send-telegram] Caption preview:", caption.substring(0, 100) + "...");
 
-    let result;
+    let result = await sendTelegramMessage(botToken, chatId, caption, imageUrl, mediaType);
+    console.log("[send-telegram] Response:", JSON.stringify(result));
 
-    // Determine media type and send accordingly
-    if (imageUrl) {
-      const isVideo = mediaType === 'video' || 
-        imageUrl.match(/\.(mp4|mov|avi|webm|mkv)(\?|$)/i) !== null;
-      
-      if (isVideo) {
-        // For videos: download first, then upload as form-data (Telegram often can't fetch large URLs)
-        console.log("[send-telegram] Downloading video for upload...");
-        try {
-          const videoResponse = await fetch(imageUrl);
-          if (!videoResponse.ok) throw new Error(`Failed to download video: ${videoResponse.status}`);
-          const videoBlob = await videoResponse.blob();
-          console.log("[send-telegram] Video downloaded, size:", videoBlob.size);
-
-          const formData = new FormData();
-          formData.append("chat_id", chatId);
-          formData.append("caption", caption);
-          formData.append("parse_mode", "HTML");
-          formData.append("video", videoBlob, "video.mp4");
-
-          const response = await fetch(
-            `https://api.telegram.org/bot${botToken}/sendVideo`,
-            { method: "POST", body: formData }
-          );
-          result = await response.json();
-        } catch (downloadErr) {
-          console.error("[send-telegram] Video download failed, trying URL method:", downloadErr);
-          // Fallback: try sending URL directly
-          const response = await fetch(
-            `https://api.telegram.org/bot${botToken}/sendVideo`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ chat_id: chatId, video: imageUrl, caption, parse_mode: "HTML" }),
-            }
-          );
-          result = await response.json();
-        }
-        console.log("[send-telegram] sendVideo response:", JSON.stringify(result));
-      } else {
-        // Send photo (URL method works fine for images)
-        const response = await fetch(
-          `https://api.telegram.org/bot${botToken}/sendPhoto`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              chat_id: chatId,
-              photo: imageUrl,
-              caption: caption,
-              parse_mode: "HTML",
-            }),
-          }
-        );
-        result = await response.json();
-        console.log("[send-telegram] sendPhoto response:", JSON.stringify(result));
-      }
-    } else {
-      const response = await fetch(
-        `https://api.telegram.org/bot${botToken}/sendMessage`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: caption,
-            parse_mode: "HTML",
-          }),
-        }
-      );
-      result = await response.json();
-      console.log("[send-telegram] sendMessage response:", JSON.stringify(result));
+    // If custom emoji caused a 400 error, retry without them
+    if (!result.ok && usedCustomEmoji && result.error_code === 400) {
+      console.log("[send-telegram] Custom emoji failed, retrying with plain text...");
+      const plainCaption = stripCustomEmojiTags(caption);
+      result = await sendTelegramMessage(botToken, chatId, plainCaption, imageUrl, mediaType);
+      console.log("[send-telegram] Retry response:", JSON.stringify(result));
     }
 
     if (result.ok) {
@@ -208,11 +226,7 @@ serve(async (req) => {
     } else {
       console.error("[send-telegram] Telegram API error:", result);
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: result.description || "Failed to send message",
-          code: result.error_code 
-        }),
+        JSON.stringify({ success: false, error: result.description || "Failed to send message", code: result.error_code }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

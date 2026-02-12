@@ -38,6 +38,7 @@ export type Database = {
           telegram_interval_start_time: string | null
           updated_at: string
           usd_exchange_rate: number | null
+          use_custom_emoji: boolean | null
           user_id: string
           whatsapp_enabled: boolean | null
           whatsapp_interval_end_time: string | null
@@ -67,6 +68,7 @@ export type Database = {
           telegram_interval_start_time?: string | null
           updated_at?: string
           usd_exchange_rate?: number | null
+          use_custom_emoji?: boolean | null
           user_id: string
           whatsapp_enabled?: boolean | null
           whatsapp_interval_end_time?: string | null
@@ -96,6 +98,7 @@ export type Database = {
           telegram_interval_start_time?: string | null
           updated_at?: string
           usd_exchange_rate?: number | null
+          use_custom_emoji?: boolean | null
           user_id?: string
           whatsapp_enabled?: boolean | null
           whatsapp_interval_end_time?: string | null
@@ -151,6 +154,30 @@ export type Database = {
           level?: string
           message?: string
           run_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      custom_emoji_mappings: {
+        Row: {
+          created_at: string
+          custom_emoji_id: string
+          emoji: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          custom_emoji_id: string
+          emoji: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          custom_emoji_id?: string
+          emoji?: string
+          id?: string
           user_id?: string
         }
         Relationships: []
