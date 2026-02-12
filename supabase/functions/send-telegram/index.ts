@@ -132,24 +132,41 @@ serve(async (req) => {
         imageUrl.match(/\.(mp4|mov|avi|webm|mkv)(\?|$)/i) !== null;
       
       if (isVideo) {
-        // Send video
-        const response = await fetch(
-          `https://api.telegram.org/bot${botToken}/sendVideo`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              chat_id: chatId,
-              video: imageUrl,
-              caption: caption,
-              parse_mode: "HTML",
-            }),
-          }
-        );
-        result = await response.json();
+        // For videos: download first, then upload as form-data (Telegram often can't fetch large URLs)
+        console.log("[send-telegram] Downloading video for upload...");
+        try {
+          const videoResponse = await fetch(imageUrl);
+          if (!videoResponse.ok) throw new Error(`Failed to download video: ${videoResponse.status}`);
+          const videoBlob = await videoResponse.blob();
+          console.log("[send-telegram] Video downloaded, size:", videoBlob.size);
+
+          const formData = new FormData();
+          formData.append("chat_id", chatId);
+          formData.append("caption", caption);
+          formData.append("parse_mode", "HTML");
+          formData.append("video", videoBlob, "video.mp4");
+
+          const response = await fetch(
+            `https://api.telegram.org/bot${botToken}/sendVideo`,
+            { method: "POST", body: formData }
+          );
+          result = await response.json();
+        } catch (downloadErr) {
+          console.error("[send-telegram] Video download failed, trying URL method:", downloadErr);
+          // Fallback: try sending URL directly
+          const response = await fetch(
+            `https://api.telegram.org/bot${botToken}/sendVideo`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ chat_id: chatId, video: imageUrl, caption, parse_mode: "HTML" }),
+            }
+          );
+          result = await response.json();
+        }
         console.log("[send-telegram] sendVideo response:", JSON.stringify(result));
       } else {
-        // Send photo
+        // Send photo (URL method works fine for images)
         const response = await fetch(
           `https://api.telegram.org/bot${botToken}/sendPhoto`,
           {
