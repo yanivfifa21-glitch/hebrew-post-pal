@@ -294,7 +294,7 @@ const Discovery = () => {
     }
   };
   
-  // Apply filters - price + source-specific filters
+  // Apply filters - price only (quality filtering done server-side)
   const filteredProducts = products.filter(p => {
     // Price filter
     if (minPrice > 0 && p.price < minPrice) return false;
@@ -302,12 +302,6 @@ const Discovery = () => {
     
     // High commission filter: only show 8%+ commission products
     if (productSource === "high_commission" && (p.commission_rate || 0) < 8) return false;
-    
-    // Hot products quality filter: 4.5+ rating and 500+ sales
-    if (productSource === "hot") {
-      if ((p.rating || 0) < 4.5) return false;
-      if ((p.sales_count || 0) < 500) return false;
-    }
     
     return true;
   });
