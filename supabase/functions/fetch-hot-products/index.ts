@@ -26,10 +26,10 @@ const ALL_CATEGORY_IDS = ["509", "15", "66", "200000297", "34", "200003482", "7"
 
 const MAX_DELIVERY_DAYS = 45;
 // ========== WINNING PRODUCT QUALITY THRESHOLDS ==========
-const MIN_PRICE_USD = "10";            // Price floor: avoid $1 junk items
-const MIN_SALES_COUNT_HOT = 500;       // Minimum sales for "hot" source
-const MIN_RATING_HOT = 4.5;            // Rating threshold: 4.5+ stars
-const MIN_SALES_COUNT_PROMO = 100;     // Lower threshold for promo products
+const MIN_PRICE_USD = "5";             // Price floor: avoid $1 junk items
+const MIN_SALES_COUNT_HOT = 10;        // Low threshold - API already curates hot products
+const MIN_RATING_HOT = 3.5;            // Rating threshold: 3.5+ stars (lenient - let client filter)
+const MIN_SALES_COUNT_PROMO = 10;      // Lower threshold for promo products
 const MIN_COMMISSION_HIGH = 8;         // 8% minimum for high commission filter
 const MIN_COMMISSION_RATE = "0.01";    // Minimum commission rate for API
 
@@ -411,31 +411,50 @@ serve(async (req) => {
           }
         }
       } else {
-        // No keywords - fetch by category
-        const categoriesToFetch = category ? [category] : ALL_CATEGORY_IDS;
-        const shuffledCategories = [...categoriesToFetch].sort(() => Math.random() - 0.5);
-        const apiPageOffset = pageNo;
-        
-        for (const catId of shuffledCategories) {
-          if (products.length >= desiredCount) break;
-          
-          try {
-            const data = await callHotProductQuery(catId, undefined, apiPageOffset);
-            
-            const err = data?.error_response;
-            if (err?.msg || err?.code) {
-              console.warn("[fetch-hot-products] Hot API Error for category", catId, ":", err);
-              continue;
-            }
-
+        // No keywords - fetch by category or all
+        if (category) {
+          // Single category: use pagination directly
+          const data = await callHotProductQuery(category, undefined, pageNo);
+          const err = data?.error_response;
+          if (!err?.msg && !err?.code) {
             const rr = data?.aliexpress_affiliate_hotproduct_query_response?.resp_result;
+            if (rr?.resp_code === 200) {
+              const rawProducts = rr?.result?.products?.product || [];
+              console.log("[fetch-hot-products] Category", category, "page", pageNo, "returned", rawProducts.length, "hot products");
+              for (const p of rawProducts) {
+                if (products.length >= desiredCount) break;
+                const mapped = mapProduct(p, "hot");
+                if (!mapped || seen.has(mapped.product_id)) continue;
+                if (mapped.sales_count < MIN_SALES_COUNT_HOT) continue;
+                if (mapped.rating < MIN_RATING_HOT) continue;
+                seen.add(mapped.product_id);
+                products.push(mapped);
+              }
+            }
+          }
+        } else {
+          // All categories: distribute pages across categories for variety
+          // Use pageNo to pick different categories and sub-pages
+          const categoriesToFetch = [...ALL_CATEGORY_IDS].sort(() => Math.random() - 0.5);
+          
+          // Fetch from multiple categories in parallel for speed
+          const promises = categoriesToFetch.map(catId => 
+            callHotProductQuery(catId, undefined, pageNo).catch(() => ({}))
+          );
+          const results = await Promise.all(promises);
+          
+          for (let i = 0; i < results.length; i++) {
+            const data = results[i];
+            const err = (data as any)?.error_response;
+            if (err?.msg || err?.code) continue;
+            
+            const rr = (data as any)?.aliexpress_affiliate_hotproduct_query_response?.resp_result;
             if (rr?.resp_code !== 200) continue;
-
+            
             const rawProducts = rr?.result?.products?.product || [];
-            console.log("[fetch-hot-products] Category", catId, "page", apiPageOffset, "returned", rawProducts.length, "hot products");
+            console.log("[fetch-hot-products] Category", categoriesToFetch[i], "page", pageNo, "returned", rawProducts.length, "hot products");
             
             for (const p of rawProducts) {
-              if (products.length >= desiredCount) break;
               const mapped = mapProduct(p, "hot");
               if (!mapped || seen.has(mapped.product_id)) continue;
               if (mapped.sales_count < MIN_SALES_COUNT_HOT) continue;
@@ -443,8 +462,6 @@ serve(async (req) => {
               seen.add(mapped.product_id);
               products.push(mapped);
             }
-          } catch (e) {
-            console.error("[fetch-hot-products] Error with category:", catId, e);
           }
         }
       }
