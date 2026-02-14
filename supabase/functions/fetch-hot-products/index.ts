@@ -131,7 +131,7 @@ serve(async (req) => {
     // HOT PRODUCTS API - "Winning Products" Query
     // Uses hotproduct.query with quality filters
     // ============================================
-    const callHotProductQuery = async (categoryId?: string, keywords?: string, pageNo: number = 1, sortBy: string = "VOLUME_DESC") => {
+    const callHotProductQuery = async (categoryId?: string, keywords?: string, pageNo: number = 1, sortBy: string = "LAST_VOLUME_DESC") => {
       const params: Record<string, string> = {
         app_key: appKey,
         method: "aliexpress.affiliate.hotproduct.query",
