@@ -250,7 +250,8 @@ serve(async (req) => {
       title, 
       ordersCount, 
       rating, 
-      userId
+      userId,
+      manualRewrite
     } = body;
     
     const t = String(title || "").trim();
@@ -272,14 +273,50 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Always use the single unified prompt
-    const systemPrompt = UNIFIED_PROMPT;
-    console.log("[generate-hebrew-post] Using unified prompt");
+    // Choose prompt based on mode
+    let systemPrompt: string;
+    let userPrompt: string;
 
-    // Build user prompt
-    const userPrompt = `מוצר: ${t}
+    if (manualRewrite) {
+      // Manual rewrite mode: longer, engaging, keeps prices & coupons
+      systemPrompt = `אתה עורך תוכן מקצועי לקבוצות טלגרם ישראליות.
+המשימה שלך היא לקחת טקסט של פוסט מוצר ולנסח אותו מחדש בצורה מושכת ומקצועית.
+
+מבנה הפוסט (חובה לעקוב בדיוק):
+
+[פתיחה קליטה עם אימוג'י - למשל: "🔥 דיל מעולה!", "💥 מציאה!", "⚡ מחיר שובר שוק!" או משפט דומה שימשוך תשומת לב]
+
+[כותרת מוצר קצרה וקליטה בעברית]
+
+[2-3 שורות תיאור: מה זה המוצר, למה הוא שווה, מה מיוחד בו]
+
+[3-4 יתרונות מרכזיים:
+✔️ יתרון ראשון
+✔️ יתרון שני
+✔️ יתרון שלישי]
+
+כללים:
+- עברית טבעית ופשוטה
+- כל יתרון בשורה נפרדת עם ✔️
+- משפטים קצרים וברורים
+- שימוש מינימלי באימוג'י
+- אם יש מידע על מחיר בטקסט המקורי - חובה לשמור אותו בדיוק כמו שהוא
+- אם יש קופון או קוד הנחה - חובה לשמור אותו בדיוק כמו שהוא
+- אסור: קישורים, קריאות לפעולה כמו "לחץ כאן" או "להזמנה"
+- אסור משפטי השראה גנריים`;
+
+      userPrompt = `נסח מחדש את הפוסט הבא. שמור על כל מידע של מחיר וקופון בדיוק כמו שהוא:
+
+${t}`;
+      console.log("[generate-hebrew-post] Using manual rewrite prompt");
+    } else {
+      // Standard unified prompt
+      systemPrompt = UNIFIED_PROMPT;
+      userPrompt = `מוצר: ${t}
 
 כתוב תיאור מוצר קצר. אסור לציין מחירים, מטבעות, סכומים כספיים, קופונים או קישורים.`;
+      console.log("[generate-hebrew-post] Using unified prompt");
+    }
 
     console.log("[generate-hebrew-post] Generating for user:", user.email);
 
@@ -317,8 +354,31 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Clean and sanitize the output
-    content = cleanAiOutput(content);
+    // Clean and sanitize the output (skip price/coupon stripping in manual rewrite mode)
+    if (manualRewrite) {
+      // Light cleaning only: remove AI preamble, options, dividers but keep prices/coupons
+      let result = String(content).trim();
+      // Remove multiple options
+      if (result.includes('אפשרות 1') || result.includes('**אפשרות')) {
+        const optionMatch = result.match(/\*\*אפשרות 1[^*]*\*\*[:\s]*([\s\S]*?)(?=\*\*אפשרות 2|\*\*דגשים|---|$)/i);
+        if (optionMatch?.[1]) result = optionMatch[1].trim();
+      }
+      const dividerIndex = result.indexOf('---');
+      if (dividerIndex > 0) result = result.substring(0, dividerIndex).trim();
+      // Remove AI preamble
+      result = result.replace(/^(בטח|הנה|זה|להלן|בוודאי|כמובן)[,،\.]?\s*(הנה\s*)?(רשימת?\s*)?(יתרונות|תיאור|פוסט)?[^:\n]*[:：]?\s*/i, '');
+      // Remove CTA lines only
+      result = result.replace(/👉[^\n]*/g, '');
+      result = result.replace(/👇[^\n]*/g, '');
+      result = result.replace(/לרכישה[:\s]*[^\n]*/gi, '');
+      result = result.replace(/להזמנה[:\s]*[^\n]*/gi, '');
+      result = result.replace(/לחץ כאן[^\n]*/gi, '');
+      result = result.replace(/https?:\/\/[^\s]+/g, '');
+      result = result.replace(/\n{3,}/g, '\n\n').trim();
+      content = result;
+    } else {
+      content = cleanAiOutput(content);
+    }
     
     // Validation: Check if content is too short
     const hebrewContentLength = (content.match(/[\u0590-\u05FF]/g) || []).length;
