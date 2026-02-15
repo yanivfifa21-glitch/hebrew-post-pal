@@ -598,10 +598,28 @@ export default function ManualSend() {
 
     setIsRewritingWithAffiliate(true);
     try {
+      // Extract price and coupon info from original message before AI rewrite
+      const originalText = message.trim();
+      const priceLines: string[] = [];
+      const couponLines: string[] = [];
+      
+      for (const line of originalText.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        // Detect price lines (contains currency symbols, numbers with ₪/$, or price keywords)
+        if (/מחיר|price|💰|₪|(\$\s*\d)|(\d\s*\$)|(\d+[\.,]\d+\s*(₪|שקל|דולר|\$|USD|ILS))/i.test(trimmed)) {
+          priceLines.push(trimmed);
+        }
+        // Detect coupon lines
+        if (/קופון|coupon|קוד|code|הנחה|discount|🎟️|🏷️/i.test(trimmed)) {
+          couponLines.push(trimmed);
+        }
+      }
+
       // Run all 3 operations in parallel: AI rewrite, affiliate link, fetch image
       const [rewriteResult, affiliateResult, imageResult] = await Promise.all([
         supabase.functions.invoke("generate-hebrew-post", {
-          body: { title: message.trim() },
+          body: { title: originalText },
         }),
         supabase.functions.invoke("generate-affiliate-link", {
           body: { productUrl: aliLink, userId },
@@ -616,6 +634,16 @@ export default function ManualSend() {
       if (!rewriteResult.data?.success) throw new Error(rewriteResult.data?.error || "שגיאה בניסוח מחדש");
       
       let newMessage = rewriteResult.data.hebrewDescription;
+
+      // Re-append price info if found in original
+      if (priceLines.length > 0) {
+        newMessage = newMessage.trim() + "\n\n" + priceLines.join("\n");
+      }
+
+      // Re-append coupon info if found in original
+      if (couponLines.length > 0) {
+        newMessage = newMessage.trim() + "\n" + couponLines.join("\n");
+      }
 
       // Process affiliate link
       let affiliateLink = aliLink;
