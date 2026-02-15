@@ -619,7 +619,7 @@ export default function ManualSend() {
       // Run all 3 operations in parallel: AI rewrite, affiliate link, fetch image
       const [rewriteResult, affiliateResult, imageResult] = await Promise.all([
         supabase.functions.invoke("generate-hebrew-post", {
-          body: { title: originalText },
+          body: { title: originalText, manualRewrite: true },
         }),
         supabase.functions.invoke("generate-affiliate-link", {
           body: { productUrl: aliLink, userId },
