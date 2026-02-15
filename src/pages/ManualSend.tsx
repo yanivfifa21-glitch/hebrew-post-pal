@@ -76,6 +76,7 @@ export default function ManualSend() {
   const [showPreview, setShowPreview] = useState(false);
   const [translationMode, setTranslationMode] = useState<TranslationMode>("aiRewrite");
   const [isRewriting, setIsRewriting] = useState(false);
+  const [isRewritingWithAffiliate, setIsRewritingWithAffiliate] = useState(false);
 
   useEffect(() => {
     fetchAccounts();
@@ -577,6 +578,84 @@ export default function ManualSend() {
     }
   };
 
+  // Combined: AI Rewrite + Affiliate Link + Fetch Image
+  const handleRewriteWithAffiliate = async () => {
+    if (!message.trim()) {
+      toast({ title: "נא להזין טקסט", variant: "destructive" });
+      return;
+    }
+    if (!userId) {
+      toast({ title: "לא מחובר", variant: "destructive" });
+      return;
+    }
+
+    // Detect AliExpress link in message
+    const aliLink = detectAliLink(message);
+    if (!aliLink) {
+      toast({ title: "לא נמצא קישור אליאקספרס בטקסט", variant: "destructive" });
+      return;
+    }
+
+    setIsRewritingWithAffiliate(true);
+    try {
+      // Run all 3 operations in parallel: AI rewrite, affiliate link, fetch image
+      const [rewriteResult, affiliateResult, imageResult] = await Promise.all([
+        supabase.functions.invoke("generate-hebrew-post", {
+          body: { title: message.trim() },
+        }),
+        supabase.functions.invoke("generate-affiliate-link", {
+          body: { productUrl: aliLink, userId },
+        }),
+        supabase.functions.invoke("fetch-ali-product", {
+          body: { productUrl: aliLink },
+        }),
+      ]);
+
+      // Process AI rewrite
+      if (rewriteResult.error) throw new Error("שגיאה בניסוח מחדש: " + rewriteResult.error.message);
+      if (!rewriteResult.data?.success) throw new Error(rewriteResult.data?.error || "שגיאה בניסוח מחדש");
+      
+      let newMessage = rewriteResult.data.hebrewDescription;
+
+      // Process affiliate link
+      let affiliateLink = aliLink;
+      if (affiliateResult.data?.success && affiliateResult.data?.affiliateLink) {
+        affiliateLink = affiliateResult.data.affiliateLink;
+      } else {
+        console.warn("[RewriteWithAffiliate] Affiliate link generation failed, using original link");
+        toast({ 
+          title: "⚠️ לא הצלחנו להחליף לקישור שותף", 
+          description: "הקישור המקורי יישאר",
+        });
+      }
+
+      // Append CTA with affiliate link
+      const ctaOptions = ["לרכישה", "להזמנה", "להזמנה מאליאקספרס"];
+      const randomCta = ctaOptions[Math.floor(Math.random() * ctaOptions.length)];
+      newMessage = newMessage.trim() + `\n\n👇 ${randomCta}\n${affiliateLink}`;
+
+      setMessage(newMessage);
+
+      // Process image
+      if (imageResult.data?.success && imageResult.data?.data?.image_url) {
+        setImageUrlPreview(imageResult.data.data.image_url);
+        setMediaFile(null);
+        setMediaPreview(null);
+        setMediaType(null);
+      }
+
+      toast({ title: "✨ הפוסט נוסח מחדש עם קישור שותף ותמונה" });
+    } catch (e) {
+      toast({
+        title: "שגיאה",
+        description: e instanceof Error ? e.message : "נסה שוב",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRewritingWithAffiliate(false);
+    }
+  };
+
   // Preview Modal Component
   const PreviewModal = () => (
     <Dialog open={showPreview} onOpenChange={setShowPreview}>
@@ -708,7 +787,25 @@ export default function ManualSend() {
                         {translationMode === "aiRewrite" ? "כתוב מחדש" : "תרגם"}
                       </span>
                     </Button>
-                  </div>
+                   </div>
+                  
+                  {/* Rewrite + Affiliate Link Button */}
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleRewriteWithAffiliate}
+                    disabled={isRewritingWithAffiliate || !message.trim() || !detectAliLink(message)}
+                    className="w-full gap-2"
+                  >
+                    {isRewritingWithAffiliate ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Link className="h-4 w-4" />
+                    )}
+                    <span className="font-hebrew">
+                      {isRewritingWithAffiliate ? "מעבד..." : "נסח מחדש + לינק אפיליאייט"}
+                    </span>
+                  </Button>
                 </div>
                 
                 <Textarea
