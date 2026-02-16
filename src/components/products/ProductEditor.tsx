@@ -224,6 +224,7 @@ export const ProductEditor = ({ productData, originalUrl, onSaveToQueue, onPostN
       orders_count: productData.orders_count ?? 0,
       rating: normalizedRating,
       status: "Scheduled",
+      sent_via: null,
       scheduled_time: null,
       channels: [],
     };

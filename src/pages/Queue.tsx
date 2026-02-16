@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Clock, CheckCircle, Sparkles, Wand2, Loader2 } from "lucide-react";
+import { Clock, CheckCircle, Sparkles, Wand2, Loader2, Send } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 const Queue = () => {
@@ -167,6 +167,8 @@ const Queue = () => {
   };
 
   const scheduledProducts = products.filter((p) => p.status === "Scheduled");
+  const sentAutoProducts = products.filter((p) => p.status === "Sent" && p.sent_via !== "manual");
+  const sentManualProducts = products.filter((p) => p.status === "Sent" && p.sent_via === "manual");
   const sentProducts = products.filter((p) => p.status === "Sent");
 
   const renderProducts = (items: Product[], showSelection: boolean = false) => {
@@ -278,13 +280,23 @@ const Queue = () => {
               </span>
             </TabsTrigger>
             <TabsTrigger 
-              value="sent" 
+              value="sent-auto" 
               className="gap-2 rounded-lg data-[state=active]:bg-success/20 data-[state=active]:text-success data-[state=active]:shadow-sm"
             >
               <CheckCircle className="h-4 w-4" />
-              <span className="hidden sm:inline">Sent</span>
+              <span className="hidden sm:inline">נשלחו (אוטו)</span>
               <span className="bg-success/20 text-success text-xs font-bold px-2 py-0.5 rounded-full">
-                {sentProducts.length}
+                {sentAutoProducts.length}
+              </span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="sent-manual" 
+              className="gap-2 rounded-lg data-[state=active]:bg-secondary/20 data-[state=active]:text-secondary data-[state=active]:shadow-sm"
+            >
+              <Send className="h-4 w-4" />
+              <span className="hidden sm:inline">נשלחו (ידני)</span>
+              <span className="bg-secondary/20 text-secondary text-xs font-bold px-2 py-0.5 rounded-full">
+                {sentManualProducts.length}
               </span>
             </TabsTrigger>
           </TabsList>
@@ -312,8 +324,12 @@ const Queue = () => {
             {renderProducts(scheduledProducts, true)}
           </TabsContent>
 
-          <TabsContent value="sent" className="animate-fade-in">
-            {renderProducts(sentProducts, false)}
+          <TabsContent value="sent-auto" className="animate-fade-in">
+            {renderProducts(sentAutoProducts, false)}
+          </TabsContent>
+
+          <TabsContent value="sent-manual" className="animate-fade-in">
+            {renderProducts(sentManualProducts, false)}
           </TabsContent>
         </Tabs>
       </div>
