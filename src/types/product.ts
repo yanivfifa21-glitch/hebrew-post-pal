@@ -10,6 +10,7 @@ export interface Product {
   orders_count: number;
   rating: number;
   status: 'Scheduled' | 'Sent' | 'processing';
+  sent_via: 'auto' | 'manual' | null;
   scheduled_time: string | null;
   channels: string[];
   created_at: string;

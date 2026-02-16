@@ -277,6 +277,7 @@ export type Database = {
           price: number | null
           rating: number | null
           scheduled_time: string | null
+          sent_via: string | null
           status: string
           title: string
           updated_at: string
@@ -295,6 +296,7 @@ export type Database = {
           price?: number | null
           rating?: number | null
           scheduled_time?: string | null
+          sent_via?: string | null
           status?: string
           title: string
           updated_at?: string
@@ -313,6 +315,7 @@ export type Database = {
           price?: number | null
           rating?: number | null
           scheduled_time?: string | null
+          sent_via?: string | null
           status?: string
           title?: string
           updated_at?: string

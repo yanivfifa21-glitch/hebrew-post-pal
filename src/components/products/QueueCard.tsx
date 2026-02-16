@@ -165,6 +165,7 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelec
         .from("products")
         .update({ 
           status: "Sent", 
+          sent_via: "manual",
           channels,
           hebrew_description: hebrewDescription 
         })

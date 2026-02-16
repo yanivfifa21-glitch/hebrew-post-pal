@@ -358,7 +358,7 @@ serve(async (req) => {
       
       const { error: finalUpdateError } = await supabase
         .from("products")
-        .update({ status: finalStatus })
+        .update({ status: finalStatus, ...(finalStatus === "Sent" ? { sent_via: "auto" } : {}) })
         .eq("id", product.id);
 
       if (finalUpdateError) {
