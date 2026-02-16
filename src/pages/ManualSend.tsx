@@ -598,38 +598,15 @@ export default function ManualSend() {
 
     setIsRewritingWithAffiliate(true);
     try {
-      // Extract price, coupon, and link lines from original message
+      // Send the FULL original text to AI (without the link itself)
       const originalText = message.trim();
-      const priceLines: string[] = [];
-      const couponLines: string[] = [];
-      const contentLines: string[] = [];
-      
-      for (const line of originalText.split(/\r?\n/)) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        
-        // Skip lines that are just links
-        if (/^https?:\/\/\S+$/i.test(trimmed)) continue;
-        
-        const isPrice = /מחיר|price|💰|₪|(\$\s*\d)|(\d\s*\$)|(\d+[\.,]\d+\s*(₪|שקל|דולר|\$|USD|ILS))/i.test(trimmed);
-        const isCoupon = /קופון|coupon|קוד\s*:?\s*[A-Z0-9]|code|🎟️|🏷️/i.test(trimmed);
-        
-        if (isPrice) {
-          priceLines.push(trimmed);
-        } else if (isCoupon) {
-          couponLines.push(trimmed);
-        } else {
-          contentLines.push(trimmed);
-        }
-      }
-
-      // Send ONLY the content lines (without price/coupon/links) to AI for rewriting
-      const textForAi = contentLines.join("\n");
+      // Remove AliExpress links from the text sent to AI (they'll be replaced with affiliate link)
+      const textForAi = originalText.replace(/https?:\/\/(?:s\.click\.aliexpress\.com|a\.aliexpress\.com|www\.aliexpress\.com|aliexpress\.com)\S+/gi, '').trim();
 
       // Run all 3 operations in parallel: AI rewrite, affiliate link, fetch image
       const [rewriteResult, affiliateResult, imageResult] = await Promise.all([
         supabase.functions.invoke("generate-hebrew-post", {
-          body: { title: textForAi || originalText, manualRewrite: true },
+          body: { title: textForAi, manualRewrite: true },
         }),
         supabase.functions.invoke("generate-affiliate-link", {
           body: { productUrl: aliLink, userId },
@@ -643,27 +620,8 @@ export default function ManualSend() {
       if (rewriteResult.error) throw new Error("שגיאה בניסוח מחדש: " + rewriteResult.error.message);
       if (!rewriteResult.data?.success) throw new Error(rewriteResult.data?.error || "שגיאה בניסוח מחדש");
       
-      // Start with ONLY the AI rewritten text (no original text)
+      // Use AI output directly - prices/coupons are preserved by the AI prompt
       let newMessage = rewriteResult.data.hebrewDescription.trim();
-      
-      // Remove any price/coupon lines the AI might have generated on its own
-      newMessage = newMessage.split(/\r?\n/).filter((line: string) => {
-        const t = line.trim();
-        if (!t) return true;
-        const isPrice = /מחיר|💰|₪|(\$\s*\d)|(\d\s*\$)|(\d+[\.,]\d+\s*(₪|שקל|דולר|\$|USD|ILS))/i.test(t);
-        const isCoupon = /קופון|coupon|קוד\s*:?\s*[A-Z0-9]|🎟️|🏷️/i.test(t);
-        return !isPrice && !isCoupon;
-      }).join("\n").trim();
-
-      // Append price info exactly once
-      if (priceLines.length > 0) {
-        newMessage += "\n\n" + priceLines.join("\n");
-      }
-
-      // Append coupon info exactly once
-      if (couponLines.length > 0) {
-        newMessage += "\n" + couponLines.join("\n");
-      }
 
       // Process affiliate link
       let affiliateLink = aliLink;
