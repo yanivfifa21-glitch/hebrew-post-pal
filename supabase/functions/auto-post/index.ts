@@ -412,6 +412,7 @@ function buildMessage(product: Record<string, unknown>): string {
 }
 
 // Telegram sender - uses HTML parse mode, supports video
+// Videos are downloaded and uploaded via FormData to avoid Telegram URL fetch failures
 async function sendToTelegram(token: string, chatId: string, product: any, text: string) {
   const imageUrl = product.image_url;
   const mediaType = product.media_type || 'image';
@@ -419,31 +420,63 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
   // Determine if video based on media_type or file extension
   const isVideo = mediaType === 'video' || 
     (imageUrl && imageUrl.match(/\.(mp4|mov|avi|webm|mkv)(\?|$)/i) !== null);
-  
-  let url: string;
-  const body: any = { chat_id: chatId, parse_mode: "HTML" };
 
   if (imageUrl) {
     if (isVideo) {
-      url = `https://api.telegram.org/bot${token}/sendVideo`;
-      body.video = imageUrl;
-      body.caption = text;
+      // Download video and upload via FormData (Telegram can't fetch many external URLs)
+      console.log("[auto-post] Downloading video for upload...");
+      try {
+        const videoResponse = await fetch(imageUrl);
+        if (!videoResponse.ok) throw new Error(`Failed to download video: ${videoResponse.status}`);
+        const videoBlob = await videoResponse.blob();
+        console.log("[auto-post] Video downloaded, size:", videoBlob.size);
+
+        const formData = new FormData();
+        formData.append("chat_id", chatId);
+        formData.append("caption", text);
+        formData.append("parse_mode", "HTML");
+        formData.append("video", videoBlob, "video.mp4");
+
+        const res = await fetch(`https://api.telegram.org/bot${token}/sendVideo`, {
+          method: "POST",
+          body: formData,
+        });
+        const result = await res.json();
+        if (!result.ok) {
+          // Fallback: try URL method
+          console.log("[auto-post] FormData upload failed, trying URL method:", result.description);
+          const res2 = await fetch(`https://api.telegram.org/bot${token}/sendVideo`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: chatId, video: imageUrl, caption: text, parse_mode: "HTML" }),
+          });
+          if (!res2.ok) throw new Error(await res2.text());
+        }
+      } catch (downloadErr) {
+        console.error("[auto-post] Video download failed, trying URL method:", downloadErr);
+        const res = await fetch(`https://api.telegram.org/bot${token}/sendVideo`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: chatId, video: imageUrl, caption: text, parse_mode: "HTML" }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+      }
     } else {
-      url = `https://api.telegram.org/bot${token}/sendPhoto`;
-      body.photo = imageUrl;
-      body.caption = text;
+      const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, photo: imageUrl, caption: text, parse_mode: "HTML" }),
+      });
+      if (!res.ok) throw new Error(await res.text());
     }
   } else {
-    url = `https://api.telegram.org/bot${token}/sendMessage`;
-    body.text = text;
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text: text, parse_mode: "HTML" }),
+    });
+    if (!res.ok) throw new Error(await res.text());
   }
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(await res.text());
 }
 
 // WhatsApp sender (GreenAPI) - supports video
