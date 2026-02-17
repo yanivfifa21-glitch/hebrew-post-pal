@@ -46,7 +46,7 @@ const Queue = () => {
 
   const handleProductSent = (productId: string) => {
     setProducts((prev) => 
-      prev.map((p) => p.id === productId ? { ...p, status: 'Sent' as Product['status'] } : p)
+      prev.map((p) => p.id === productId ? { ...p, status: 'Sent' as Product['status'], sent_via: p.sent_via || 'manual' } : p)
     );
   };
 
