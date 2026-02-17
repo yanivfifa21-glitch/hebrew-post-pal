@@ -52,6 +52,7 @@ async function sendTelegramMessage(
         formData.append("caption", caption);
         formData.append("parse_mode", "HTML");
         formData.append("video", videoBlob, "video.mp4");
+        formData.append("supports_streaming", "true");
 
         const response = await fetch(
           `https://api.telegram.org/bot${botToken}/sendVideo`,
@@ -65,7 +66,7 @@ async function sendTelegramMessage(
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chat_id: chatId, video: imageUrl, caption, parse_mode: "HTML" }),
+            body: JSON.stringify({ chat_id: chatId, video: imageUrl, caption, parse_mode: "HTML", supports_streaming: true }),
           }
         );
         return await response.json();
