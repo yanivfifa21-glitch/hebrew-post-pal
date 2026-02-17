@@ -441,7 +441,8 @@ export default function ManualSend() {
         hebrew_description: message.trim() || null,
         image_url: mediaUrl,
         media_type: effectiveMediaType || "image",
-        status: "Scheduled"
+        status: "Scheduled",
+        sent_via: "manual"
       });
 
       if (productError) throw productError;
@@ -479,7 +480,8 @@ export default function ManualSend() {
         hebrew_description: message.trim() || null,
         image_url: mediaUrl,
         media_type: effectiveMediaType || "image",
-        status: "Scheduled"
+        status: "Scheduled",
+        sent_via: "manual"
       });
 
       if (productError) throw productError;
