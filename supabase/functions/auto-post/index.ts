@@ -436,6 +436,7 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
         formData.append("caption", text);
         formData.append("parse_mode", "HTML");
         formData.append("video", videoBlob, "video.mp4");
+        formData.append("supports_streaming", "true");
 
         const res = await fetch(`https://api.telegram.org/bot${token}/sendVideo`, {
           method: "POST",
@@ -448,7 +449,7 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
           const res2 = await fetch(`https://api.telegram.org/bot${token}/sendVideo`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chat_id: chatId, video: imageUrl, caption: text, parse_mode: "HTML" }),
+            body: JSON.stringify({ chat_id: chatId, video: imageUrl, caption: text, parse_mode: "HTML", supports_streaming: true }),
           });
           if (!res2.ok) throw new Error(await res2.text());
         }
@@ -457,7 +458,7 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
         const res = await fetch(`https://api.telegram.org/bot${token}/sendVideo`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chat_id: chatId, video: imageUrl, caption: text, parse_mode: "HTML" }),
+          body: JSON.stringify({ chat_id: chatId, video: imageUrl, caption: text, parse_mode: "HTML", supports_streaming: true }),
         });
         if (!res.ok) throw new Error(await res.text());
       }
