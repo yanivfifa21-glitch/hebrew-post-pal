@@ -6,6 +6,7 @@ import {
   History, 
   Settings, 
   Zap,
+  MapPin,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -32,6 +33,7 @@ const navItems = [
   { icon: Plus, label: "Add Product", path: "/add-product" },
   { icon: Send, label: "שליחה ידנית", path: "/manual-send" },
   { icon: List, label: "Queue", path: "/queue" },
+  { icon: MapPin, label: "אזורים", path: "/zones" },
   { icon: History, label: "History", path: "/history" },
   { icon: Settings, label: "Settings", path: "/settings" },
 ];
