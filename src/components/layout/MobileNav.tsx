@@ -10,7 +10,8 @@ import {
   Menu,
   X,
   LogOut,
-  Send
+  Send,
+  MapPin
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -29,6 +30,7 @@ const navItems = [
   { icon: Plus, label: "הוסף מוצר", path: "/add-product" },
   { icon: Send, label: "שליחה ידנית", path: "/manual-send" },
   { icon: List, label: "תור פרסום", path: "/queue" },
+  { icon: MapPin, label: "אזורים", path: "/zones" },
   { icon: History, label: "היסטוריה", path: "/history" },
   { icon: Settings, label: "הגדרות", path: "/settings" },
 ];

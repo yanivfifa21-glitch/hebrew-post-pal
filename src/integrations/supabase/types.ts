@@ -386,6 +386,129 @@ export type Database = {
         }
         Relationships: []
       }
+      zone_accounts: {
+        Row: {
+          account_id: string
+          created_at: string
+          id: string
+          zone_id: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          id?: string
+          zone_id: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          id?: string
+          zone_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "zone_accounts_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "messaging_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "zone_accounts_zone_id_fkey"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "zones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      zone_products: {
+        Row: {
+          created_at: string
+          id: string
+          product_id: string
+          scheduled_time: string | null
+          sent_at: string | null
+          status: string
+          zone_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          product_id: string
+          scheduled_time?: string | null
+          sent_at?: string | null
+          status?: string
+          zone_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          product_id?: string
+          scheduled_time?: string | null
+          sent_at?: string | null
+          status?: string
+          zone_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "zone_products_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "zone_products_zone_id_fkey"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "zones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      zones: {
+        Row: {
+          created_at: string
+          id: string
+          interval_end_time: string
+          interval_minutes: number
+          interval_start_time: string
+          is_active: boolean
+          last_posted_at: string | null
+          name: string
+          publishing_days: number[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          interval_end_time?: string
+          interval_minutes?: number
+          interval_start_time?: string
+          is_active?: boolean
+          last_posted_at?: string | null
+          name: string
+          publishing_days?: number[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          interval_end_time?: string
+          interval_minutes?: number
+          interval_start_time?: string
+          is_active?: boolean
+          last_posted_at?: string | null
+          name?: string
+          publishing_days?: number[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

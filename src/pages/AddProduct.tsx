@@ -9,6 +9,7 @@ import { FetchedProductData, Product } from "@/types/product";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { ZoneSelector } from "@/components/products/ZoneSelector";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,6 +43,7 @@ const AddProduct = () => {
   const [pendingProduct, setPendingProduct] = useState<Omit<Product, "id" | "created_at" | "updated_at"> | null>(null);
   const [pendingAction, setPendingAction] = useState<"queue" | "post" | null>(null);
   const [initialCoupons, setInitialCoupons] = useState<Coupon[] | undefined>(undefined);
+  const [selectedZones, setSelectedZones] = useState<string[]>([]);
 
   // Handle pre-filled data from Excel import
   useEffect(() => {
@@ -270,6 +272,7 @@ const AddProduct = () => {
     
     setIsSaving(true);
     try {
+      let productId = draftProductId;
       if (draftProductId) {
         const { error } = await supabase
           .from("products")
@@ -279,13 +282,26 @@ const AddProduct = () => {
       } else {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error("Not authenticated");
-        const { error } = await supabase.from("products").insert({ ...product, status: "Scheduled", user_id: user.id });
+        const { data, error } = await supabase.from("products").insert({ ...product, status: "Scheduled", user_id: user.id }).select("id").single();
         if (error) throw error;
+        productId = data.id;
+      }
+
+      // Assign to selected zones
+      if (selectedZones.length > 0 && productId) {
+        const zoneInserts = selectedZones.map(zoneId => ({
+          zone_id: zoneId,
+          product_id: productId!,
+          status: "Scheduled",
+        }));
+        await supabase.from("zone_products").insert(zoneInserts);
       }
 
       toast({
         title: "Saved to Queue!",
-        description: "Product has been added to your queue.",
+        description: selectedZones.length > 0 
+          ? `Product added to queue and ${selectedZones.length} zones.`
+          : "Product has been added to your queue.",
       });
 
       navigate("/queue");
@@ -473,14 +489,21 @@ const AddProduct = () => {
         </div>
 
         {fetchedProduct && (
-          <ProductEditor
-            productData={fetchedProduct}
-            originalUrl={url}
-            onSaveToQueue={handleSaveToQueue}
-            onPostNow={handlePostNow}
-            isLoading={isSaving}
-            initialCoupons={initialCoupons}
-          />
+          <>
+            <ZoneSelector
+              selectedZones={selectedZones}
+              onSelectionChange={setSelectedZones}
+              className="glass-card neon-border p-4"
+            />
+            <ProductEditor
+              productData={fetchedProduct}
+              originalUrl={url}
+              onSaveToQueue={handleSaveToQueue}
+              onPostNow={handlePostNow}
+              isLoading={isSaving}
+              initialCoupons={initialCoupons}
+            />
+          </>
         )}
 
         {/* Duplicate Confirmation Dialog */}

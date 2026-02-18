@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { ZoneSelector } from "@/components/products/ZoneSelector";
 import { 
   Send, 
   Image as ImageIcon, 
@@ -77,6 +78,7 @@ export default function ManualSend() {
   const [translationMode, setTranslationMode] = useState<TranslationMode>("aiRewrite");
   const [isRewriting, setIsRewriting] = useState(false);
   const [isRewritingWithAffiliate, setIsRewritingWithAffiliate] = useState(false);
+  const [selectedZones, setSelectedZones] = useState<string[]>([]);
 
   useEffect(() => {
     fetchAccounts();
@@ -434,7 +436,7 @@ export default function ManualSend() {
       if (manualError) throw manualError;
 
       // Add to products (automatic queue) with video support
-      const { error: productError } = await supabase.from("products").insert({
+      const { data: productData, error: productError } = await supabase.from("products").insert({
         user_id: userId,
         original_url: "manual-entry",
         title: message.trim().substring(0, 100) || "פוסט ידני",
@@ -443,9 +445,19 @@ export default function ManualSend() {
         media_type: effectiveMediaType || "image",
         status: "Scheduled",
         sent_via: "manual"
-      });
+      }).select("id").single();
 
       if (productError) throw productError;
+
+      // Assign to zones if selected
+      if (selectedZones.length > 0 && productData) {
+        const zoneInserts = selectedZones.map(zoneId => ({
+          zone_id: zoneId,
+          product_id: productData.id,
+          status: "Scheduled",
+        }));
+        await supabase.from("zone_products").insert(zoneInserts);
+      }
 
       toast({ title: "נוסף לשתי המחסניות" });
       clearForm();
@@ -473,7 +485,7 @@ export default function ManualSend() {
     try {
       const mediaUrl = await resolveMediaUrl();
 
-      const { error: productError } = await supabase.from("products").insert({
+      const { data: productData, error: productError } = await supabase.from("products").insert({
         user_id: userId,
         original_url: "manual-entry",
         title: message.trim().substring(0, 100) || "פוסט ידני",
@@ -482,11 +494,24 @@ export default function ManualSend() {
         media_type: effectiveMediaType || "image",
         status: "Scheduled",
         sent_via: "manual"
-      });
+      }).select("id").single();
 
       if (productError) throw productError;
 
-      toast({ title: "נוסף למחסנית האוטומטית" });
+      // Assign to zones if selected
+      if (selectedZones.length > 0 && productData) {
+        const zoneInserts = selectedZones.map(zoneId => ({
+          zone_id: zoneId,
+          product_id: productData.id,
+          status: "Scheduled",
+        }));
+        await supabase.from("zone_products").insert(zoneInserts);
+      }
+
+      toast({ title: selectedZones.length > 0 
+        ? `נוסף למחסנית האוטומטית ול-${selectedZones.length} אזורים` 
+        : "נוסף למחסנית האוטומטית" 
+      });
       clearForm();
     } catch (error) {
       console.error("Error adding to automation queue:", error);
@@ -907,6 +932,12 @@ export default function ManualSend() {
                     </div>
                   )}
                 </div>
+
+                {/* Zone Selector */}
+                <ZoneSelector
+                  selectedZones={selectedZones}
+                  onSelectionChange={setSelectedZones}
+                />
 
                 {/* Action Buttons */}
                 <div className="flex flex-col gap-2 pt-2">
