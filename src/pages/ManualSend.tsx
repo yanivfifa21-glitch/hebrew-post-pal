@@ -655,12 +655,16 @@ export default function ManualSend() {
         const productData = imageResult.data.data;
         const statsLines: string[] = [];
 
-        if (productData.orders_count && Number(productData.orders_count) > 0 && !newMessage.includes('הזמנות')) {
+        // Use specific pattern matching to avoid false positives from AI text
+        const hasOrdersStat = /מעל\s+[\d,]+\s+הזמנות|📦\s.*הזמנות|👥\s.*הזמנות/.test(newMessage);
+        const hasRatingStat = /דירוג[:\s]+[\d.]+\s+מתוך|⭐\s.*דירוג/.test(newMessage);
+
+        if (productData.orders_count && Number(productData.orders_count) > 0 && !hasOrdersStat) {
           const rounded = Math.ceil(Number(productData.orders_count) / 100) * 100;
           statsLines.push(`👥 מעל ${rounded.toLocaleString()} הזמנות`);
         }
 
-        if (productData.rating && Number(productData.rating) > 0 && !newMessage.includes('דירוג')) {
+        if (productData.rating && Number(productData.rating) > 0 && !hasRatingStat) {
           let r = Number(productData.rating);
           if (r > 5) r = r / 20; // normalize percentage to 5-star
           statsLines.push(`⭐ דירוג: ${r.toFixed(1)} מתוך 5`);
@@ -669,6 +673,8 @@ export default function ManualSend() {
         if (statsLines.length > 0) {
           newMessage = newMessage.trim() + '\n\n' + statsLines.join('\n');
         }
+      } else {
+        console.warn("[RewriteWithAffiliate] fetch-ali-product failed or returned no data:", imageResult.data);
       }
 
       // Process affiliate link

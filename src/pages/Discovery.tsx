@@ -9,10 +9,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { 
   Search, Loader2, Sparkles, TrendingUp, Flame, Star, 
   ShoppingBag, RefreshCw, Zap, AlertCircle, Link as LinkIcon,
-  FileSpreadsheet, CheckCircle2, ListPlus, Percent, Filter, SlidersHorizontal
+  FileSpreadsheet, CheckCircle2, ListPlus, Percent, Filter, SlidersHorizontal, Send
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { PullToRefreshIndicator, PullToRefreshContainer } from "@/components/ui/pull-to-refresh";
 import { ExcelImporter, ExcelProduct } from "@/components/products/ExcelImporter";
@@ -97,6 +98,15 @@ const Discovery = () => {
   const [addingProductId, setAddingProductId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   
+  // Channel selection for Excel import
+  const [excelTargetChannels, setExcelTargetChannels] = useState<string[]>([]); // empty = all/general
+  const [messagingAccounts, setMessagingAccounts] = useState<Array<{
+    id: string;
+    account_type: string;
+    account_name: string;
+    is_active: boolean;
+  }>>([]);
+  
   // Multi-select state (used for both Excel and API products)
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [isAddingSelected, setIsAddingSelected] = useState(false);
@@ -115,6 +125,26 @@ const Discovery = () => {
     });
 
     return () => subscription.unsubscribe();
+  }, []);
+
+  // Fetch messaging accounts for channel selection
+  useEffect(() => {
+    const fetchAccounts = async () => {
+      try {
+        const { data } = await supabase.rpc("get_my_messaging_accounts_safe");
+        if (data) {
+          const configured = (data as any[]).filter((acc) => {
+            if (acc.account_type === "telegram") return acc.has_bot_token && acc.telegram_chat_id;
+            if (acc.account_type === "whatsapp") return acc.has_api_token && acc.has_instance_id && acc.whatsapp_chat_id;
+            return false;
+          });
+          setMessagingAccounts(configured);
+        }
+      } catch (e) {
+        console.error("Error fetching messaging accounts:", e);
+      }
+    };
+    fetchAccounts();
   }, []);
 
   // Persist imported products to localStorage
@@ -466,7 +496,7 @@ const Discovery = () => {
           affiliate_link: affiliateLink,
           hebrew_description: finalDescription,
           status: "Scheduled",
-          channels: [],
+          channels: excelTargetChannels.length > 0 ? excelTargetChannels : [],
           user_id: userId,
         });
 
@@ -563,7 +593,7 @@ const Discovery = () => {
         affiliate_link: affiliateLink,
         hebrew_description: finalDescription,
         status: "Scheduled",
-        channels: [],
+        channels: excelTargetChannels.length > 0 ? excelTargetChannels : [],
         user_id: userId,
       });
 
@@ -892,6 +922,56 @@ const Discovery = () => {
                 hasProducts={importedProducts.length > 0}
               />
             </div>
+
+            {/* Channel Selection for Excel Import */}
+            {messagingAccounts.length > 0 && (
+              <div className="glass-card neon-border p-4 space-y-3" dir="rtl">
+                <div className="flex items-center gap-2">
+                  <Send className="h-4 w-4 text-primary" />
+                  <h4 className="font-medium text-foreground text-sm">יעד שליחה</h4>
+                  <span className="text-xs text-muted-foreground">
+                    {excelTargetChannels.length === 0 ? "(כללי - כל הערוצים)" : `(${excelTargetChannels.length} נבחרו)`}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {messagingAccounts.map((acc) => {
+                    const isSelected = excelTargetChannels.includes(acc.account_type);
+                    return (
+                      <button
+                        key={acc.id}
+                        onClick={() => {
+                          setExcelTargetChannels(prev => {
+                            // Toggle this account type
+                            if (prev.includes(acc.account_type)) {
+                              return prev.filter(c => c !== acc.account_type);
+                            }
+                            return [...new Set([...prev, acc.account_type])];
+                          });
+                        }}
+                        className={cn(
+                          "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border",
+                          isSelected
+                            ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                            : "bg-muted/50 text-muted-foreground border-border hover:border-primary/50"
+                        )}
+                      >
+                        {acc.account_type === "telegram" ? "📨" : "💬"}
+                        {acc.account_name}
+                        {!acc.is_active && <span className="opacity-60">(לא פעיל)</span>}
+                      </button>
+                    );
+                  })}
+                  {excelTargetChannels.length > 0 && (
+                    <button
+                      onClick={() => setExcelTargetChannels([])}
+                      className="text-xs text-muted-foreground hover:text-foreground underline"
+                    >
+                      נקה (כללי)
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Imported Products Grid */}
             {importedProducts.length > 0 && (
