@@ -27,15 +27,15 @@ import { toast } from "@/hooks/use-toast";
 const ADMIN_EMAIL = "yanivfifa21@gmail.com";
 
 const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/" },
-  { icon: TrendingUp, label: "Discovery", path: "/discovery" },
+  { icon: LayoutDashboard, label: "דאשבורד", path: "/" },
+  { icon: TrendingUp, label: "גילוי מוצרים", path: "/discovery" },
   { icon: Search, label: "חיפוש חופשי", path: "/free-search" },
-  { icon: Plus, label: "Add Product", path: "/add-product" },
+  { icon: Plus, label: "הוסף מוצר", path: "/add-product" },
   { icon: Send, label: "שליחה ידנית", path: "/manual-send" },
-  { icon: List, label: "Queue", path: "/queue" },
+  { icon: List, label: "תור פרסום", path: "/queue" },
   { icon: MapPin, label: "אזורים", path: "/zones" },
-  { icon: History, label: "History", path: "/history" },
-  { icon: Settings, label: "Settings", path: "/settings" },
+  { icon: History, label: "היסטוריה", path: "/history" },
+  { icon: Settings, label: "הגדרות", path: "/settings" },
 ];
 
 export const Sidebar = () => {
@@ -76,16 +76,11 @@ export const Sidebar = () => {
         collapsed ? "w-[72px]" : "w-[260px]"
       )}
     >
-      {/* Glassmorphism Background with Cyberpunk gradient */}
-      <div className="absolute inset-0 bg-sidebar/90 backdrop-blur-2xl border-r border-primary/10" />
+      {/* Clean Background with subtle gradient */}
+      <div className="absolute inset-0 bg-sidebar/95 backdrop-blur-xl border-r border-border/50 shadow-sm" />
       
-      {/* Animated gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-b from-primary/5 via-transparent to-secondary/5 pointer-events-none" />
-      
-      {/* Subtle scan line effect */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-10">
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-primary/20 to-transparent h-[200%] animate-float" style={{ animationDuration: '8s' }} />
-      </div>
+      {/* Subtle top-to-bottom gradient overlay */}
+      <div className="absolute inset-0 bg-gradient-to-b from-primary/3 via-transparent to-secondary/3 pointer-events-none" />
       
       <div className="relative flex flex-col h-full">
         {/* Logo */}
