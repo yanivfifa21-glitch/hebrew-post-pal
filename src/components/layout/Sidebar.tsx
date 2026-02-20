@@ -72,7 +72,7 @@ export const Sidebar = () => {
   return (
     <aside 
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen flex-col hidden md:flex transition-all duration-300",
+        "fixed right-0 top-0 z-40 h-screen flex-col hidden md:flex transition-all duration-300",
         collapsed ? "w-[72px]" : "w-[260px]"
       )}
     >
@@ -121,7 +121,7 @@ export const Sidebar = () => {
               >
                 {/* Active indicator - neon glow */}
                 {isActive && (
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-primary shadow-glow-sm" />
+                  <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-l-full bg-primary shadow-glow-sm" />
                 )}
                 
                 <item.icon className={cn(
@@ -150,7 +150,7 @@ export const Sidebar = () => {
               )}
             >
               {location.pathname === "/admin" && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-warning shadow-[0_0_10px_hsl(var(--warning)/0.5)]" />
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-l-full bg-warning shadow-[0_0_10px_hsl(var(--warning)/0.5)]" />
               )}
               <Shield className={cn(
                 "h-5 w-5 transition-all duration-200 flex-shrink-0",

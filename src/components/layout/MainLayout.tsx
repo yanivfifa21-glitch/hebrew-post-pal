@@ -40,7 +40,7 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
       <MobileNav />
 
       {/* Main Content - responsive margins with mobile top padding for nav button */}
-      <main className="md:ml-16 lg:ml-64 transition-all duration-300 relative z-10 pt-20 pb-8 md:pt-0 md:pb-0">
+      <main className="md:mr-16 lg:mr-64 transition-all duration-300 relative z-10 pt-20 pb-8 md:pt-0 md:pb-0">
         <div className="p-4 md:p-6 lg:p-8 min-h-screen overflow-y-auto">
           {children}
         </div>
