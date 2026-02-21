@@ -158,6 +158,39 @@ export type Database = {
         }
         Relationships: []
       }
+      coupon_campaigns: {
+        Row: {
+          coupons: Json
+          created_at: string
+          exchange_rate: number
+          id: string
+          is_active: boolean
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          coupons?: Json
+          created_at?: string
+          exchange_rate?: number
+          id?: string
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          coupons?: Json
+          created_at?: string
+          exchange_rate?: number
+          id?: string
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       custom_emoji_mappings: {
         Row: {
           created_at: string

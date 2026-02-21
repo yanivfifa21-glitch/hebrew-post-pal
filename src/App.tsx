@@ -13,6 +13,7 @@ import Discovery from "./pages/Discovery";
 import FreeSearch from "./pages/FreeSearch";
 import ManualSend from "./pages/ManualSend";
 import Zones from "./pages/Zones";
+import Coupons from "./pages/Coupons";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import Admin from "./pages/Admin";
@@ -39,6 +40,7 @@ const App = () => (
           <Route path="/free-search" element={<AuthGuard><FreeSearch /></AuthGuard>} />
           <Route path="/manual-send" element={<AuthGuard><ManualSend /></AuthGuard>} />
           <Route path="/zones" element={<AuthGuard><Zones /></AuthGuard>} />
+          <Route path="/coupons" element={<AuthGuard><Coupons /></AuthGuard>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
