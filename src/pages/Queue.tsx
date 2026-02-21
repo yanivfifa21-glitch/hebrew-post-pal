@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Clock, CheckCircle, Sparkles, Wand2, Loader2, Send } from "lucide-react";
+import { Clock, CheckCircle, Sparkles, Wand2, Loader2, Send, RotateCcw } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 const Queue = () => {
@@ -18,7 +18,9 @@ const Queue = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
+  const [selectedManualProducts, setSelectedManualProducts] = useState<Set<string>>(new Set());
   const [isEnhancing, setIsEnhancing] = useState(false);
+  const [isReturningBulk, setIsReturningBulk] = useState(false);
   const [enhanceProgress, setEnhanceProgress] = useState(0);
   const [enhanceTotal, setEnhanceTotal] = useState(0);
   const [currentEnhancing, setCurrentEnhancing] = useState("");
@@ -83,6 +85,51 @@ const Queue = () => {
       setSelectedProducts(new Set(allScheduledIds));
     } else {
       setSelectedProducts(new Set());
+    }
+  };
+
+  const handleManualSelectionChange = (productId: string, selected: boolean) => {
+    setSelectedManualProducts((prev) => {
+      const newSet = new Set(prev);
+      if (selected) {
+        newSet.add(productId);
+      } else {
+        newSet.delete(productId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAllManual = (checked: boolean) => {
+    if (checked) {
+      setSelectedManualProducts(new Set(sentManualProducts.map(p => p.id)));
+    } else {
+      setSelectedManualProducts(new Set());
+    }
+  };
+
+  const handleReturnSelectedToQueue = async () => {
+    if (selectedManualProducts.size === 0) {
+      toast({ title: "לא נבחרו פריטים", variant: "destructive" });
+      return;
+    }
+    setIsReturningBulk(true);
+    try {
+      const ids = Array.from(selectedManualProducts);
+      const { error } = await supabase
+        .from("products")
+        .update({ status: "Scheduled" })
+        .in("id", ids);
+      if (error) throw error;
+      setProducts((prev) =>
+        prev.map((p) => ids.includes(p.id) ? { ...p, status: "Scheduled" as Product["status"] } : p)
+      );
+      setSelectedManualProducts(new Set());
+      toast({ title: `✅ ${ids.length} פריטים הוחזרו לתור` });
+    } catch {
+      toast({ title: "שגיאה בהחזרה לתור", variant: "destructive" });
+    } finally {
+      setIsReturningBulk(false);
     }
   };
 
@@ -171,7 +218,7 @@ const Queue = () => {
   const sentManualProducts = products.filter((p) => p.status === "Sent" && p.sent_via === "manual");
   const sentProducts = products.filter((p) => p.status === "Sent");
 
-  const renderProducts = (items: Product[], showSelection: boolean = false) => {
+  const renderProducts = (items: Product[], showSelection: boolean = false, isManualTab: boolean = false) => {
     if (isLoading) {
       return <SkeletonList count={3} />;
     }
@@ -181,6 +228,9 @@ const Queue = () => {
         <EmptyQueue onAdd={() => navigate("/add-product")} />
       );
     }
+
+    const currentSelected = isManualTab ? selectedManualProducts : selectedProducts;
+    const currentHandler = isManualTab ? handleManualSelectionChange : handleSelectionChange;
 
     return (
       <div className="space-y-4">
@@ -195,8 +245,8 @@ const Queue = () => {
               onSent={handleProductSent}
               onDeleted={handleProductDeleted}
               onStatusChanged={handleStatusChanged}
-              isSelected={selectedProducts.has(product.id)}
-              onSelectionChange={handleSelectionChange}
+              isSelected={currentSelected.has(product.id)}
+              onSelectionChange={currentHandler}
               showCheckbox={showSelection}
             />
           </div>
@@ -328,8 +378,43 @@ const Queue = () => {
             {renderProducts(sentAutoProducts, false)}
           </TabsContent>
 
-          <TabsContent value="sent-manual" className="animate-fade-in">
-            {renderProducts(sentManualProducts, false)}
+          <TabsContent value="sent-manual" className="animate-fade-in space-y-4">
+            {/* Select All + Return Button */}
+            {sentManualProducts.length > 0 && (
+              <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border/50 flex-wrap">
+                <Checkbox
+                  checked={sentManualProducts.length > 0 && sentManualProducts.every(p => selectedManualProducts.has(p.id))}
+                  onCheckedChange={(checked) => handleSelectAllManual(checked === true)}
+                  className="h-5 w-5"
+                  aria-label="בחר הכל"
+                />
+                <span className="text-sm font-medium">
+                  {sentManualProducts.every(p => selectedManualProducts.has(p.id))
+                    ? "בטל בחירה"
+                    : selectedManualProducts.size > 0
+                      ? `${selectedManualProducts.size} נבחרו`
+                      : "בחר הכל"
+                  }
+                </span>
+                <div className="mr-auto">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleReturnSelectedToQueue}
+                    disabled={selectedManualProducts.size === 0 || isReturningBulk}
+                    className="gap-2 border-primary/50 text-primary hover:bg-primary/10"
+                  >
+                    {isReturningBulk ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-4 w-4" />
+                    )}
+                    החזר נבחרים לתור ({selectedManualProducts.size})
+                  </Button>
+                </div>
+              </div>
+            )}
+            {renderProducts(sentManualProducts, true, true)}
           </TabsContent>
         </Tabs>
       </div>
