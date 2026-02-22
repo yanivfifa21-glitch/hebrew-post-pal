@@ -15,6 +15,7 @@ interface TelegramRequest {
   userId: string;
   accountId?: string;
   mediaType?: 'image' | 'video';
+  albumUrls?: string[];
 }
 
 function replaceWithCustomEmoji(text: string, emojiMap: Record<string, string>): string {
@@ -95,6 +96,30 @@ async function sendTelegramMessage(
   }
 }
 
+// Send album (media group) via Telegram
+async function sendTelegramAlbum(
+  botToken: string,
+  chatId: string,
+  caption: string,
+  albumUrls: string[]
+): Promise<any> {
+  const media = albumUrls.map((url, idx) => ({
+    type: "photo" as const,
+    media: url,
+    ...(idx === 0 ? { caption, parse_mode: "HTML" } : {}),
+  }));
+
+  const response = await fetch(
+    `https://api.telegram.org/bot${botToken}/sendMediaGroup`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, media }),
+    }
+  );
+  return await response.json();
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -125,7 +150,7 @@ serve(async (req) => {
       );
     }
 
-    const { title, hebrewDescription, price, imageUrl, affiliateLink, userId, accountId, mediaType }: TelegramRequest = await req.json();
+    const { title, hebrewDescription, price, imageUrl, affiliateLink, userId, accountId, mediaType, albumUrls }: TelegramRequest = await req.json();
 
     if (userId !== user.id) {
       return new Response(
@@ -208,20 +233,45 @@ serve(async (req) => {
 
     console.log("[send-telegram] Sending for user:", user.email);
 
-    let result = await sendTelegramMessage(botToken, chatId, caption, imageUrl, mediaType);
-    console.log("[send-telegram] Response:", JSON.stringify(result));
+    let result: any;
 
-    // If custom emoji caused a 400 error, retry without them
-    if (!result.ok && usedCustomEmoji && result.error_code === 400) {
-      console.log("[send-telegram] Custom emoji failed, retrying with plain text...");
-      const plainCaption = stripCustomEmojiTags(caption);
-      result = await sendTelegramMessage(botToken, chatId, plainCaption, imageUrl, mediaType);
-      console.log("[send-telegram] Retry response:", JSON.stringify(result));
+    // Album mode: sendMediaGroup
+    if (albumUrls && albumUrls.length > 1) {
+      console.log(`[send-telegram] Sending album with ${albumUrls.length} photos`);
+      result = await sendTelegramAlbum(botToken, chatId, caption, albumUrls);
+      console.log("[send-telegram] Album response:", JSON.stringify(result));
+
+      // sendMediaGroup returns array on success
+      if (Array.isArray(result.result) || result.ok) {
+        return new Response(
+          JSON.stringify({ success: true, messageId: result.result?.[0]?.message_id }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // If custom emoji caused failure, retry without them
+      if (usedCustomEmoji && result.error_code === 400) {
+        console.log("[send-telegram] Album: Custom emoji failed, retrying plain...");
+        const plainCaption = stripCustomEmojiTags(caption);
+        result = await sendTelegramAlbum(botToken, chatId, plainCaption, albumUrls);
+      }
+    } else {
+      // Single media or text
+      result = await sendTelegramMessage(botToken, chatId, caption, imageUrl, mediaType);
+      console.log("[send-telegram] Response:", JSON.stringify(result));
+
+      // If custom emoji caused a 400 error, retry without them
+      if (!result.ok && usedCustomEmoji && result.error_code === 400) {
+        console.log("[send-telegram] Custom emoji failed, retrying with plain text...");
+        const plainCaption = stripCustomEmojiTags(caption);
+        result = await sendTelegramMessage(botToken, chatId, plainCaption, imageUrl, mediaType);
+        console.log("[send-telegram] Retry response:", JSON.stringify(result));
+      }
     }
 
-    if (result.ok) {
+    if (result.ok || (Array.isArray(result.result))) {
       return new Response(
-        JSON.stringify({ success: true, messageId: result.result?.message_id }),
+        JSON.stringify({ success: true, messageId: result.result?.message_id || result.result?.[0]?.message_id }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     } else {

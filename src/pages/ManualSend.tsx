@@ -61,6 +61,8 @@ interface ManualQueueItem {
 export default function ManualSend() {
   const [message, setMessage] = useState("");
   const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [mediaFiles, setMediaFiles] = useState<File[]>([]);
+  const [mediaPreviews, setMediaPreviews] = useState<string[]>([]);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
   const [mediaType, setMediaType] = useState<"image" | "video" | null>(null);
   const [imageUrlPreview, setImageUrlPreview] = useState<string | null>(null);
@@ -174,8 +176,45 @@ export default function ManualSend() {
     setMediaPreview(URL.createObjectURL(file));
   };
 
+  const handleMultiImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const newFiles: File[] = [];
+    const newPreviews: string[] = [];
+
+    for (let i = 0; i < Math.min(files.length, 10 - mediaFiles.length); i++) {
+      const file = files[i];
+      if (!file.type.startsWith("image/")) continue;
+      if (file.size > 10 * 1024 * 1024) continue;
+      newFiles.push(file);
+      newPreviews.push(URL.createObjectURL(file));
+    }
+
+    if (newFiles.length === 0) {
+      toast({ title: "לא נמצאו תמונות תקינות", variant: "destructive" });
+      return;
+    }
+
+    setMediaFiles(prev => [...prev, ...newFiles]);
+    setMediaPreviews(prev => [...prev, ...newPreviews]);
+    setMediaType("image");
+    // Clear single media
+    setMediaFile(null);
+    setMediaPreview(null);
+    setImageUrlPreview(null);
+  };
+
+  const removeMultiImage = (idx: number) => {
+    setMediaFiles(prev => prev.filter((_, i) => i !== idx));
+    setMediaPreviews(prev => prev.filter((_, i) => i !== idx));
+    if (mediaFiles.length <= 1) setMediaType(null);
+  };
+
   const clearMedia = () => {
     setMediaFile(null);
+    setMediaFiles([]);
+    setMediaPreviews([]);
     setMediaPreview(null);
     setMediaType(null);
     setImageUrlPreview(null);
@@ -187,9 +226,10 @@ export default function ManualSend() {
   };
 
   // Get the effective media URL and type (file upload takes priority, then image URL)
-  const effectiveMediaPreview = mediaPreview || imageUrlPreview;
+  const effectiveMediaPreview = mediaPreview || imageUrlPreview || (mediaPreviews.length > 0 ? mediaPreviews[0] : null);
   const effectiveMediaType = mediaType || (imageUrlPreview ? "image" : null);
-  const hasMedia = !!mediaFile || !!imageUrlPreview;
+  const hasMedia = !!mediaFile || !!imageUrlPreview || mediaFiles.length > 0;
+  const isAlbumMode = mediaFiles.length > 1;
 
   // Detect AliExpress link in message text
   const detectAliLink = (text: string): string | null => {
@@ -268,11 +308,11 @@ export default function ManualSend() {
   const sendToAccounts = async (
     msgText: string, 
     mediaUrl: string | null,
-    targetAccounts: string[] = selectedAccounts
+    targetAccounts: string[] = selectedAccounts,
+    albumUrls: string[] = []
   ): Promise<{ success: number; failed: number }> => {
     const results = { success: 0, failed: 0 };
 
-    // Process accounts in parallel with Promise.allSettled for better reliability
     const sendPromises = targetAccounts.map(async (accountId) => {
       const account = allAccounts.find(acc => acc.id === accountId);
       if (!account) return { success: false, accountName: "unknown" };
@@ -282,17 +322,22 @@ export default function ManualSend() {
 
         console.log(`[ManualSend] Sending to ${account.account_name} via ${endpoint}`);
 
-        const { data, error } = await supabase.functions.invoke(endpoint, {
-          body: {
-            title: "",
-            hebrewDescription: msgText,
-            price: 0,
-            imageUrl: mediaUrl,
-            affiliateLink: null,
-            userId,
-            accountId
-          }
-        });
+        const body: any = {
+          title: "",
+          hebrewDescription: msgText,
+          price: 0,
+          imageUrl: mediaUrl,
+          affiliateLink: null,
+          userId,
+          accountId,
+        };
+
+        // Pass album URLs for multi-image support
+        if (albumUrls.length > 1) {
+          body.albumUrls = albumUrls;
+        }
+
+        const { data, error } = await supabase.functions.invoke(endpoint, { body });
 
         if (error) {
           console.error(`[ManualSend] Edge function error for ${account.account_name}:`, error);
@@ -335,7 +380,24 @@ export default function ManualSend() {
     if (imageUrlPreview) {
       return imageUrlPreview;
     }
+    if (mediaFiles.length > 0) {
+      // Return first image URL for single-image contexts
+      const url = await uploadMediaToStorage(mediaFiles[0]);
+      if (!url) throw new Error("Failed to upload media");
+      return url;
+    }
     return null;
+  };
+
+  // Upload all album images
+  const resolveAlbumUrls = async (): Promise<string[]> => {
+    if (mediaFiles.length <= 1) return [];
+    const urls: string[] = [];
+    for (const file of mediaFiles) {
+      const url = await uploadMediaToStorage(file);
+      if (url) urls.push(url);
+    }
+    return urls;
   };
 
   // Action: Send Now
@@ -356,7 +418,8 @@ export default function ManualSend() {
     setLoading(true);
     try {
       const mediaUrl = await resolveMediaUrl();
-      const results = await sendToAccounts(message, mediaUrl);
+      const albumUrls = await resolveAlbumUrls();
+      const results = await sendToAccounts(message, mediaUrl, selectedAccounts, albumUrls);
 
       if (results.success > 0) {
         toast({
@@ -880,7 +943,43 @@ export default function ManualSend() {
                 <div className="space-y-3">
                   <Label className="font-hebrew">מדיה (אופציונלי)</Label>
                   
-                  {effectiveMediaPreview ? (
+                  {/* Album preview (multiple images) */}
+                  {mediaFiles.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="font-hebrew">
+                          📸 אלבום - {mediaFiles.length} תמונות
+                        </Badge>
+                        <Button variant="ghost" size="sm" className="text-destructive text-xs" onClick={clearMedia}>
+                          נקה הכל
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                        {mediaPreviews.map((preview, idx) => (
+                          <div key={idx} className="relative group">
+                            <img src={preview} alt={`Image ${idx + 1}`} className="h-20 w-full object-cover rounded-lg border border-border" />
+                            <Button
+                              variant="destructive"
+                              size="icon"
+                              className="absolute -top-1 -right-1 h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => removeMultiImage(idx)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                        {mediaFiles.length < 10 && (
+                          <label className="cursor-pointer h-20 rounded-lg border-2 border-dashed border-border hover:border-primary/50 flex items-center justify-center transition-colors">
+                            <input type="file" accept="image/*" multiple className="hidden" onChange={handleMultiImageChange} />
+                            <Plus className="h-5 w-5 text-muted-foreground" />
+                          </label>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Single media preview */}
+                  {mediaFiles.length === 0 && effectiveMediaPreview && (
                     <div className="relative inline-block">
                       {effectiveMediaType === "video" ? (
                         <video src={effectiveMediaPreview} className="max-h-48 rounded-lg border border-border" controls />
@@ -891,7 +990,10 @@ export default function ManualSend() {
                         <X className="h-4 w-4" />
                       </Button>
                     </div>
-                  ) : (
+                  )}
+
+                  {/* Upload buttons - show when no media */}
+                  {mediaFiles.length === 0 && !effectiveMediaPreview && (
                     <div className="space-y-3">
                       {/* Auto-detect AliExpress link */}
                       {detectedLink && (
@@ -913,15 +1015,25 @@ export default function ManualSend() {
                       )}
                       
                       {/* Upload file */}
-                      <div className="flex items-center gap-2">
-                        {!detectedLink && <span className="text-xs text-muted-foreground font-hebrew">העלה קובץ:</span>}
-                        {detectedLink && <span className="text-xs text-muted-foreground font-hebrew">או העלה קובץ:</span>}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-muted-foreground font-hebrew">
+                          {detectedLink ? "או העלה קובץ:" : "העלה קובץ:"}
+                        </span>
                         <label className="cursor-pointer">
                           <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
                           <Button variant="outline" size="sm" asChild>
                             <span className="flex items-center gap-2">
                               <ImageIcon className="h-4 w-4" />
                               <span className="font-hebrew">תמונה</span>
+                            </span>
+                          </Button>
+                        </label>
+                        <label className="cursor-pointer">
+                          <input type="file" accept="image/*" multiple className="hidden" onChange={handleMultiImageChange} />
+                          <Button variant="outline" size="sm" asChild>
+                            <span className="flex items-center gap-2">
+                              <ImageIcon className="h-4 w-4" />
+                              <span className="font-hebrew">אלבום תמונות</span>
                             </span>
                           </Button>
                         </label>
