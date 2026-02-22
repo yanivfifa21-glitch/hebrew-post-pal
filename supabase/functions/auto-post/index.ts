@@ -274,6 +274,8 @@ serve(async (req) => {
 
         for (const zone of zones) {
           const zoneLabel = `[Zone:${zone.name}]`;
+          const scheduleMode = zone.schedule_mode || 'interval';
+          const zonePostingTimes: string[] = zone.posting_times || [];
 
           // Check publishing day for this zone
           const zoneDays: number[] = zone.publishing_days || [0,1,2,3,4,5,6];
@@ -282,16 +284,24 @@ serve(async (req) => {
             continue;
           }
 
-          // Check time range
-          if (!isWithinIntervalTimeRange(currentTimeStr, zone.interval_start_time, zone.interval_end_time)) {
-            console.log(`[auto-post] ${zoneLabel}: Skipping - Outside time range ${zone.interval_start_time}-${zone.interval_end_time}`);
-            continue;
-          }
+          // Schedule check based on mode
+          if (scheduleMode === 'fixed_times') {
+            // Fixed times mode
+            if (!isPostingTime(currentTimeStr, zonePostingTimes)) {
+              console.log(`[auto-post] ${zoneLabel}: Not a fixed posting time (${currentTimeStr})`);
+              continue;
+            }
+          } else {
+            // Interval mode (default)
+            if (!isWithinIntervalTimeRange(currentTimeStr, zone.interval_start_time, zone.interval_end_time)) {
+              console.log(`[auto-post] ${zoneLabel}: Skipping - Outside time range ${zone.interval_start_time}-${zone.interval_end_time}`);
+              continue;
+            }
 
-          // Check interval
-          if (!shouldPostByInterval(zone.interval_minutes, zone.last_posted_at)) {
-            console.log(`[auto-post] ${zoneLabel}: Interval not reached`);
-            continue;
+            if (!shouldPostByInterval(zone.interval_minutes, zone.last_posted_at)) {
+              console.log(`[auto-post] ${zoneLabel}: Interval not reached`);
+              continue;
+            }
           }
 
           // Get zone's target accounts

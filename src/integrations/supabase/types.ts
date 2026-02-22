@@ -510,7 +510,9 @@ export type Database = {
           is_active: boolean
           last_posted_at: string | null
           name: string
+          posting_times: string[] | null
           publishing_days: number[]
+          schedule_mode: string
           updated_at: string
           user_id: string
         }
@@ -523,7 +525,9 @@ export type Database = {
           is_active?: boolean
           last_posted_at?: string | null
           name: string
+          posting_times?: string[] | null
           publishing_days?: number[]
+          schedule_mode?: string
           updated_at?: string
           user_id: string
         }
@@ -536,7 +540,9 @@ export type Database = {
           is_active?: boolean
           last_posted_at?: string | null
           name?: string
+          posting_times?: string[] | null
           publishing_days?: number[]
+          schedule_mode?: string
           updated_at?: string
           user_id?: string
         }

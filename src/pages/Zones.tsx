@@ -48,6 +48,8 @@ interface Zone {
   publishing_days: number[];
   last_posted_at: string | null;
   created_at: string;
+  schedule_mode: string;
+  posting_times: string[];
 }
 
 interface ZoneAccount {
@@ -170,6 +172,8 @@ export default function Zones() {
           interval_start_time: zone.interval_start_time,
           interval_end_time: zone.interval_end_time,
           publishing_days: zone.publishing_days,
+          schedule_mode: zone.schedule_mode,
+          posting_times: zone.posting_times,
         })
         .eq("id", zone.id);
       if (error) throw error;
@@ -316,7 +320,9 @@ export default function Zones() {
                         <CardTitle className="text-lg font-hebrew">{zone.name}</CardTitle>
                         <Badge variant="outline" className="font-hebrew text-xs">
                           <Clock className="h-3 w-3 ml-1" />
-                          כל {zone.interval_minutes} דק׳
+                          {zone.schedule_mode === "fixed_times" 
+                            ? `${(zone.posting_times || []).length} שעות` 
+                            : `כל ${zone.interval_minutes} דק׳`}
                         </Badge>
                       </div>
                       <div className="flex items-center gap-3">
@@ -371,37 +377,108 @@ export default function Zones() {
                         />
                       </div>
 
-                      {/* Scheduling */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div>
-                          <Label className="font-hebrew">אינטרוול (דקות)</Label>
-                          <Input
-                            type="number"
-                            min={15}
-                            step={15}
-                            value={zone.interval_minutes}
-                            onChange={e => updateZoneField(zone.id, "interval_minutes", parseInt(e.target.value) || 60)}
-                            className="mt-1"
-                          />
+                      {/* Schedule Mode Toggle */}
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-3">
+                          <Label className="font-hebrew">מצב תזמון:</Label>
+                          <div className="flex gap-2">
+                            <Button
+                              variant={zone.schedule_mode !== "fixed_times" ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => updateZoneField(zone.id, "schedule_mode", "interval")}
+                              className="font-hebrew text-xs"
+                            >
+                              אינטרוול
+                            </Button>
+                            <Button
+                              variant={zone.schedule_mode === "fixed_times" ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => updateZoneField(zone.id, "schedule_mode", "fixed_times")}
+                              className="font-hebrew text-xs"
+                            >
+                              שעות קבועות
+                            </Button>
+                          </div>
                         </div>
-                        <div>
-                          <Label className="font-hebrew">שעת התחלה</Label>
-                          <Input
-                            type="time"
-                            value={zone.interval_start_time}
-                            onChange={e => updateZoneField(zone.id, "interval_start_time", e.target.value)}
-                            className="mt-1"
-                          />
-                        </div>
-                        <div>
-                          <Label className="font-hebrew">שעת סיום</Label>
-                          <Input
-                            type="time"
-                            value={zone.interval_end_time}
-                            onChange={e => updateZoneField(zone.id, "interval_end_time", e.target.value)}
-                            className="mt-1"
-                          />
-                        </div>
+
+                        {zone.schedule_mode !== "fixed_times" ? (
+                          /* Interval Mode */
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div>
+                              <Label className="font-hebrew">אינטרוול (דקות)</Label>
+                              <Input
+                                type="number"
+                                min={15}
+                                step={15}
+                                value={zone.interval_minutes}
+                                onChange={e => updateZoneField(zone.id, "interval_minutes", parseInt(e.target.value) || 60)}
+                                className="mt-1"
+                              />
+                            </div>
+                            <div>
+                              <Label className="font-hebrew">שעת התחלה</Label>
+                              <Input
+                                type="time"
+                                value={zone.interval_start_time}
+                                onChange={e => updateZoneField(zone.id, "interval_start_time", e.target.value)}
+                                className="mt-1"
+                              />
+                            </div>
+                            <div>
+                              <Label className="font-hebrew">שעת סיום</Label>
+                              <Input
+                                type="time"
+                                value={zone.interval_end_time}
+                                onChange={e => updateZoneField(zone.id, "interval_end_time", e.target.value)}
+                                className="mt-1"
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          /* Fixed Times Mode */
+                          <div className="space-y-3">
+                            <Label className="font-hebrew">שעות פרסום קבועות</Label>
+                            <div className="flex flex-wrap gap-2">
+                              {(zone.posting_times || []).map((time, idx) => (
+                                <div key={idx} className="flex items-center gap-1">
+                                  <Input
+                                    type="time"
+                                    value={time}
+                                    onChange={e => {
+                                      const newTimes = [...(zone.posting_times || [])];
+                                      newTimes[idx] = e.target.value;
+                                      updateZoneField(zone.id, "posting_times", newTimes);
+                                    }}
+                                    className="w-28"
+                                  />
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-destructive"
+                                    onClick={() => {
+                                      const newTimes = (zone.posting_times || []).filter((_, i) => i !== idx);
+                                      updateZoneField(zone.id, "posting_times", newTimes);
+                                    }}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const newTimes = [...(zone.posting_times || []), "12:00"];
+                                updateZoneField(zone.id, "posting_times", newTimes);
+                              }}
+                              className="font-hebrew gap-1"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              הוסף שעה
+                            </Button>
+                          </div>
+                        )}
                       </div>
 
                       {/* Publishing Days */}

@@ -10,8 +10,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Clock, CheckCircle, Sparkles, Wand2, Loader2, Send, RotateCcw } from "lucide-react";
+import { Clock, CheckCircle, Sparkles, Wand2, Loader2, Send, RotateCcw, Ticket } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { applyCouponToText, Coupon } from "@/lib/couponUtils";
 
 const Queue = () => {
   const navigate = useNavigate();
@@ -24,6 +25,7 @@ const Queue = () => {
   const [enhanceProgress, setEnhanceProgress] = useState(0);
   const [enhanceTotal, setEnhanceTotal] = useState(0);
   const [currentEnhancing, setCurrentEnhancing] = useState("");
+  const [isUpdatingCoupons, setIsUpdatingCoupons] = useState(false);
 
   useEffect(() => {
     fetchProducts();
@@ -213,6 +215,65 @@ const Queue = () => {
     });
   };
 
+  const handleUpdateCoupons = async () => {
+    if (selectedProducts.size === 0) {
+      toast({ title: "לא נבחרו מוצרים", variant: "destructive" });
+      return;
+    }
+    setIsUpdatingCoupons(true);
+    try {
+      // Fetch active campaign
+      const { data: campaign } = await supabase
+        .from("coupon_campaigns")
+        .select("*")
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+
+      if (!campaign || !campaign.coupons || (campaign.coupons as unknown as Coupon[]).length === 0) {
+        toast({ title: "אין קמפיין קופונים פעיל", description: "הגדר קופונים בדף הקופונים", variant: "destructive" });
+        return;
+      }
+
+      const coupons = campaign.coupons as unknown as Coupon[];
+      const exchangeRate = Number(campaign.exchange_rate) || 3.19;
+      const selectedItems = products.filter(p => selectedProducts.has(p.id));
+      
+      let updated = 0;
+      let skipped = 0;
+
+      for (const product of selectedItems) {
+        const text = product.hebrew_description || "";
+        if (!text.trim()) { skipped++; continue; }
+
+        const result = applyCouponToText(text, coupons, exchangeRate);
+        if (result.applied) {
+          const { error } = await supabase
+            .from("products")
+            .update({ hebrew_description: result.updatedText })
+            .eq("id", product.id);
+          if (!error) {
+            setProducts(prev => prev.map(p => 
+              p.id === product.id ? { ...p, hebrew_description: result.updatedText } : p
+            ));
+            updated++;
+          }
+        } else {
+          skipped++;
+        }
+      }
+
+      toast({ 
+        title: `✅ עודכנו ${updated} פוסטים`, 
+        description: skipped > 0 ? `${skipped} לא עודכנו (אין מחיר/קופון מתאים)` : undefined 
+      });
+    } catch (e) {
+      toast({ title: "שגיאה בעדכון קופונים", variant: "destructive" });
+    } finally {
+      setIsUpdatingCoupons(false);
+    }
+  };
+
   const scheduledProducts = products.filter((p) => p.status === "Scheduled");
   const sentAutoProducts = products.filter((p) => p.status === "Sent" && p.sent_via !== "manual");
   const sentManualProducts = products.filter((p) => p.status === "Sent" && p.sent_via === "manual");
@@ -300,20 +361,35 @@ const Queue = () => {
             </p>
           </div>
           
-          {/* Enhance Button */}
-          <Button
-            variant="gradient"
-            onClick={handleEnhanceSelected}
-            disabled={selectedProducts.size === 0 || isEnhancing}
-            className="gap-2"
-          >
-            {isEnhancing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Wand2 className="h-4 w-4" />
-            )}
-            ✨ Enhance Selected ({selectedProducts.size})
-          </Button>
+          {/* Action Buttons */}
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              onClick={handleUpdateCoupons}
+              disabled={selectedProducts.size === 0 || isUpdatingCoupons}
+              className="gap-2"
+            >
+              {isUpdatingCoupons ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Ticket className="h-4 w-4" />
+              )}
+              🎟️ עדכן קופונים ({selectedProducts.size})
+            </Button>
+            <Button
+              variant="gradient"
+              onClick={handleEnhanceSelected}
+              disabled={selectedProducts.size === 0 || isEnhancing}
+              className="gap-2"
+            >
+              {isEnhancing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Wand2 className="h-4 w-4" />
+              )}
+              ✨ Enhance ({selectedProducts.size})
+            </Button>
+          </div>
         </div>
 
         {/* Tabs */}
