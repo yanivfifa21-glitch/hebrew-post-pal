@@ -18,6 +18,7 @@ import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { PullToRefreshIndicator, PullToRefreshContainer } from "@/components/ui/pull-to-refresh";
 import { ExcelImporter, ExcelProduct } from "@/components/products/ExcelImporter";
 import { ExcelProductCard } from "@/components/products/ExcelProductCard";
+import { ZoneSelector } from "@/components/products/ZoneSelector";
 
 type HotProduct = {
   product_id: string;
@@ -113,6 +114,9 @@ const Discovery = () => {
   
   // API products selection state
   const [selectedApiProductIds, setSelectedApiProductIds] = useState<Set<string>>(new Set());
+  
+  // Zone selection for destination
+  const [selectedZones, setSelectedZones] = useState<string[]>([]);
 
   // Get current user ID on mount
   useEffect(() => {
@@ -402,7 +406,7 @@ const Discovery = () => {
         normalizedRating = Math.min(normalizedRating, 5);
 
         // 3. Save to queue
-        const { error: saveErr } = await supabase.from("products").insert({
+        const { data: savedProduct, error: saveErr } = await supabase.from("products").insert({
           original_url: product.product_url,
           title: product.title,
           price: product.price,
@@ -414,9 +418,19 @@ const Discovery = () => {
           status: "Scheduled",
           channels: [],
           user_id: userId,
-        });
+        }).select("id").single();
 
         if (saveErr) throw new Error(saveErr.message);
+
+        // 4. Assign to zones if selected
+        if (selectedZones.length > 0 && savedProduct) {
+          const zoneInserts = selectedZones.map(zoneId => ({
+            zone_id: zoneId,
+            product_id: savedProduct.id,
+            status: "Scheduled",
+          }));
+          await supabase.from("zone_products").insert(zoneInserts);
+        }
         successCount++;
       } catch (e) {
         console.error(`Failed to add product ${product.title}:`, e);
@@ -486,7 +500,7 @@ const Discovery = () => {
         const finalDescription = `${hebrewDescription}\n\n👇 ${randomCtaExcel}:\n${affiliateLink}`;
 
         // Save to queue
-        const { error: saveErr } = await supabase.from("products").insert({
+        const { data: savedProduct, error: saveErr } = await supabase.from("products").insert({
           original_url: product.promotionLink,
           title: product.title,
           price: null,
@@ -498,9 +512,19 @@ const Discovery = () => {
           status: "Scheduled",
           channels: excelTargetChannels.length > 0 ? excelTargetChannels : [],
           user_id: userId,
-        });
+        }).select("id").single();
 
         if (saveErr) throw saveErr;
+
+        // Assign to zones if selected
+        if (selectedZones.length > 0 && savedProduct) {
+          const zoneInserts = selectedZones.map(zoneId => ({
+            zone_id: zoneId,
+            product_id: savedProduct.id,
+            status: "Scheduled",
+          }));
+          await supabase.from("zone_products").insert(zoneInserts);
+        }
         successCount++;
       } catch (e) {
         console.error(`Failed to add product ${product.title}:`, e);
@@ -583,7 +607,7 @@ const Discovery = () => {
       const finalDescription = `${hebrewDescription}\n\n👇 ${randomCtaQuick}:\n${affiliateLink}`;
 
       // Save to queue
-      const { error: saveErr } = await supabase.from("products").insert({
+      const { data: savedProduct, error: saveErr } = await supabase.from("products").insert({
         original_url: product.promotionLink,
         title: product.title,
         price: null,
@@ -595,9 +619,19 @@ const Discovery = () => {
         status: "Scheduled",
         channels: excelTargetChannels.length > 0 ? excelTargetChannels : [],
         user_id: userId,
-      });
+      }).select("id").single();
 
       if (saveErr) throw new Error(saveErr.message);
+
+      // Assign to zones if selected
+      if (selectedZones.length > 0 && savedProduct) {
+        const zoneInserts = selectedZones.map(zoneId => ({
+          zone_id: zoneId,
+          product_id: savedProduct.id,
+          status: "Scheduled",
+        }));
+        await supabase.from("zone_products").insert(zoneInserts);
+      }
 
       toast({
         title: "✨ נוסף לתור!",
@@ -713,7 +747,7 @@ const Discovery = () => {
       normalizedRating = Math.min(normalizedRating, 5);
 
       // 3. Save to queue
-      const { error: saveErr } = await supabase.from("products").insert({
+      const { data: savedProduct, error: saveErr } = await supabase.from("products").insert({
         original_url: product.product_url,
         title: product.title,
         price: product.price,
@@ -725,9 +759,19 @@ const Discovery = () => {
         status: "Scheduled",
         channels: [],
         user_id: userId,
-      });
+      }).select("id").single();
 
       if (saveErr) throw new Error(saveErr.message);
+
+      // 4. Assign to zones if selected
+      if (selectedZones.length > 0 && savedProduct) {
+        const zoneInserts = selectedZones.map(zoneId => ({
+          zone_id: zoneId,
+          product_id: savedProduct.id,
+          status: "Scheduled",
+        }));
+        await supabase.from("zone_products").insert(zoneInserts);
+      }
 
       toast({
         title: "✨ נוסף לתור!",
@@ -973,6 +1017,13 @@ const Discovery = () => {
               </div>
             )}
 
+            {/* Zone Selector for Excel */}
+            <ZoneSelector
+              selectedZones={selectedZones}
+              onSelectionChange={setSelectedZones}
+              className="glass-card neon-border p-4"
+            />
+
             {/* Imported Products Grid */}
             {importedProducts.length > 0 && (
               <div className="space-y-3">
@@ -1123,6 +1174,13 @@ const Discovery = () => {
               </div>
             ) : (
               <>
+                {/* Zone Selector for API Products */}
+                <ZoneSelector
+                  selectedZones={selectedZones}
+                  onSelectionChange={setSelectedZones}
+                  className="p-3 rounded-lg bg-muted/30 border border-border/50"
+                />
+
                 {/* Selection Controls for API Products */}
                 <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/30 border border-border/50">
                   <div className="flex items-center gap-3">
