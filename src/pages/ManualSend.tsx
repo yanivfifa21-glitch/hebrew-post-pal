@@ -23,7 +23,8 @@ import {
   Clock,
   Eye,
   AlertCircle,
-  Sparkles
+  Sparkles,
+  MapPin
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -584,6 +585,55 @@ export default function ManualSend() {
     }
   };
 
+  // Action: Add to Zone Only (zone_products only, no general queue)
+  const handleAddToZoneOnly = async () => {
+    if (!message.trim() && !hasMedia) {
+      toast({ title: "נא להזין הודעה או להעלות מדיה", variant: "destructive" });
+      return;
+    }
+    if (!userId) {
+      toast({ title: "לא מחובר", variant: "destructive" });
+      return;
+    }
+    if (selectedZones.length === 0) {
+      toast({ title: "נא לבחור לפחות אזור אחד", variant: "destructive" });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const mediaUrl = await resolveMediaUrl();
+
+      const { data: productData, error: productError } = await supabase.from("products").insert({
+        user_id: userId,
+        original_url: "manual-entry",
+        title: message.trim().substring(0, 100) || "פוסט ידני",
+        hebrew_description: message.trim() || null,
+        image_url: mediaUrl,
+        media_type: effectiveMediaType || "image",
+        status: "Scheduled",
+        sent_via: "manual"
+      }).select("id").single();
+
+      if (productError) throw productError;
+
+      const zoneInserts = selectedZones.map(zoneId => ({
+        zone_id: zoneId,
+        product_id: productData.id,
+        status: "Scheduled",
+      }));
+      await supabase.from("zone_products").insert(zoneInserts);
+
+      toast({ title: `✅ נוסף ל-${selectedZones.length} אזורים בלבד` });
+      clearForm();
+    } catch (error) {
+      console.error("Error adding to zone:", error);
+      toast({ title: "שגיאה בהוספה", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSendQueueItem = async (item: ManualQueueItem) => {
     if (selectedAccounts.length === 0) {
       toast({ title: "נא לבחור לפחות קבוצה אחת", variant: "destructive" });
@@ -1079,7 +1129,7 @@ export default function ManualSend() {
                     </Button>
                   </div>
                   
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     <Button
                       variant="secondary"
                       onClick={handleAddToManualQueue}
@@ -1106,6 +1156,15 @@ export default function ManualSend() {
                     >
                       <Layers className="h-4 w-4 shrink-0" />
                       <span className="font-hebrew truncate">שתיהן</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleAddToZoneOnly}
+                      disabled={loading || (!message.trim() && !hasMedia) || selectedZones.length === 0}
+                      className="text-xs sm:text-sm"
+                    >
+                      <MapPin className="h-4 w-4 shrink-0" />
+                      <span className="font-hebrew truncate">לאזור ({selectedZones.length})</span>
                     </Button>
                   </div>
                 </div>
