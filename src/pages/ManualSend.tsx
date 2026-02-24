@@ -82,6 +82,7 @@ export default function ManualSend() {
   const [isRewriting, setIsRewriting] = useState(false);
   const [isRewritingWithAffiliate, setIsRewritingWithAffiliate] = useState(false);
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
+  const [fetchedProductStats, setFetchedProductStats] = useState<{ orders_count?: number; rating?: number } | null>(null);
 
   useEffect(() => {
     fetchAccounts();
@@ -224,6 +225,7 @@ export default function ManualSend() {
   const clearForm = () => {
     setMessage("");
     clearMedia();
+    setFetchedProductStats(null);
   };
 
   // Get the effective media URL and type (file upload takes priority, then image URL)
@@ -508,7 +510,9 @@ export default function ManualSend() {
         image_url: mediaUrl,
         media_type: effectiveMediaType || "image",
         status: "Scheduled",
-        sent_via: "manual"
+        sent_via: "manual",
+        ...(fetchedProductStats?.orders_count ? { orders_count: fetchedProductStats.orders_count } : {}),
+        ...(fetchedProductStats?.rating ? { rating: fetchedProductStats.rating } : {}),
       }).select("id").single();
 
       if (productError) throw productError;
@@ -557,7 +561,9 @@ export default function ManualSend() {
         image_url: mediaUrl,
         media_type: effectiveMediaType || "image",
         status: "Scheduled",
-        sent_via: "manual"
+        sent_via: "manual",
+        ...(fetchedProductStats?.orders_count ? { orders_count: fetchedProductStats.orders_count } : {}),
+        ...(fetchedProductStats?.rating ? { rating: fetchedProductStats.rating } : {}),
       }).select("id").single();
 
       if (productError) throw productError;
@@ -612,7 +618,9 @@ export default function ManualSend() {
         image_url: mediaUrl,
         media_type: effectiveMediaType || "image",
         status: "Scheduled",
-        sent_via: "manual"
+        sent_via: "manual",
+        ...(fetchedProductStats?.orders_count ? { orders_count: fetchedProductStats.orders_count } : {}),
+        ...(fetchedProductStats?.rating ? { rating: fetchedProductStats.rating } : {}),
       }).select("id").single();
 
       if (productError) throw productError;
@@ -766,6 +774,13 @@ export default function ManualSend() {
       // Append orders count and rating from product data if not already in text
       if (imageResult.data?.success && imageResult.data?.data) {
         const productData = imageResult.data.data;
+        
+        // Store fetched stats for later use in product creation
+        setFetchedProductStats({
+          orders_count: productData.orders_count ? Number(productData.orders_count) : undefined,
+          rating: productData.rating ? Number(productData.rating) : undefined,
+        });
+
         const statsLines: string[] = [];
 
         // Use specific pattern matching to avoid false positives from AI text
