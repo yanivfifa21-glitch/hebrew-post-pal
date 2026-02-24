@@ -26,7 +26,7 @@ function getIsraelTimeInfo(): { hours: number; minutes: number; dayOfWeek: numbe
 }
 
 function isPostingTime(currentTimeStr: string, postingTimes: string[]): boolean {
-  return postingTimes.includes(currentTimeStr);
+  return postingTimes.some(t => t.trim() === currentTimeStr);
 }
 
 function timeToMinutes(timeStr: string): number {
@@ -69,6 +69,15 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// Strip ALL HTML tags (for fallback plain text send)
+function stripHtmlTags(text: string): string {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/<[^>]*>/g, '');
+}
+
 function buildMessage(product: Record<string, unknown>): string {
   const rawDescription = String(product.hebrew_description ?? "").trim();
   const description = escapeHtml(rawDescription);
@@ -87,51 +96,76 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
   const mediaType = product.media_type || 'image';
   const isVideo = mediaType === 'video' || (imageUrl && imageUrl.match(/\.(mp4|mov|avi|webm|mkv)(\?|$)/i) !== null);
 
-  if (imageUrl) {
-    if (isVideo) {
-      console.log("[auto-post] Downloading video for upload...");
-      try {
-        const videoResponse = await fetch(imageUrl);
-        if (!videoResponse.ok) throw new Error(`Failed to download video: ${videoResponse.status}`);
-        const videoBlob = await videoResponse.blob();
-        const formData = new FormData();
-        formData.append("chat_id", chatId);
-        formData.append("caption", text);
-        formData.append("parse_mode", "HTML");
-        formData.append("video", videoBlob, "video.mp4");
-        formData.append("supports_streaming", "true");
-        const res = await fetch(`https://api.telegram.org/bot${token}/sendVideo`, { method: "POST", body: formData });
-        const result = await res.json();
-        if (!result.ok) {
-          console.log("[auto-post] FormData upload failed, trying URL method:", result.description);
+  // Helper: attempt sending with given parse_mode, return response
+  async function trySend(parseMode: string | null, caption: string): Promise<boolean> {
+    if (imageUrl) {
+      if (isVideo) {
+        try {
+          const videoResponse = await fetch(imageUrl);
+          if (!videoResponse.ok) throw new Error(`Failed to download video: ${videoResponse.status}`);
+          const videoBlob = await videoResponse.blob();
+          const formData = new FormData();
+          formData.append("chat_id", chatId);
+          formData.append("caption", caption);
+          if (parseMode) formData.append("parse_mode", parseMode);
+          formData.append("video", videoBlob, "video.mp4");
+          formData.append("supports_streaming", "true");
+          const res = await fetch(`https://api.telegram.org/bot${token}/sendVideo`, { method: "POST", body: formData });
+          if (res.ok) return true;
+          const errText = await res.text();
+          console.log(`[auto-post] Video FormData failed (${parseMode}): ${errText}`);
+          // Try URL method
+          const body: any = { chat_id: chatId, video: imageUrl, caption, supports_streaming: true };
+          if (parseMode) body.parse_mode = parseMode;
           const res2 = await fetch(`https://api.telegram.org/bot${token}/sendVideo`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chat_id: chatId, video: imageUrl, caption: text, parse_mode: "HTML", supports_streaming: true }),
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
           });
-          if (!res2.ok) throw new Error(await res2.text());
+          if (res2.ok) return true;
+          await res2.text();
+          return false;
+        } catch {
+          const body: any = { chat_id: chatId, video: imageUrl, caption, supports_streaming: true };
+          if (parseMode) body.parse_mode = parseMode;
+          const res = await fetch(`https://api.telegram.org/bot${token}/sendVideo`, {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+          });
+          if (res.ok) return true;
+          await res.text();
+          return false;
         }
-      } catch (downloadErr) {
-        console.error("[auto-post] Video download failed, trying URL method:", downloadErr);
-        const res = await fetch(`https://api.telegram.org/bot${token}/sendVideo`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chat_id: chatId, video: imageUrl, caption: text, parse_mode: "HTML", supports_streaming: true }),
+      } else {
+        const body: any = { chat_id: chatId, photo: imageUrl, caption };
+        if (parseMode) body.parse_mode = parseMode;
+        const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
         });
-        if (!res.ok) throw new Error(await res.text());
+        if (res.ok) return true;
+        const errText = await res.text();
+        console.log(`[auto-post] Photo failed (${parseMode}): ${errText}`);
+        return false;
       }
     } else {
-      const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId, photo: imageUrl, caption: text, parse_mode: "HTML" }),
+      const body: any = { chat_id: chatId, text: caption };
+      if (parseMode) body.parse_mode = parseMode;
+      const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (res.ok) return true;
+      const errText = await res.text();
+      console.log(`[auto-post] Message failed (${parseMode}): ${errText}`);
+      return false;
     }
-  } else {
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text: text, parse_mode: "HTML" }),
-    });
-    if (!res.ok) throw new Error(await res.text());
   }
+
+  // Try with HTML parse mode first
+  if (await trySend("HTML", text)) return;
+  
+  // If HTML failed, try without parse mode (plain text, strip tags)
+  console.log("[auto-post] HTML send failed, retrying as plain text...");
+  const plainText = stripHtmlTags(text);
+  if (await trySend(null, plainText)) return;
+  
+  throw new Error("שליחה לטלגרם נכשלה גם עם HTML וגם כטקסט רגיל");
 }
 
 async function sendToWhatsApp(instance: string, token: string, chatId: string, product: any, text: string) {
@@ -142,12 +176,14 @@ async function sendToWhatsApp(instance: string, token: string, chatId: string, p
   const isVideo = mediaType === 'video' || (imageUrl && imageUrl.match(/\.(mp4|mov|avi|webm|mkv)(\?|$)/i) !== null);
   const url = imageUrl ? `${baseUrl}/sendFileByUrl/${token}` : `${baseUrl}/sendMessage/${token}`;
   const body: any = { chatId };
+  // WhatsApp doesn't use HTML parse mode, strip any HTML entities
+  const plainText = stripHtmlTags(text);
   if (imageUrl) {
     body.urlFile = imageUrl;
     body.fileName = isVideo ? "video.mp4" : "image.jpg";
-    body.caption = text;
+    body.caption = plainText;
   } else {
-    body.message = text;
+    body.message = plainText;
   }
   const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   if (!res.ok) throw new Error(await res.text());
@@ -160,9 +196,10 @@ async function sendProductToAccounts(
   product: any,
   message: string,
   accountIds: string[]
-): Promise<{ success: boolean; sentTo: string[] }> {
+): Promise<{ success: boolean; sentTo: string[]; errors: string[] }> {
   let sendSuccess = false;
   const sentTo: string[] = [];
+  const errors: string[] = [];
 
   for (const accountId of accountIds) {
     const { data: account } = await supabase
@@ -181,7 +218,7 @@ async function sendProductToAccounts(
       });
 
     if (credError || !credentials) {
-      console.error(`[auto-post] Failed to fetch credentials for account ${account.account_name}:`, credError?.message);
+      errors.push(`${account.account_name}: credentials error`);
       continue;
     }
 
@@ -195,7 +232,9 @@ async function sendProductToAccounts(
           sentTo.push(`telegram:${account.account_name}`);
           console.log(`[auto-post] ✓ Sent to Telegram (${account.account_name})`);
         } catch (e) {
-          console.error(`[auto-post] Telegram (${account.account_name}) failed: ${e}`);
+          const errMsg = String(e);
+          errors.push(`Telegram ${account.account_name}: ${errMsg}`);
+          console.error(`[auto-post] Telegram (${account.account_name}) failed: ${errMsg}`);
         }
       }
     } else if (account.account_type === "whatsapp") {
@@ -209,13 +248,15 @@ async function sendProductToAccounts(
           sentTo.push(`whatsapp:${account.account_name}`);
           console.log(`[auto-post] ✓ Sent to WhatsApp (${account.account_name})`);
         } catch (e) {
-          console.error(`[auto-post] WhatsApp (${account.account_name}) failed: ${e}`);
+          const errMsg = String(e);
+          errors.push(`WhatsApp ${account.account_name}: ${errMsg}`);
+          console.error(`[auto-post] WhatsApp (${account.account_name}) failed: ${errMsg}`);
         }
       }
     }
   }
 
-  return { success: sendSuccess, sentTo };
+  return { success: sendSuccess, sentTo, errors };
 }
 
 // ============ MAIN ============
@@ -286,11 +327,11 @@ serve(async (req) => {
 
           // Schedule check based on mode
           if (scheduleMode === 'fixed_times') {
-            // Fixed times mode
             if (!isPostingTime(currentTimeStr, zonePostingTimes)) {
               console.log(`[auto-post] ${zoneLabel}: Not a fixed posting time (${currentTimeStr})`);
               continue;
             }
+            console.log(`[auto-post] ${zoneLabel}: ✓ Fixed posting time match (${currentTimeStr})`);
           } else {
             // Interval mode (default)
             if (!isWithinIntervalTimeRange(currentTimeStr, zone.interval_start_time, zone.interval_end_time)) {
@@ -316,74 +357,225 @@ serve(async (req) => {
             continue;
           }
 
-          // Get oldest Scheduled product in this zone
-          const { data: zoneProduct } = await supabase
+          // Get oldest Scheduled product in this zone (try up to 3 products if first ones fail)
+          const { data: zoneProducts } = await supabase
             .from("zone_products")
             .select("*, products(*)")
             .eq("zone_id", zone.id)
             .eq("status", "Scheduled")
             .order("created_at", { ascending: true })
-            .limit(1)
-            .maybeSingle();
+            .limit(3);
 
-          if (!zoneProduct || !zoneProduct.products) {
+          if (!zoneProducts || zoneProducts.length === 0) {
             console.log(`[auto-post] ${zoneLabel}: No scheduled products`);
             continue;
           }
 
-          const product = zoneProduct.products;
-          console.log(`[auto-post] ${zoneLabel}: Found product ${product.id}, sending...`);
+          let sent = false;
+          for (const zoneProduct of zoneProducts) {
+            if (!zoneProduct.products) continue;
+            const product = zoneProduct.products;
+            console.log(`[auto-post] ${zoneLabel}: Trying product ${product.id}...`);
 
-          // Lock the zone_product
+            // Lock the zone_product
+            await supabase
+              .from("zone_products")
+              .update({ status: "processing" })
+              .eq("id", zoneProduct.id)
+              .eq("status", "Scheduled");
+
+            const message = buildMessage(product);
+            const { success, sentTo, errors } = await sendProductToAccounts(supabase, userId, product, message, targetAccountIds);
+
+            if (success) {
+              await supabase
+                .from("zone_products")
+                .update({ status: "Sent", sent_at: new Date().toISOString() })
+                .eq("id", zoneProduct.id);
+
+              await supabase
+                .from("zones")
+                .update({ last_posted_at: new Date().toISOString() })
+                .eq("id", zone.id);
+
+              // Update main product status if ALL zone assignments are Sent
+              const { data: remainingScheduled } = await supabase
+                .from("zone_products")
+                .select("id")
+                .eq("product_id", product.id)
+                .eq("status", "Scheduled")
+                .limit(1);
+
+              if (!remainingScheduled || remainingScheduled.length === 0) {
+                await supabase
+                  .from("products")
+                  .update({ status: "Sent", sent_via: product.sent_via || "auto" })
+                  .eq("id", product.id);
+              }
+
+              console.log(`[auto-post] ${zoneLabel}: ✓ Product ${product.id} sent to ${sentTo.join(", ")}`);
+              results.push({ userId, zone: zone.name, productId: product.id, status: "Sent", sentTo });
+              sent = true;
+              break; // One product per zone per cycle
+            } else {
+              // Failed - skip this product and try next one
+              console.log(`[auto-post] ${zoneLabel}: Product ${product.id} failed (${errors.join('; ')}), skipping to next`);
+              await supabase
+                .from("zone_products")
+                .update({ status: "Scheduled" })
+                .eq("id", zoneProduct.id);
+              // Don't break - try next product
+            }
+          }
+
+          if (!sent) {
+            console.log(`[auto-post] ${zoneLabel}: All products failed or queue empty`);
+            results.push({ userId, zone: zone.name, status: "all_failed" });
+          }
+        }
+
+        // ===== ALSO PROCESS GENERAL QUEUE (products NOT in zone_products) =====
+        const publishingDays: number[] = userSettings.publishing_days || [0,1,2,3,4,5,6];
+        if (!publishingDays.includes(currentDayOfWeek)) {
+          continue; // Skip general queue for this day
+        }
+
+        const intervalMinutes: number | null = userSettings.posting_interval_minutes ||
+          (userSettings.posting_interval_hours ? userSettings.posting_interval_hours * 60 : null);
+        const intervalStartTime: string = userSettings.interval_start_time || '08:00';
+        const intervalEndTime: string = userSettings.interval_end_time || '22:00';
+        const postingTimes: string[] = userSettings.posting_times || [];
+
+        let shouldPostGeneral = false;
+        if (intervalMinutes) {
+          if (!isWithinIntervalTimeRange(currentTimeStr, intervalStartTime, intervalEndTime)) {
+            continue;
+          }
+          const { data: lastSent } = await supabase
+            .from("products")
+            .select("updated_at")
+            .eq("user_id", userId)
+            .eq("status", "Sent")
+            .is("sent_via", null) // Only check general queue products
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          
+          // Also check sent_via = 'auto' for legacy
+          const { data: lastSentAuto } = await supabase
+            .from("products")
+            .select("updated_at")
+            .eq("user_id", userId)
+            .eq("status", "Sent")
+            .eq("sent_via", "auto")
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const latestSent = lastSent?.updated_at && lastSentAuto?.updated_at
+            ? (lastSent.updated_at > lastSentAuto.updated_at ? lastSent.updated_at : lastSentAuto.updated_at)
+            : (lastSent?.updated_at || lastSentAuto?.updated_at || null);
+
+          shouldPostGeneral = shouldPostByInterval(intervalMinutes, latestSent);
+        } else {
+          shouldPostGeneral = isPostingTime(currentTimeStr, postingTimes);
+        }
+
+        if (!shouldPostGeneral) {
+          continue;
+        }
+
+        // 15-minute lockout for general queue
+        const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+        const { data: recentSent } = await supabase
+          .from("products")
+          .select("id, updated_at")
+          .eq("user_id", userId)
+          .eq("status", "Sent")
+          .eq("sent_via", "auto")
+          .gte("updated_at", fifteenMinutesAgo)
+          .limit(1);
+
+        if (recentSent && recentSent.length > 0) {
+          continue;
+        }
+
+        // Get products NOT in any zone_products
+        const { data: generalProducts } = await supabase
+          .from("products")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("status", "Scheduled")
+          .order("created_at", { ascending: true })
+          .limit(5);
+
+        if (!generalProducts || generalProducts.length === 0) {
+          continue;
+        }
+
+        // Filter out products that are in zone_products
+        const productIds = generalProducts.map((p: any) => p.id);
+        const { data: zoneAssignments } = await supabase
+          .from("zone_products")
+          .select("product_id")
+          .in("product_id", productIds);
+
+        const zoneProductIds = new Set((zoneAssignments || []).map((za: any) => za.product_id));
+        const unassignedProducts = generalProducts.filter((p: any) => !zoneProductIds.has(p.id));
+
+        if (unassignedProducts.length === 0) {
+          console.log(`[auto-post] User ${userId}: No general queue products (all assigned to zones)`);
+          continue;
+        }
+
+        // Get all active accounts
+        const { data: allAccounts } = await supabase
+          .from("messaging_accounts")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("is_active", true);
+
+        if (!allAccounts || allAccounts.length === 0) {
+          continue;
+        }
+
+        // Try up to 3 products from general queue
+        let generalSent = false;
+        for (const product of unassignedProducts.slice(0, 3)) {
           await supabase
-            .from("zone_products")
+            .from("products")
             .update({ status: "processing" })
-            .eq("id", zoneProduct.id)
+            .eq("id", product.id)
             .eq("status", "Scheduled");
 
           const message = buildMessage(product);
-          const { success, sentTo } = await sendProductToAccounts(supabase, userId, product, message, targetAccountIds);
+          const { success, sentTo, errors } = await sendProductToAccounts(
+            supabase, userId, product, message, allAccounts.map((a: any) => a.id)
+          );
 
           if (success) {
-            // Mark zone_product as sent
             await supabase
-              .from("zone_products")
-              .update({ status: "Sent", sent_at: new Date().toISOString() })
-              .eq("id", zoneProduct.id);
-
-            // Update zone's last_posted_at
-            await supabase
-              .from("zones")
-              .update({ last_posted_at: new Date().toISOString() })
-              .eq("id", zone.id);
-
-            // Also update the main product status if ALL zone assignments are now Sent
-            const { data: remainingScheduled } = await supabase
-              .from("zone_products")
-              .select("id")
-              .eq("product_id", product.id)
-              .eq("status", "Scheduled")
-              .limit(1);
-
-            if (!remainingScheduled || remainingScheduled.length === 0) {
-              await supabase
-                .from("products")
-                .update({ status: "Sent", sent_via: product.sent_via || "auto" })
-                .eq("id", product.id);
-            }
-
-            console.log(`[auto-post] ${zoneLabel}: ✓ Product ${product.id} sent to ${sentTo.join(", ")}`);
-            results.push({ userId, zone: zone.name, productId: product.id, status: "Sent", sentTo });
+              .from("products")
+              .update({ status: "Sent", sent_via: "auto" })
+              .eq("id", product.id);
+            console.log(`[auto-post] User ${userId} [General]: ✓ Product ${product.id} sent to ${sentTo.join(", ")}`);
+            results.push({ userId, source: "general", productId: product.id, status: "Sent", sentTo });
+            generalSent = true;
+            break;
           } else {
-            // Reset to Scheduled
+            // Skip failed product, try next
+            console.log(`[auto-post] User ${userId} [General]: Product ${product.id} failed (${errors.join('; ')}), trying next`);
             await supabase
-              .from("zone_products")
+              .from("products")
               .update({ status: "Scheduled" })
-              .eq("id", zoneProduct.id);
-            console.log(`[auto-post] ${zoneLabel}: Failed to send, resetting`);
-            results.push({ userId, zone: zone.name, productId: product.id, status: "send_failed" });
+              .eq("id", product.id);
           }
         }
+
+        if (!generalSent) {
+          console.log(`[auto-post] User ${userId} [General]: All products failed`);
+        }
+
       } else {
         // ===== LEGACY: NO ZONES - EXISTING LOGIC =====
         const publishingDays: number[] = userSettings.publishing_days || [0,1,2,3,4,5,6];
@@ -439,32 +631,20 @@ serve(async (req) => {
           continue;
         }
 
-        const { data: product, error: fetchError } = await supabase
+        // Try up to 3 products (skip failures)
+        const { data: candidates } = await supabase
           .from("products")
           .select("*")
           .eq("user_id", userId)
           .eq("status", "Scheduled")
           .order("created_at", { ascending: true })
-          .limit(1)
-          .maybeSingle();
+          .limit(3);
 
-        if (fetchError) {
-          results.push({ userId, status: "fetch_error", error: fetchError.message });
-          continue;
-        }
-        if (!product) {
+        if (!candidates || candidates.length === 0) {
           results.push({ userId, status: "queue_empty" });
           continue;
         }
 
-        // Lock product
-        await supabase
-          .from("products")
-          .update({ status: "processing" })
-          .eq("id", product.id)
-          .eq("status", "Scheduled");
-
-        // Get all active accounts
         const { data: accounts } = await supabase
           .from("messaging_accounts")
           .select("id")
@@ -472,23 +652,43 @@ serve(async (req) => {
           .eq("is_active", true);
 
         if (!accounts || accounts.length === 0) {
-          await supabase.from("products").update({ status: "Scheduled" }).eq("id", product.id);
-          results.push({ userId, status: "no_active_accounts", productId: product.id });
+          results.push({ userId, status: "no_active_accounts" });
           continue;
         }
 
-        const message = buildMessage(product);
-        const { success, sentTo } = await sendProductToAccounts(
-          supabase, userId, product, message, accounts.map((a: any) => a.id)
-        );
+        let legacySent = false;
+        for (const product of candidates) {
+          await supabase
+            .from("products")
+            .update({ status: "processing" })
+            .eq("id", product.id)
+            .eq("status", "Scheduled");
 
-        const finalStatus = success ? "Sent" : "Scheduled";
-        await supabase
-          .from("products")
-          .update({ status: finalStatus, ...(finalStatus === "Sent" && !product.sent_via ? { sent_via: "auto" } : {}) })
-          .eq("id", product.id);
+          const message = buildMessage(product);
+          const { success, sentTo, errors } = await sendProductToAccounts(
+            supabase, userId, product, message, accounts.map((a: any) => a.id)
+          );
 
-        results.push({ userId, productId: product.id, status: finalStatus, sentTo });
+          if (success) {
+            await supabase
+              .from("products")
+              .update({ status: "Sent", ...(product.sent_via ? {} : { sent_via: "auto" }) })
+              .eq("id", product.id);
+            results.push({ userId, productId: product.id, status: "Sent", sentTo });
+            legacySent = true;
+            break;
+          } else {
+            console.log(`[auto-post] User ${userId}: Product ${product.id} failed (${errors.join('; ')}), trying next`);
+            await supabase
+              .from("products")
+              .update({ status: "Scheduled" })
+              .eq("id", product.id);
+          }
+        }
+
+        if (!legacySent) {
+          results.push({ userId, status: "all_products_failed" });
+        }
       }
     }
 
