@@ -24,15 +24,26 @@ export function detectReferencePrice(text: string, exchangeRate: number): { pric
     if (isFinite(lowest)) return { priceUsd: lowest, source: `$ (USD) - $${lowest}` };
   }
 
-  // Step B: Look for ILS prices (₪XX, XX₪)
-  const ilsMatches = text.match(/₪\s?(\d+(?:[.,]\d{1,2})?)|(\d+(?:[.,]\d{1,2})?)\s?₪/g);
-  if (ilsMatches && ilsMatches.length > 0) {
-    const prices = ilsMatches.map(m => parseFloat(m.replace(/₪/g, '').replace(',', '.').trim()));
-    const lowest = Math.min(...prices.filter(p => !isNaN(p) && p > 0));
-    if (isFinite(lowest)) {
-      const usdEquiv = parseFloat((lowest / exchangeRate).toFixed(2));
-      return { priceUsd: usdEquiv, source: `₪ (ILS) - ₪${lowest} ÷ ${exchangeRate} = $${usdEquiv}` };
+  // Step B: Look for ILS prices (₪XX, XX₪, XX ש"ח, XX שח, XX שקל, XX שקלים)
+  const ilsPatterns = [
+    /₪\s?(\d+(?:[.,]\d{1,2})?)/g,
+    /(\d+(?:[.,]\d{1,2})?)\s?₪/g,
+    /(\d+(?:[.,]\d{1,2})?)\s?(?:ש"ח|שח|שקל|שקלים)/g,
+  ];
+  const allIlsPrices: number[] = [];
+  for (const pattern of ilsPatterns) {
+    const ilsMatches = text.match(pattern);
+    if (ilsMatches) {
+      for (const m of ilsMatches) {
+        const num = parseFloat(m.replace(/[₪ש"חשקלשקלים]/g, '').replace(',', '.').trim());
+        if (!isNaN(num) && num > 0) allIlsPrices.push(num);
+      }
     }
+  }
+  if (allIlsPrices.length > 0) {
+    const lowest = Math.min(...allIlsPrices);
+    const usdEquiv = parseFloat((lowest / exchangeRate).toFixed(2));
+    return { priceUsd: usdEquiv, source: `₪ (ILS) - ₪${lowest} ÷ ${exchangeRate} = $${usdEquiv}` };
   }
 
   return { priceUsd: null, source: "לא נמצא מחיר" };
