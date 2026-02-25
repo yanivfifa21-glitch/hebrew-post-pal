@@ -48,8 +48,11 @@ export function findBestCoupon(priceUsd: number, coupons: Coupon[]): Coupon | nu
 
 // --- COUPON REPLACEMENT ---
 export function replaceCouponInText(text: string, newCode: string): { updatedText: string; replacedCode: string | null; mode: string } {
-  // Find coupon codes near keywords like קופון, קוד, code, coupon
-  const couponPattern = /(?:קופון|קוד|code|coupon|CODE|COUPON)\s*[:：]?\s*([A-Za-z0-9]{3,20})/gi;
+  // Coupon keyword variations (Hebrew + English)
+  const couponKeywords = /(?:קופון|קופונים|הקופון|הקופונים|קוד|הקוד|code|coupon|CODE|COUPON)/gi;
+  
+  // Find coupon codes that appear AFTER a coupon keyword
+  const couponPattern = /(?:קופון|קופונים|הקופון|הקופונים|קוד|הקוד|code|coupon|CODE|COUPON)\s*[:：]?\s*([A-Za-z0-9]{3,20})/gi;
   const matches: { fullMatch: string; code: string; index: number }[] = [];
   let match;
   
@@ -57,12 +60,19 @@ export function replaceCouponInText(text: string, newCode: string): { updatedTex
     matches.push({ fullMatch: match[0], code: match[1], index: match.index });
   }
 
-  // Also find standalone all-caps codes that look like coupons (e.g., ILFEB4)
-  const standalonePattern = /\b([A-Z]{2,}[A-Z0-9]{2,})\b/g;
-  while ((match = standalonePattern.exec(text)) !== null) {
-    const code = match[1];
-    if (!matches.some(m => m.code === code) && code.length >= 4 && code.length <= 15) {
-      matches.push({ fullMatch: match[0], code: match[1], index: match.index });
+  // Also find standalone all-caps codes ONLY if they appear on a line 
+  // that contains a coupon keyword (to avoid matching product name words)
+  const lines = text.split('\n');
+  for (const line of lines) {
+    if (!couponKeywords.test(line)) continue;
+    couponKeywords.lastIndex = 0; // reset regex state
+    
+    const standalonePattern = /\b([A-Z]{2,}[A-Z0-9]{2,})\b/g;
+    while ((match = standalonePattern.exec(line)) !== null) {
+      const code = match[1];
+      if (!matches.some(m => m.code === code) && code.length >= 4 && code.length <= 15) {
+        matches.push({ fullMatch: match[0], code, index: match.index });
+      }
     }
   }
 
