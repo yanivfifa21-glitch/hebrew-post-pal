@@ -28,14 +28,14 @@ export function detectReferencePrice(text: string, exchangeRate: number): { pric
   const ilsPatterns = [
     /₪\s?(\d+(?:[.,]\d{1,2})?)/g,
     /(\d+(?:[.,]\d{1,2})?)\s?₪/g,
-    /(\d+(?:[.,]\d{1,2})?)\s?(?:ש"ח|שח|שקל|שקלים)/g,
+    /(\d+(?:[.,]\d{1,2})?)\s?(?:ש["״]ח|שח|שקל|שקלים)/g,
   ];
   const allIlsPrices: number[] = [];
   for (const pattern of ilsPatterns) {
     const ilsMatches = text.match(pattern);
     if (ilsMatches) {
       for (const m of ilsMatches) {
-        const num = parseFloat(m.replace(/[₪ש"חשקלשקלים]/g, '').replace(',', '.').trim());
+        const num = parseFloat(m.replace(/[₪ש"״חשקלים]/g, '').replace(',', '.').trim());
         if (!isNaN(num) && num > 0) allIlsPrices.push(num);
       }
     }
