@@ -289,6 +289,52 @@ serve(async (req) => {
 
     const results: any[] = [];
 
+    // ===== GOLD POSTS - runs for ALL users, independent of automation =====
+    const israelDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date());
+    
+    const { data: goldPosts } = await supabase
+      .from("gold_posts")
+      .select("*")
+      .eq("is_active", true);
+
+    if (goldPosts && goldPosts.length > 0) {
+      for (const gp of goldPosts) {
+        // Check if send_time matches current time
+        if (gp.send_time !== currentTimeStr) continue;
+        
+        // Check if already sent today
+        if (gp.last_sent_date === israelDateStr) continue;
+        
+        const targetAccountIds: string[] = gp.target_account_ids || [];
+        if (targetAccountIds.length === 0) continue;
+
+        console.log(`[auto-post] Gold post ${gp.id} for user ${gp.user_id}: Sending at ${currentTimeStr}`);
+
+        // Build a fake product object for sendProductToAccounts
+        const goldProduct = {
+          image_url: gp.media_url,
+          media_type: gp.media_type || 'image',
+        };
+        const goldMessage = escapeHtml(gp.message || '');
+
+        const { success, sentTo, errors } = await sendProductToAccounts(
+          supabase, gp.user_id, goldProduct, goldMessage, targetAccountIds
+        );
+
+        if (success) {
+          await supabase
+            .from("gold_posts")
+            .update({ last_sent_date: israelDateStr })
+            .eq("id", gp.id);
+          console.log(`[auto-post] Gold post ${gp.id}: ✓ Sent to ${sentTo.join(", ")}`);
+          results.push({ userId: gp.user_id, type: "gold_post", status: "Sent", sentTo });
+        } else {
+          console.log(`[auto-post] Gold post ${gp.id}: Failed - ${errors.join('; ')}`);
+          results.push({ userId: gp.user_id, type: "gold_post", status: "failed", errors });
+        }
+      }
+    }
+
     for (const userSettings of settings) {
       const userId = userSettings.user_id;
       const shabbatEnabled: boolean = userSettings.shabbat_mode_enabled || false;
