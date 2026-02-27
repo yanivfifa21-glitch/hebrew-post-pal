@@ -215,6 +215,48 @@ export type Database = {
         }
         Relationships: []
       }
+      gold_posts: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          last_sent_date: string | null
+          media_type: string | null
+          media_url: string | null
+          message: string
+          send_time: string
+          target_account_ids: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_sent_date?: string | null
+          media_type?: string | null
+          media_url?: string | null
+          message?: string
+          send_time?: string
+          target_account_ids?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_sent_date?: string | null
+          media_type?: string | null
+          media_url?: string | null
+          message?: string
+          send_time?: string
+          target_account_ids?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       manual_queue: {
         Row: {
           created_at: string

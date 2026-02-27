@@ -291,6 +291,18 @@ const Settings = () => {
   const [newEmoji, setNewEmoji] = useState('');
   const [newEmojiId, setNewEmojiId] = useState('');
 
+  // Gold Post state
+  const [goldPosts, setGoldPosts] = useState<any[]>([]);
+  const [goldMessage, setGoldMessage] = useState('');
+  const [goldMediaUrl, setGoldMediaUrl] = useState('');
+  const [goldMediaType, setGoldMediaType] = useState('image');
+  const [goldSendTime, setGoldSendTime] = useState('12:00');
+  const [goldTargetAccounts, setGoldTargetAccounts] = useState<string[]>([]);
+  const [goldIsActive, setGoldIsActive] = useState(true);
+  const [editingGoldPost, setEditingGoldPost] = useState<any | null>(null);
+  const [isSavingGoldPost, setIsSavingGoldPost] = useState(false);
+  const [isUploadingGoldMedia, setIsUploadingGoldMedia] = useState(false);
+
   const fetchBankIsraelRate = async () => {
     setIsFetchingRate(true);
     try {
@@ -462,6 +474,14 @@ const Settings = () => {
         telegram_chat_id: acc.telegram_chat_id,
         whatsapp_chat_id: acc.whatsapp_chat_id,
       })));
+
+      // Fetch gold posts
+      const { data: goldPostsData } = await supabase
+        .from('gold_posts' as any)
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      setGoldPosts(goldPostsData || []);
 
     } catch (error) {
       console.error('Error fetching settings:', error);
@@ -837,6 +857,115 @@ const Settings = () => {
     } else {
       setNewAccountGreenApiChatId(account.whatsapp_chat_id || '');
     }
+  };
+
+  const handleSaveGoldPost = async () => {
+    if (!userId) return;
+    setIsSavingGoldPost(true);
+    try {
+      if (editingGoldPost) {
+        const { error } = await supabase
+          .from('gold_posts' as any)
+          .update({
+            message: goldMessage,
+            media_url: goldMediaUrl || null,
+            media_type: goldMediaType,
+            send_time: goldSendTime,
+            is_active: goldIsActive,
+            target_account_ids: goldTargetAccounts,
+          } as any)
+          .eq('id', editingGoldPost.id);
+        if (error) throw error;
+        setGoldPosts(prev => prev.map(gp => gp.id === editingGoldPost.id ? {
+          ...gp, message: goldMessage, media_url: goldMediaUrl || null, media_type: goldMediaType,
+          send_time: goldSendTime, is_active: goldIsActive, target_account_ids: goldTargetAccounts,
+        } : gp));
+        toast({ title: "✅ פוסט זהב עודכן!" });
+      } else {
+        const { data, error } = await supabase
+          .from('gold_posts' as any)
+          .insert({
+            user_id: userId,
+            message: goldMessage,
+            media_url: goldMediaUrl || null,
+            media_type: goldMediaType,
+            send_time: goldSendTime,
+            is_active: goldIsActive,
+            target_account_ids: goldTargetAccounts,
+          } as any)
+          .select('*')
+          .single();
+        if (error) throw error;
+        setGoldPosts(prev => [data, ...prev]);
+        toast({ title: "✅ פוסט זהב נוצר!" });
+      }
+      // Reset form
+      setEditingGoldPost(null);
+      setGoldMessage('');
+      setGoldMediaUrl('');
+      setGoldMediaType('image');
+      setGoldSendTime('12:00');
+      setGoldTargetAccounts([]);
+      setGoldIsActive(true);
+    } catch (error) {
+      console.error('Save gold post error:', error);
+      toast({ title: "שגיאה בשמירת פוסט זהב", variant: "destructive" });
+    } finally {
+      setIsSavingGoldPost(false);
+    }
+  };
+
+  const handleDeleteGoldPost = async (id: string) => {
+    try {
+      const { error } = await supabase.from('gold_posts' as any).delete().eq('id', id);
+      if (error) throw error;
+      setGoldPosts(prev => prev.filter(gp => gp.id !== id));
+      toast({ title: "פוסט זהב נמחק" });
+    } catch {
+      toast({ title: "שגיאה במחיקה", variant: "destructive" });
+    }
+  };
+
+  const handleEditGoldPost = (gp: any) => {
+    setEditingGoldPost(gp);
+    setGoldMessage(gp.message || '');
+    setGoldMediaUrl(gp.media_url || '');
+    setGoldMediaType(gp.media_type || 'image');
+    setGoldSendTime(gp.send_time || '12:00');
+    setGoldTargetAccounts(gp.target_account_ids || []);
+    setGoldIsActive(gp.is_active);
+  };
+
+  const handleGoldMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !userId) return;
+    setIsUploadingGoldMedia(true);
+    try {
+      const ext = file.name.split('.').pop();
+      const path = `${userId}/gold-${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from('product-images')
+        .upload(path, file, { upsert: true });
+      if (uploadError) throw uploadError;
+      const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(path);
+      setGoldMediaUrl(publicUrl);
+      const isVideo = file.type.startsWith('video/');
+      setGoldMediaType(isVideo ? 'video' : 'image');
+      toast({ title: "מדיה הועלתה בהצלחה!" });
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast({ title: "שגיאה בהעלאת מדיה", variant: "destructive" });
+    } finally {
+      setIsUploadingGoldMedia(false);
+    }
+  };
+
+  const toggleGoldTargetAccount = (accountId: string) => {
+    setGoldTargetAccounts(prev =>
+      prev.includes(accountId)
+        ? prev.filter(id => id !== accountId)
+        : [...prev, accountId]
+    );
   };
 
   if (isLoading) {
@@ -1992,6 +2121,171 @@ const Settings = () => {
                 </div>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Gold Post Section */}
+        <Card className="relative overflow-hidden border-amber-500/30">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-400" />
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2" dir="rtl">
+              <div className="p-2 rounded-lg bg-amber-500/20">
+                <Sparkles className="h-5 w-5 text-amber-500" />
+              </div>
+              ⭐ פוסט זהב
+            </CardTitle>
+            <CardDescription dir="rtl">פוסט קבוע שנשלח פעם ביום בשעה שתבחר - ללא קשר לתור</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4" dir="rtl">
+            {/* Existing gold posts */}
+            {goldPosts.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">פוסטים קיימים</Label>
+                {goldPosts.map(gp => (
+                  <div key={gp.id} className={`p-3 rounded-lg border flex items-start justify-between gap-2 ${gp.is_active ? 'bg-amber-500/5 border-amber-500/30' : 'bg-muted/30 border-border opacity-60'}`}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className="text-amber-600 border-amber-600/50">
+                          <Clock className="h-3 w-3 mr-1" />
+                          {gp.send_time}
+                        </Badge>
+                        {gp.is_active ? (
+                          <Badge className="bg-primary/20 text-primary text-xs">פעיל</Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-xs">מושבת</Badge>
+                        )}
+                        {gp.last_sent_date && (
+                          <span className="text-xs text-muted-foreground">נשלח: {gp.last_sent_date}</span>
+                        )}
+                      </div>
+                      <p className="text-sm mt-1 line-clamp-2 text-foreground">{gp.message?.substring(0, 100)}{gp.message?.length > 100 ? '...' : ''}</p>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditGoldPost(gp)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteGoldPost(gp.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Gold post form */}
+            <div className="space-y-4 p-4 rounded-xl border border-amber-500/20 bg-amber-500/5">
+              <Label className="font-semibold text-foreground">{editingGoldPost ? '✏️ עריכת פוסט זהב' : '➕ פוסט זהב חדש'}</Label>
+
+              <div className="space-y-2">
+                <Label className="text-sm">תוכן ההודעה</Label>
+                <Textarea
+                  value={goldMessage}
+                  onChange={(e) => setGoldMessage(e.target.value)}
+                  placeholder="כתוב את תוכן הפוסט כאן..."
+                  className="min-h-[100px] text-right"
+                  dir="rtl"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label className="text-sm">שעת שליחה</Label>
+                  <Input
+                    type="time"
+                    value={goldSendTime}
+                    onChange={(e) => setGoldSendTime(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm">סטטוס</Label>
+                  <div className="flex items-center gap-2 h-10">
+                    <Switch checked={goldIsActive} onCheckedChange={setGoldIsActive} />
+                    <span className="text-sm">{goldIsActive ? 'פעיל' : 'מושבת'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Media */}
+              <div className="space-y-2">
+                <Label className="text-sm">מדיה (תמונה או וידאו)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={goldMediaUrl}
+                    onChange={(e) => setGoldMediaUrl(e.target.value)}
+                    placeholder="URL של תמונה/וידאו או העלה קובץ"
+                    className="flex-1"
+                    dir="ltr"
+                  />
+                  <label className="cursor-pointer">
+                    <input type="file" accept="image/*,video/*" className="hidden" onChange={handleGoldMediaUpload} />
+                    <Button type="button" variant="outline" size="sm" className="h-10" disabled={isUploadingGoldMedia} asChild>
+                      <span>
+                        {isUploadingGoldMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                      </span>
+                    </Button>
+                  </label>
+                </div>
+                {goldMediaUrl && (
+                  <div className="flex items-center gap-2">
+                    {goldMediaType === 'video' ? (
+                      <Badge variant="outline">🎬 וידאו</Badge>
+                    ) : (
+                      <img src={goldMediaUrl} alt="" className="h-16 w-16 object-cover rounded" />
+                    )}
+                    <Button variant="ghost" size="sm" onClick={() => { setGoldMediaUrl(''); setGoldMediaType('image'); }}>
+                      <X className="h-3 w-3 mr-1" /> הסר
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {/* Target accounts */}
+              <div className="space-y-2">
+                <Label className="text-sm">חשבונות יעד</Label>
+                <div className="space-y-1">
+                  {messagingAccounts.map(acc => (
+                    <label key={acc.id} className="flex items-center gap-2 p-2 rounded hover:bg-muted/50 cursor-pointer">
+                      <Checkbox
+                        checked={goldTargetAccounts.includes(acc.id)}
+                        onCheckedChange={() => toggleGoldTargetAccount(acc.id)}
+                      />
+                      <span className="text-sm">
+                        {acc.account_type === 'telegram' ? '📱' : '💬'} {acc.account_name}
+                      </span>
+                      {!acc.is_active && <Badge variant="secondary" className="text-xs">לא פעיל</Badge>}
+                    </label>
+                  ))}
+                  {messagingAccounts.length === 0 && (
+                    <p className="text-sm text-muted-foreground">אין חשבונות - הוסף חשבון קודם</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleSaveGoldPost}
+                  disabled={isSavingGoldPost || !goldMessage.trim() || goldTargetAccounts.length === 0}
+                  className="bg-amber-500 hover:bg-amber-600 text-white"
+                >
+                  {isSavingGoldPost ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
+                  {editingGoldPost ? 'עדכן פוסט זהב' : 'שמור פוסט זהב'}
+                </Button>
+                {editingGoldPost && (
+                  <Button variant="ghost" onClick={() => {
+                    setEditingGoldPost(null);
+                    setGoldMessage('');
+                    setGoldMediaUrl('');
+                    setGoldMediaType('image');
+                    setGoldSendTime('12:00');
+                    setGoldTargetAccounts([]);
+                    setGoldIsActive(true);
+                  }}>
+                    ביטול
+                  </Button>
+                )}
+              </div>
+            </div>
           </CardContent>
         </Card>
 
