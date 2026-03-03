@@ -13,7 +13,8 @@ import {
   Send,
   MapPin,
   Search,
-  Ticket
+  Ticket,
+  LayoutGrid
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ const navItems = [
   { icon: List, label: "תור פרסום", path: "/queue" },
   { icon: MapPin, label: "אזורים", path: "/zones" },
   { icon: Ticket, label: "קופונים", path: "/coupons" },
+  { icon: LayoutGrid, label: "יוצר קולאז׳", path: "/collage" },
   { icon: History, label: "היסטוריה", path: "/history" },
   { icon: Settings, label: "הגדרות", path: "/settings" },
 ];
