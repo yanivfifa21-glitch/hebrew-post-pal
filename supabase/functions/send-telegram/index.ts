@@ -29,6 +29,38 @@ function stripCustomEmojiTags(text: string): string {
   return text.replace(/<tg-emoji emoji-id="[^"]*">([^<]*)<\/tg-emoji>/g, '$1');
 }
 
+function escapeHtmlForTelegram(text: string): string {
+  // First, protect existing valid HTML tags we want to keep (bold, italic, links, tg-emoji)
+  const protectedTags: [string, string][] = [];
+  let idx = 0;
+  
+  // Protect tg-emoji tags
+  text = text.replace(/<tg-emoji emoji-id="[^"]*">[^<]*<\/tg-emoji>/g, (match) => {
+    const placeholder = `__PROTECTED_${idx}__`;
+    protectedTags.push([placeholder, match]);
+    idx++;
+    return placeholder;
+  });
+  
+  // Protect <b>, <i>, <a>, <code>, <pre>, <u>, <s>, <strike> tags
+  text = text.replace(/<\/?(?:b|i|u|s|strike|code|pre|a(?:\s[^>]*)?)>/g, (match) => {
+    const placeholder = `__PROTECTED_${idx}__`;
+    protectedTags.push([placeholder, match]);
+    idx++;
+    return placeholder;
+  });
+  
+  // Escape remaining < and > that are not part of valid HTML
+  text = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  
+  // Restore protected tags
+  for (const [placeholder, original] of protectedTags) {
+    text = text.replace(placeholder, original);
+  }
+  
+  return text;
+}
+
 async function sendTelegramMessage(
   botToken: string,
   chatId: string,
@@ -210,7 +242,7 @@ serve(async (req) => {
 
     const useCustomEmoji = settingsData?.use_custom_emoji !== false; // default true
 
-    let caption = hebrewDescription;
+    let caption = escapeHtmlForTelegram(hebrewDescription);
     let usedCustomEmoji = false;
 
     if (useCustomEmoji) {
