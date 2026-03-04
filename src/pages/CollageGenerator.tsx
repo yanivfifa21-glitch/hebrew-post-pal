@@ -9,6 +9,7 @@ import {
   Upload, Download, Copy, Image as ImageIcon, Trash2, 
   Loader2, Eye, RefreshCw 
 } from "lucide-react";
+import { ProductImportDialog } from "@/components/collage/ProductImportDialog";
 
 const USD_TO_ILS = 3.19;
 
@@ -257,6 +258,42 @@ const CollageGenerator = () => {
     a.click();
   };
 
+  const handleImportProducts = async (dbProducts: { id: string; title: string; price: number | null; image_url: string | null; affiliate_link: string | null; hebrew_description: string | null }[]) => {
+    const newProducts = [...products];
+    for (let i = 0; i < dbProducts.length && i < 6; i++) {
+      const dp = dbProducts[i];
+      const priceUsd = dp.price != null ? String(dp.price) : "";
+      const priceIls = dp.price != null ? (dp.price * USD_TO_ILS).toFixed(0) : "";
+
+      // Try to load image from URL
+      let imageFile: File | null = null;
+      let imagePreview: string | null = null;
+      if (dp.image_url) {
+        try {
+          const resp = await fetch(dp.image_url);
+          const blob = await resp.blob();
+          imageFile = new File([blob], `product-${i}.jpg`, { type: blob.type });
+          imagePreview = URL.createObjectURL(imageFile);
+        } catch {
+          imagePreview = dp.image_url;
+        }
+      }
+
+      newProducts[i] = {
+        image: imageFile,
+        imagePreview,
+        text: "",
+        name: dp.title || "",
+        priceUsd,
+        priceIls,
+        link: dp.affiliate_link || "",
+      };
+    }
+    setProducts(newProducts);
+    setGeneratedImage(null);
+    toast({ title: `✅ יובאו ${dbProducts.length} מוצרים` });
+  };
+
   const filledCount = products.filter(p => p.name || p.image).length;
 
   return (
@@ -271,6 +308,7 @@ const CollageGenerator = () => {
             </p>
           </div>
           <div className="flex gap-2">
+            <ProductImportDialog onImport={handleImportProducts} />
             <Button
               variant="gradient"
               onClick={generateCollage}
