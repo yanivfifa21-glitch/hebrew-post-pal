@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { PackageOpen, Loader2 } from "lucide-react";
 
-interface DBProduct {
+export interface DBProduct {
   id: string;
   title: string;
   price: number | null;
@@ -21,7 +21,54 @@ interface ProductImportDialogProps {
   maxProducts?: number;
 }
 
-export function ProductImportDialog({ onImport, maxProducts = 6 }: ProductImportDialogProps) {
+/** Extract a short product name from hebrew_description (first meaningful line) */
+export function extractShortName(hebrewDesc: string | null, fallbackTitle: string): string {
+  if (!hebrewDesc) return fallbackTitle;
+  const lines = hebrewDesc.split("\n").map(l => l.trim()).filter(Boolean);
+  // First line that has Hebrew text and isn't just emojis/prices/links
+  for (const line of lines) {
+    // Skip lines that are only emojis, prices, links, or coupon codes
+    if (line.match(/^[\s💰🔥🎯✅⭐🛒📦💎🏷️🎉👇🔗⬇️➡️←→↓↑•\-–—\d$₪%.,!?]+$/u)) continue;
+    if (line.match(/^https?:\/\//)) continue;
+    if (line.match(/^קוד קופון|^קופון|^coupon/i)) continue;
+    // Clean emojis and return first meaningful text
+    const cleaned = line
+      .replace(/[💰🔥🎯✅⭐🛒📦💎🏷️🎉👇🔗⬇️➡️←→↓↑•]/gu, "")
+      .replace(/[-–—]\s*[\$₪\d.\s/]+$/, "")
+      .trim();
+    if (cleaned.length > 2) return cleaned.slice(0, 60);
+  }
+  return fallbackTitle;
+}
+
+/** Extract coupon code from hebrew description */
+export function extractCoupon(hebrewDesc: string | null): string {
+  if (!hebrewDesc) return "";
+  // Match patterns like "קוד קופון: ABC123" or "קופון: ABC123" or standalone coupon-like codes
+  const couponMatch = hebrewDesc.match(/(?:קוד\s*(?:קופון|הנחה)?|קופון)\s*[:\-–]?\s*([A-Za-z0-9]+)/);
+  if (couponMatch) return couponMatch[1];
+  return "";
+}
+
+/** Extract price from hebrew description */
+export function extractPriceFromDesc(hebrewDesc: string | null): { usd: string; ils: string } {
+  if (!hebrewDesc) return { usd: "", ils: "" };
+  let usd = "", ils = "";
+  const usdMatch = hebrewDesc.match(/\$\s*([\d.]+)/);
+  const ilsMatch = hebrewDesc.match(/([\d.]+)\s*₪/) || hebrewDesc.match(/₪\s*([\d.]+)/);
+  if (usdMatch) usd = usdMatch[1];
+  if (ilsMatch) ils = ilsMatch[1];
+  return { usd, ils };
+}
+
+/** Extract link from hebrew description */
+export function extractLinkFromDesc(hebrewDesc: string | null): string {
+  if (!hebrewDesc) return "";
+  const match = hebrewDesc.match(/(https?:\/\/[^\s]+)/);
+  return match ? match[1] : "";
+}
+
+export function ProductImportDialog({ onImport, maxProducts = 9 }: ProductImportDialogProps) {
   const [open, setOpen] = useState(false);
   const [products, setProducts] = useState<DBProduct[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -74,7 +121,7 @@ export function ProductImportDialog({ onImport, maxProducts = 6 }: ProductImport
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           <PackageOpen className="h-4 w-4 ml-1" />
-          ייבא מפוסטים קיימים
+          ייבא מפוסטים
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-lg" dir="rtl">
@@ -90,33 +137,38 @@ export function ProductImportDialog({ onImport, maxProducts = 6 }: ProductImport
           <p className="text-center text-muted-foreground py-8">אין מוצרים</p>
         ) : (
           <ScrollArea className="h-[400px] pr-2">
-            <div className="space-y-2">
-              {products.map(p => (
-                <label
-                  key={p.id}
-                  className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer border transition-colors ${
-                    selected.has(p.id) ? "border-primary bg-primary/5" : "border-transparent hover:bg-muted/40"
-                  }`}
-                >
-                  <Checkbox
-                    checked={selected.has(p.id)}
-                    onCheckedChange={() => toggle(p.id)}
-                  />
-                  {p.image_url && (
-                    <img
-                      src={p.image_url}
-                      alt=""
-                      className="w-12 h-12 rounded-md object-cover shrink-0"
+            <div className="space-y-1">
+              {products.map(p => {
+                const shortName = extractShortName(p.hebrew_description, p.title);
+                const coupon = extractCoupon(p.hebrew_description);
+                return (
+                  <label
+                    key={p.id}
+                    className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer border transition-colors ${
+                      selected.has(p.id) ? "border-primary bg-primary/5" : "border-transparent hover:bg-muted/40"
+                    }`}
+                  >
+                    <Checkbox
+                      checked={selected.has(p.id)}
+                      onCheckedChange={() => toggle(p.id)}
                     />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{p.title}</p>
-                    {p.price != null && (
-                      <p className="text-xs text-muted-foreground">${p.price}</p>
+                    {p.image_url && (
+                      <img
+                        src={p.image_url}
+                        alt=""
+                        className="w-10 h-10 rounded-md object-cover shrink-0"
+                      />
                     )}
-                  </div>
-                </label>
-              ))}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate">{shortName}</p>
+                      <div className="flex gap-2 text-xs text-muted-foreground">
+                        {p.price != null && <span>${p.price}</span>}
+                        {coupon && <span className="text-primary">🏷️ {coupon}</span>}
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
             </div>
           </ScrollArea>
         )}
