@@ -26,12 +26,12 @@ const DEFAULT_TEMPLATE = "/collage-template.jpeg";
 // The reference image is ~1024x1024, header takes ~22%, footer ~15%
 // Product area: y=225 to y=785, 3 columns, 2 rows
 const GRID_CELLS = [
-  { x: 17, y: 178, w: 322, h: 335 }, // row1-col1
-  { x: 350, y: 178, w: 322, h: 335 }, // row1-col2
-  { x: 683, y: 178, w: 322, h: 335 }, // row1-col3
-  { x: 17, y: 527, w: 322, h: 335 }, // row2-col1
-  { x: 350, y: 527, w: 322, h: 335 }, // row2-col2
-  { x: 683, y: 527, w: 322, h: 335 }, // row2-col3
+  { x: 17, y: 210, w: 322, h: 310 }, // row1-col1
+  { x: 350, y: 210, w: 322, h: 310 }, // row1-col2
+  { x: 683, y: 210, w: 322, h: 310 }, // row1-col3
+  { x: 17, y: 535, w: 322, h: 310 }, // row2-col1
+  { x: 350, y: 535, w: 322, h: 310 }, // row2-col2
+  { x: 683, y: 535, w: 322, h: 310 }, // row2-col3
 ];
 
 const PRODUCT_COUNT = 6;
