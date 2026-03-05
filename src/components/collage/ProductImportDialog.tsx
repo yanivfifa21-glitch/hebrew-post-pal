@@ -25,13 +25,10 @@ interface ProductImportDialogProps {
 export function extractShortName(hebrewDesc: string | null, fallbackTitle: string): string {
   if (!hebrewDesc) return fallbackTitle;
   const lines = hebrewDesc.split("\n").map(l => l.trim()).filter(Boolean);
-  // First line that has Hebrew text and isn't just emojis/prices/links
   for (const line of lines) {
-    // Skip lines that are only emojis, prices, links, or coupon codes
     if (line.match(/^[\s💰🔥🎯✅⭐🛒📦💎🏷️🎉👇🔗⬇️➡️←→↓↑•\-–—\d$₪%.,!?]+$/u)) continue;
     if (line.match(/^https?:\/\//)) continue;
     if (line.match(/^קוד קופון|^קופון|^coupon/i)) continue;
-    // Clean emojis and return first meaningful text
     const cleaned = line
       .replace(/[💰🔥🎯✅⭐🛒📦💎🏷️🎉👇🔗⬇️➡️←→↓↑•]/gu, "")
       .replace(/[-–—]\s*[\$₪\d.\s/]+$/, "")
@@ -41,10 +38,40 @@ export function extractShortName(hebrewDesc: string | null, fallbackTitle: strin
   return fallbackTitle;
 }
 
+/** Extract 2-3 meaningful sentences from the post for the summary */
+export function extractPostSummary(hebrewDesc: string | null): string {
+  if (!hebrewDesc) return "";
+  const lines = hebrewDesc.split("\n").map(l => l.trim()).filter(Boolean);
+  const meaningful: string[] = [];
+  
+  for (const line of lines) {
+    // Skip lines that are only emojis, prices, links, coupon codes, or very short
+    if (line.match(/^https?:\/\//)) continue;
+    if (line.match(/^[\s💰🔥🎯✅⭐🛒📦💎🏷️🎉👇🔗⬇️➡️←→↓↑•\-–—\d$₪%.,!?\s]+$/u)) continue;
+    if (line.match(/^קוד קופון|^קופון|^coupon/i)) continue;
+    // Skip pure price lines
+    if (line.match(/^\$?\d+[\d.,]*\s*[\$₪]?\s*[/\\]?\s*\$?\d*[\d.,]*\s*[\$₪]?$/)) continue;
+    
+    const cleaned = line
+      .replace(/[💰🔥🎯✅⭐🛒📦💎🏷️🎉👇🔗⬇️➡️←→↓↑•📍🚚✈️🎁💡⚡🆕🔝👆👉🤩😍💥🌟⭕❌📌🔴🟢🟡💸🛍️📢📣🤯😱🤤💪👀🥇🏆🎊🥳]/gu, "")
+      .trim();
+    
+    if (cleaned.length > 5) {
+      meaningful.push(cleaned);
+    }
+    if (meaningful.length >= 3) break;
+  }
+  
+  // Skip the first one (it's the name), take next 2-3
+  if (meaningful.length > 1) {
+    return meaningful.slice(1, 4).join("\n");
+  }
+  return meaningful.join("\n");
+}
+
 /** Extract coupon code from hebrew description */
 export function extractCoupon(hebrewDesc: string | null): string {
   if (!hebrewDesc) return "";
-  // Match patterns like "קוד קופון: ABC123" or "קופון: ABC123" or standalone coupon-like codes
   const couponMatch = hebrewDesc.match(/(?:קוד\s*(?:קופון|הנחה)?|קופון)\s*[:\-–]?\s*([A-Za-z0-9]+)/);
   if (couponMatch) return couponMatch[1];
   return "";
@@ -68,7 +95,7 @@ export function extractLinkFromDesc(hebrewDesc: string | null): string {
   return match ? match[1] : "";
 }
 
-export function ProductImportDialog({ onImport, maxProducts = 9 }: ProductImportDialogProps) {
+export function ProductImportDialog({ onImport, maxProducts = 6 }: ProductImportDialogProps) {
   const [open, setOpen] = useState(false);
   const [products, setProducts] = useState<DBProduct[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
