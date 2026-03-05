@@ -1,12 +1,13 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { 
   Upload, Download, Copy, Image as ImageIcon, Trash2, 
-  Loader2, Eye, RefreshCw 
+  Loader2, Eye, RefreshCw, Replace 
 } from "lucide-react";
 import { 
   ProductImportDialog, 
@@ -14,31 +15,32 @@ import {
   extractPriceFromDesc, 
   extractCoupon, 
   extractLinkFromDesc,
+  extractPostSummary,
   type DBProduct 
 } from "@/components/collage/ProductImportDialog";
 
 const USD_TO_ILS = 3.19;
+const DEFAULT_TEMPLATE = "/collage-template.jpeg";
 
-// 3x3 grid cells relative to 1024x1024 template
-// Based on the reference image: header ~13%, then 3 equal rows
+// 2x3 grid cells (2 rows, 3 columns) based on the reference image
+// The reference image is ~1024x1024, header takes ~22%, footer ~15%
+// Product area: y=225 to y=785, 3 columns, 2 rows
 const GRID_CELLS = [
-  { x: 12, y: 130, w: 326, h: 270 }, // row1-col1
-  { x: 348, y: 130, w: 326, h: 270 }, // row1-col2
-  { x: 685, y: 130, w: 326, h: 270 }, // row1-col3
-  { x: 12, y: 410, w: 326, h: 270 }, // row2-col1
-  { x: 348, y: 410, w: 326, h: 270 }, // row2-col2
-  { x: 685, y: 410, w: 326, h: 270 }, // row2-col3
-  { x: 12, y: 690, w: 326, h: 270 }, // row3-col1
-  { x: 348, y: 690, w: 326, h: 270 }, // row3-col2
-  { x: 685, y: 690, w: 326, h: 270 }, // row3-col3
+  { x: 22, y: 225, w: 318, h: 270 }, // row1-col1
+  { x: 352, y: 225, w: 318, h: 270 }, // row1-col2
+  { x: 682, y: 225, w: 318, h: 270 }, // row1-col3
+  { x: 22, y: 508, w: 318, h: 270 }, // row2-col1
+  { x: 352, y: 508, w: 318, h: 270 }, // row2-col2
+  { x: 682, y: 508, w: 318, h: 270 }, // row2-col3
 ];
 
-const PRODUCT_COUNT = 9;
+const PRODUCT_COUNT = 6;
 
 interface ProductInput {
   image: File | null;
   imagePreview: string | null;
   name: string;
+  summary: string;
   priceUsd: string;
   priceIls: string;
   coupon: string;
@@ -46,7 +48,7 @@ interface ProductInput {
 }
 
 const emptyProduct = (): ProductInput => ({
-  image: null, imagePreview: null, name: "", priceUsd: "", priceIls: "", coupon: "", link: "",
+  image: null, imagePreview: null, name: "", summary: "", priceUsd: "", priceIls: "", coupon: "", link: "",
 });
 
 function convertPrice(usd: string, ils: string): { usd: string; ils: string } {
@@ -56,8 +58,8 @@ function convertPrice(usd: string, ils: string): { usd: string; ils: string } {
 }
 
 const CollageGenerator = () => {
-  const [templateImage, setTemplateImage] = useState<File | null>(null);
-  const [templatePreview, setTemplatePreview] = useState<string | null>(null);
+  const [templatePreview, setTemplatePreview] = useState<string>(DEFAULT_TEMPLATE);
+  const [templateFile, setTemplateFile] = useState<File | null>(null);
   const [products, setProducts] = useState<ProductInput[]>(
     Array.from({ length: PRODUCT_COUNT }, emptyProduct)
   );
@@ -68,7 +70,7 @@ const CollageGenerator = () => {
   const handleTemplateUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setTemplateImage(file);
+    setTemplateFile(file);
     setTemplatePreview(URL.createObjectURL(file));
     setGeneratedImage(null);
   };
@@ -111,10 +113,6 @@ const CollageGenerator = () => {
   };
 
   const generateCollage = useCallback(async () => {
-    if (!templateImage) {
-      toast({ title: "חסרה תמונת תבנית", variant: "destructive" });
-      return;
-    }
     setIsGenerating(true);
     try {
       const canvas = canvasRef.current;
@@ -122,7 +120,10 @@ const CollageGenerator = () => {
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      const templateImg = await loadImage(URL.createObjectURL(templateImage));
+      const templateSrc = templateFile 
+        ? URL.createObjectURL(templateFile) 
+        : DEFAULT_TEMPLATE;
+      const templateImg = await loadImage(templateSrc);
       canvas.width = templateImg.width;
       canvas.height = templateImg.height;
       const scaleX = templateImg.width / 1024;
@@ -151,7 +152,7 @@ const CollageGenerator = () => {
 
         ctx.save();
         ctx.beginPath();
-        ctx.roundRect(sx, sy, sw, sh, 6 * scaleX);
+        ctx.roundRect(sx, sy, sw, sh, 8 * scaleX);
         ctx.clip();
         ctx.drawImage(img, drawX, drawY, drawW, drawH);
         ctx.restore();
@@ -165,21 +166,36 @@ const CollageGenerator = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [templateImage, products]);
+  }, [templateFile, products]);
 
   const generatePostText = (): string => {
     const header = "🔥 המוצרים שהכי אהבתם השבוע! 🔥\n\n";
     const items = products
-      .filter(p => p.name)
+      .filter(p => p.name || p.summary)
       .map((p, i) => {
         const prices = convertPrice(p.priceUsd, p.priceIls);
-        const parts: string[] = [`${i + 1}. ${p.name}`];
+        const parts: string[] = [];
+        
+        // Product name
+        parts.push(`${i + 1}. ${p.name || "מוצר"}`);
+        
+        // Summary (2-3 sentences from the post)
+        if (p.summary) {
+          parts.push(p.summary);
+        }
+        
+        // Price line
         const priceStr = prices.ils && prices.usd
-          ? `${prices.ils}₪ / $${prices.usd}`
-          : prices.ils ? `${prices.ils}₪` : prices.usd ? `$${prices.usd}` : "";
-        if (priceStr) parts[0] += ` - ${priceStr}`;
+          ? `💰 ${prices.ils}₪ / $${prices.usd}`
+          : prices.ils ? `💰 ${prices.ils}₪` : prices.usd ? `💰 $${prices.usd}` : "";
+        if (priceStr) parts.push(priceStr);
+        
+        // Coupon
         if (p.coupon) parts.push(`🏷️ קופון: ${p.coupon}`);
-        if (p.link) parts.push(p.link);
+        
+        // Link
+        if (p.link) parts.push(`🔗 ${p.link}`);
+        
         return parts.join("\n");
       })
       .join("\n\n");
@@ -204,8 +220,8 @@ const CollageGenerator = () => {
     for (let i = 0; i < dbProducts.length && i < PRODUCT_COUNT; i++) {
       const dp = dbProducts[i];
       
-      // Extract details from hebrew_description (post text)
       const shortName = extractShortName(dp.hebrew_description, dp.title);
+      const summary = extractPostSummary(dp.hebrew_description);
       const descPrices = extractPriceFromDesc(dp.hebrew_description);
       const coupon = extractCoupon(dp.hebrew_description);
       const descLink = extractLinkFromDesc(dp.hebrew_description);
@@ -230,6 +246,7 @@ const CollageGenerator = () => {
         image: imageFile,
         imagePreview,
         name: shortName,
+        summary,
         priceUsd,
         priceIls,
         coupon,
@@ -255,7 +272,7 @@ const CollageGenerator = () => {
               variant="gradient"
               size="sm"
               onClick={generateCollage}
-              disabled={!templateImage || isGenerating}
+              disabled={isGenerating}
             >
               {isGenerating ? <Loader2 className="h-4 w-4 animate-spin ml-1" /> : <RefreshCw className="h-4 w-4 ml-1" />}
               צור קולאז׳
@@ -263,32 +280,28 @@ const CollageGenerator = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4">
-          {/* Left - Products Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-4">
+          {/* Left - Products */}
           <div className="space-y-3">
-            {/* Template Upload - compact */}
-            <div className="glass-card neon-border p-3">
+            {/* Template - compact with change option */}
+            <div className="glass-card neon-border p-2 flex items-center gap-3">
+              <img src={templatePreview} alt="Template" className="h-12 w-12 rounded-lg object-cover" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium truncate">תבנית בסיס</p>
+              </div>
               <input type="file" accept="image/*" onChange={handleTemplateUpload} className="hidden" id="template-upload" />
-              <label htmlFor="template-upload" className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity">
-                {templatePreview ? (
-                  <img src={templatePreview} alt="Template" className="h-16 w-16 rounded-lg object-cover" />
-                ) : (
-                  <div className="h-16 w-16 rounded-lg border-2 border-dashed border-primary/30 flex items-center justify-center">
-                    <Upload className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                )}
-                <div>
-                  <p className="text-sm font-medium">{templatePreview ? "תמונת תבנית נטענה" : "העלה תמונת תבנית בסיס"}</p>
-                  <p className="text-xs text-muted-foreground">לחץ להחלפה</p>
-                </div>
+              <label htmlFor="template-upload" className="cursor-pointer">
+                <Button variant="ghost" size="sm" className="h-7 text-xs pointer-events-none">
+                  <Replace className="h-3 w-3 ml-1" />
+                  החלף
+                </Button>
               </label>
             </div>
 
-            {/* 3x3 Product Grid - compact cards */}
+            {/* 3x2 Product Grid */}
             <div className="grid grid-cols-3 gap-2">
               {products.map((product, index) => (
                 <div key={index} className="glass-card neon-border p-2 space-y-1.5 relative group">
-                  {/* Clear button */}
                   {(product.name || product.image) && (
                     <button
                       onClick={() => clearProduct(index)}
@@ -311,13 +324,22 @@ const CollageGenerator = () => {
                     )}
                   </label>
 
-                  {/* Compact fields */}
+                  {/* Name */}
                   <Input
                     placeholder="שם מוצר"
                     value={product.name}
                     onChange={(e) => updateProduct(index, "name", e.target.value)}
                     className="h-6 text-[11px] px-1.5"
                   />
+                  {/* Summary */}
+                  <Textarea
+                    placeholder="תיאור קצר (2-3 משפטים)"
+                    value={product.summary}
+                    onChange={(e) => updateProduct(index, "summary", e.target.value)}
+                    className="text-[10px] px-1.5 py-1 min-h-[36px] max-h-[60px] resize-none"
+                    rows={2}
+                  />
+                  {/* Prices */}
                   <div className="grid grid-cols-2 gap-1">
                     <Input
                       placeholder="$"
@@ -369,19 +391,14 @@ const CollageGenerator = () => {
               <div className="bg-muted/30 rounded-lg overflow-hidden flex items-center justify-center min-h-[200px]">
                 {generatedImage ? (
                   <img src={generatedImage} alt="Collage" className="w-full rounded-lg" />
-                ) : templatePreview ? (
+                ) : (
                   <div className="relative w-full">
-                    <img src={templatePreview} alt="Template" className="w-full rounded-lg opacity-50" />
+                    <img src={templatePreview} alt="Template" className="w-full rounded-lg opacity-60" />
                     <div className="absolute inset-0 flex items-center justify-center">
                       <span className="text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded-md">
                         לחץ "צור קולאז׳"
                       </span>
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-1 py-8 text-muted-foreground">
-                    <ImageIcon className="h-8 w-8 opacity-30" />
-                    <span className="text-xs">העלה תבנית</span>
                   </div>
                 )}
               </div>
@@ -396,7 +413,7 @@ const CollageGenerator = () => {
                   העתק
                 </Button>
               </div>
-              <div className="bg-muted/20 rounded-lg p-3 min-h-[120px] max-h-[300px] overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed" dir="rtl">
+              <div className="bg-muted/20 rounded-lg p-3 min-h-[120px] max-h-[400px] overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed" dir="rtl">
                 {filledCount > 0 ? generatePostText() : (
                   <span className="text-muted-foreground">הוסף מוצרים כדי לראות את הטקסט</span>
                 )}
