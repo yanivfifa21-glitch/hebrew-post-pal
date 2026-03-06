@@ -34,9 +34,9 @@ const GRID_CELLS = [
   { x: 17, y: 210, w: 322, h: 300 }, // row1-col1
   { x: 350, y: 210, w: 322, h: 300 }, // row1-col2
   { x: 683, y: 210, w: 322, h: 300 }, // row1-col3
-  { x: 17, y: 545, w: 322, h: 290 }, // row2-col1
-  { x: 350, y: 545, w: 322, h: 290 }, // row2-col2
-  { x: 683, y: 545, w: 322, h: 290 }, // row2-col3
+  { x: 17, y: 555, w: 322, h: 295 }, // row2-col1
+  { x: 350, y: 555, w: 322, h: 295 }, // row2-col2
+  { x: 683, y: 555, w: 322, h: 295 }, // row2-col3
 ];
 
 const PRODUCT_COUNT = 6;
