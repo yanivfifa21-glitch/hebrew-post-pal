@@ -328,12 +328,11 @@ const CollageGenerator = () => {
       const postText = generatePostText();
 
       const selectedAccountsList = accounts.filter(a => selectedAccounts.has(a.id));
-      let successCount = 0;
 
-      for (const account of selectedAccountsList) {
-        try {
+      const results = await Promise.allSettled(
+        selectedAccountsList.map(async (account) => {
           const fnName = account.account_type === "telegram" ? "send-telegram" : "send-whatsapp";
-          const { error } = await supabase.functions.invoke(fnName, {
+          const { data, error } = await supabase.functions.invoke(fnName, {
             body: {
               title: "",
               hebrewDescription: postText,
@@ -345,16 +344,38 @@ const CollageGenerator = () => {
               mediaType: "image",
             },
           });
-          if (!error) successCount++;
-        } catch (e) {
-          console.error(`Failed to send to ${account.account_name}:`, e);
-        }
+          if (error) {
+            console.error(`[collage-send] Error sending to ${account.account_name}:`, error);
+            throw error;
+          }
+          if (data && !data.success) {
+            console.error(`[collage-send] API error for ${account.account_name}:`, data.error);
+            throw new Error(data.error || "Unknown API error");
+          }
+          return account.account_name;
+        })
+      );
+
+      const successCount = results.filter(r => r.status === "fulfilled").length;
+      const failedResults = results.filter(r => r.status === "rejected") as PromiseRejectedResult[];
+      
+      if (failedResults.length > 0) {
+        console.error("[collage-send] Failed sends:", failedResults.map(r => r.reason));
       }
 
-      toast({ title: `✅ נשלח ל-${successCount}/${selectedAccountsList.length} חשבונות` });
-      setSendDialogOpen(false);
-      setSelectedAccounts(new Set());
+      toast({ 
+        title: successCount > 0 
+          ? `✅ נשלח ל-${successCount}/${selectedAccountsList.length} חשבונות` 
+          : "❌ השליחה נכשלה",
+        description: failedResults.length > 0 ? `${failedResults.length} שליחות נכשלו` : undefined,
+        variant: successCount === 0 ? "destructive" : undefined,
+      });
+      if (successCount > 0) {
+        setSendDialogOpen(false);
+        setSelectedAccounts(new Set());
+      }
     } catch (err: any) {
+      console.error("[collage-send] General error:", err);
       toast({ title: "שגיאה בשליחה", description: err.message, variant: "destructive" });
     } finally {
       setIsSending(false);
