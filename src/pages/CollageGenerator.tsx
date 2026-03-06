@@ -5,9 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 import { 
   Upload, Download, Copy, Image as ImageIcon, Trash2, 
-  Loader2, Eye, RefreshCw, Replace 
+  Loader2, Eye, RefreshCw, Replace, Send, CheckSquare
 } from "lucide-react";
 import { 
   ProductImportDialog, 
@@ -18,6 +19,10 @@ import {
   extractPostSummary,
   type DBProduct 
 } from "@/components/collage/ProductImportDialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
+} from "@/components/ui/dialog";
 
 const USD_TO_ILS = 3.19;
 const DEFAULT_TEMPLATE = "/collage-template.jpeg";
@@ -26,12 +31,12 @@ const DEFAULT_TEMPLATE = "/collage-template.jpeg";
 // The reference image is ~1024x1024, header takes ~22%, footer ~15%
 // Product area: y=225 to y=785, 3 columns, 2 rows
 const GRID_CELLS = [
-  { x: 17, y: 210, w: 322, h: 310 }, // row1-col1
-  { x: 350, y: 210, w: 322, h: 310 }, // row1-col2
-  { x: 683, y: 210, w: 322, h: 310 }, // row1-col3
-  { x: 17, y: 535, w: 322, h: 310 }, // row2-col1
-  { x: 350, y: 535, w: 322, h: 310 }, // row2-col2
-  { x: 683, y: 535, w: 322, h: 310 }, // row2-col3
+  { x: 17, y: 210, w: 322, h: 300 }, // row1-col1
+  { x: 350, y: 210, w: 322, h: 300 }, // row1-col2
+  { x: 683, y: 210, w: 322, h: 300 }, // row1-col3
+  { x: 17, y: 545, w: 322, h: 290 }, // row2-col1
+  { x: 350, y: 545, w: 322, h: 290 }, // row2-col2
+  { x: 683, y: 545, w: 322, h: 290 }, // row2-col3
 ];
 
 const PRODUCT_COUNT = 6;
@@ -57,6 +62,15 @@ function convertPrice(usd: string, ils: string): { usd: string; ils: string } {
   return { usd, ils };
 }
 
+interface MessagingAccount {
+  id: string;
+  account_type: string;
+  account_name: string;
+  is_active: boolean;
+  telegram_chat_id: string | null;
+  whatsapp_chat_id: string | null;
+}
+
 const CollageGenerator = () => {
   const [templatePreview, setTemplatePreview] = useState<string>(DEFAULT_TEMPLATE);
   const [templateFile, setTemplateFile] = useState<File | null>(null);
@@ -66,6 +80,26 @@ const CollageGenerator = () => {
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Send dialog state
+  const [sendDialogOpen, setSendDialogOpen] = useState(false);
+  const [accounts, setAccounts] = useState<MessagingAccount[]>([]);
+  const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
+  const [isSending, setIsSending] = useState(false);
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
+
+  const fetchAccounts = useCallback(async () => {
+    setLoadingAccounts(true);
+    const { data } = await supabase.rpc("get_my_messaging_accounts_safe");
+    if (data) {
+      setAccounts(data.filter((a: any) => a.is_active) as unknown as MessagingAccount[]);
+    }
+    setLoadingAccounts(false);
+  }, []);
+
+  useEffect(() => {
+    if (sendDialogOpen) fetchAccounts();
+  }, [sendDialogOpen, fetchAccounts]);
 
   const handleTemplateUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -226,8 +260,9 @@ const CollageGenerator = () => {
       const coupon = extractCoupon(dp.hebrew_description);
       const descLink = extractLinkFromDesc(dp.hebrew_description);
       
-      const priceUsd = descPrices.usd || (dp.price != null ? String(dp.price) : "");
-      const priceIls = descPrices.ils || (dp.price != null ? (dp.price * USD_TO_ILS).toFixed(0) : "");
+      // Only use price if found in post - don't force recalculation
+      const priceUsd = descPrices.usd || "";
+      const priceIls = descPrices.ils || "";
 
       let imageFile: File | null = null;
       let imagePreview: string | null = null;
@@ -249,13 +284,81 @@ const CollageGenerator = () => {
         summary,
         priceUsd,
         priceIls,
-        coupon,
+        coupon, // only if found in post
         link: dp.affiliate_link || descLink || "",
       };
     }
     setProducts(newProducts);
     setGeneratedImage(null);
     toast({ title: `✅ יובאו ${dbProducts.length} מוצרים` });
+  };
+
+  const toggleAccount = (id: string) => {
+    setSelectedAccounts(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSendCollage = async () => {
+    if (!generatedImage || selectedAccounts.size === 0) return;
+    setIsSending(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("לא מחובר");
+
+      // Upload collage image to storage
+      const blob = await (await fetch(generatedImage)).blob();
+      const fileName = `collage-${Date.now()}.png`;
+      const filePath = `${user.id}/${fileName}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from("product-images")
+        .upload(filePath, blob, { contentType: "image/png" });
+      
+      if (uploadError) throw uploadError;
+      
+      const { data: urlData } = supabase.storage
+        .from("product-images")
+        .getPublicUrl(filePath);
+      
+      const imageUrl = urlData.publicUrl;
+      const postText = generatePostText();
+
+      const selectedAccountsList = accounts.filter(a => selectedAccounts.has(a.id));
+      let successCount = 0;
+
+      for (const account of selectedAccountsList) {
+        try {
+          const fnName = account.account_type === "telegram" ? "send-telegram" : "send-whatsapp";
+          const { error } = await supabase.functions.invoke(fnName, {
+            body: {
+              title: "",
+              hebrewDescription: postText,
+              price: 0,
+              imageUrl,
+              affiliateLink: null,
+              userId: user.id,
+              accountId: account.id,
+              mediaType: "image",
+            },
+          });
+          if (!error) successCount++;
+        } catch (e) {
+          console.error(`Failed to send to ${account.account_name}:`, e);
+        }
+      }
+
+      toast({ title: `✅ נשלח ל-${successCount}/${selectedAccountsList.length} חשבונות` });
+      setSendDialogOpen(false);
+      setSelectedAccounts(new Set());
+    } catch (err: any) {
+      toast({ title: "שגיאה בשליחה", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const filledCount = products.filter(p => p.name || p.image).length;
@@ -381,12 +484,68 @@ const CollageGenerator = () => {
                   <Eye className="h-3.5 w-3.5 text-primary" />
                   תצוגה מקדימה
                 </Label>
-                {generatedImage && (
-                  <Button variant="success" size="sm" onClick={handleDownloadImage} className="h-7 text-xs">
-                    <Download className="h-3 w-3 ml-1" />
-                    הורד
-                  </Button>
-                )}
+                <div className="flex gap-1.5">
+                  {generatedImage && (
+                    <>
+                      <Button variant="success" size="sm" onClick={handleDownloadImage} className="h-7 text-xs">
+                        <Download className="h-3 w-3 ml-1" />
+                        הורד
+                      </Button>
+                      <Dialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button variant="gradient" size="sm" className="h-7 text-xs">
+                            <Send className="h-3 w-3 ml-1" />
+                            שלח
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-sm" dir="rtl">
+                          <DialogHeader>
+                            <DialogTitle>שלח קולאז׳ + טקסט</DialogTitle>
+                          </DialogHeader>
+                          {loadingAccounts ? (
+                            <div className="flex justify-center py-6">
+                              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                            </div>
+                          ) : accounts.length === 0 ? (
+                            <p className="text-center text-muted-foreground py-6 text-sm">אין חשבונות פעילים</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {accounts.map(acc => (
+                                <label
+                                  key={acc.id}
+                                  className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer border transition-colors ${
+                                    selectedAccounts.has(acc.id) ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40"
+                                  }`}
+                                >
+                                  <Checkbox
+                                    checked={selectedAccounts.has(acc.id)}
+                                    onCheckedChange={() => toggleAccount(acc.id)}
+                                  />
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-lg">{acc.account_type === "telegram" ? "📱" : "💬"}</span>
+                                    <span className="text-sm font-medium">{acc.account_name}</span>
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                          <Button
+                            onClick={handleSendCollage}
+                            disabled={isSending || selectedAccounts.size === 0}
+                            className="w-full mt-2"
+                          >
+                            {isSending ? (
+                              <Loader2 className="h-4 w-4 animate-spin ml-1" />
+                            ) : (
+                              <Send className="h-4 w-4 ml-1" />
+                            )}
+                            שלח ל-{selectedAccounts.size} חשבונות
+                          </Button>
+                        </DialogContent>
+                      </Dialog>
+                    </>
+                  )}
+                </div>
               </div>
               <div className="bg-muted/30 rounded-lg overflow-hidden flex items-center justify-center min-h-[200px]">
                 {generatedImage ? (
