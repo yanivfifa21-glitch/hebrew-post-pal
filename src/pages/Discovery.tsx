@@ -947,6 +947,13 @@ const Discovery = () => {
                   ))}
                 </div>
               )}
+
+              {/* Zone Selector - Choose destination before loading */}
+              <ZoneSelector
+                selectedZones={selectedZones}
+                onSelectionChange={setSelectedZones}
+                className="p-3 rounded-lg bg-muted/30 border border-border/50"
+              />
             </div>
           </TabsContent>
 
@@ -1174,12 +1181,6 @@ const Discovery = () => {
               </div>
             ) : (
               <>
-                {/* Zone Selector for API Products */}
-                <ZoneSelector
-                  selectedZones={selectedZones}
-                  onSelectionChange={setSelectedZones}
-                  className="p-3 rounded-lg bg-muted/30 border border-border/50"
-                />
 
                 {/* Selection Controls for API Products */}
                 <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/30 border border-border/50">
