@@ -92,7 +92,7 @@ const CollageGenerator = () => {
     setLoadingAccounts(true);
     const { data } = await supabase.rpc("get_my_messaging_accounts_safe");
     if (data) {
-      setAccounts(data.filter((a: any) => a.is_active) as unknown as MessagingAccount[]);
+      setAccounts(data as unknown as MessagingAccount[]);
     }
     setLoadingAccounts(false);
   }, []);
