@@ -19,8 +19,8 @@ const CATEGORY_IDS: Record<string, string> = {
   "44": "44",             // Consumer Electronics (Audio)
 };
 
-// AD CENTER product sources
-type ProductSource = "hot" | "hot_deals" | "high_commission" | "featured" | "campaigns";
+// AD CENTER + Incentive product sources
+type ProductSource = "hot" | "hot_deals" | "high_commission" | "featured" | "campaigns" | "search" | "smart_match" | "incentive";
 
 const ALL_CATEGORY_IDS = ["509", "15", "66", "200000297", "34", "200003482", "7", "44"];
 
@@ -47,8 +47,15 @@ type HotProduct = {
   source?: string;
 };
 
-type ApiOk = { success: true; products: HotProduct[]; total: number };
+type ApiOk = { success: true; products: HotProduct[]; total: number; campaigns?: CampaignInfo[] };
 type ApiErr = { success: false; error: string; code?: string };
+
+type CampaignInfo = {
+  promo_name: string;
+  promo_desc?: string;
+  landing_page_url?: string;
+  banner_url?: string;
+};
 
 async function generateMd5Signature(params: Record<string, string>, appSecret: string): Promise<string> {
   const sortedKeys = Object.keys(params).sort();
@@ -94,8 +101,10 @@ serve(async (req) => {
     const userKeywords = String(body?.keywords || "").trim();
     const pageSize = Math.min(parseInt(body?.pageSize) || 20, 50);
     const pageNo = Math.max(parseInt(body?.pageNo) || 1, 1);
-    // NEW: Product source selector
+    // Product source selector (AD CENTER / Incentive)
     const source: ProductSource = body?.source || "hot";
+    // For smart_match, optional product IDs
+    const matchProductIds = String(body?.matchProductIds || "").trim();
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -238,13 +247,13 @@ serve(async (req) => {
         tracking_id: trackingId,
         target_language: "EN",
         target_currency: "ILS",
-        ship_to_country: "IL",                   // Target market
+        ship_to_country: "IL",
         delivery_days: MAX_DELIVERY_DAYS.toString(),
         page_no: pageNo.toString(),
         page_size: "50",
-        sort: sort,                              // VOLUME_DESC for winning products
+        sort: sort,
         keywords: keywords,
-        min_sale_price: MIN_PRICE_USD,           // Price floor: $10+
+        min_sale_price: MIN_PRICE_USD,
       };
 
       if (categoryId) params.category_ids = categoryId;
@@ -255,7 +264,42 @@ serve(async (req) => {
         .join("&");
 
       const apiUrl = `https://api-sg.aliexpress.com/sync?${qs}`;
-      console.log("[fetch-hot-products] PRODUCT QUERY - keywords:", keywords, "| sort:", sort, "| minPrice:", MIN_PRICE_USD);
+      console.log("[fetch-hot-products] PRODUCT QUERY - keywords:", keywords, "| sort:", sort);
+      
+      const resp = await fetch(apiUrl, { method: "GET" });
+      return await resp.json().catch(() => ({}));
+    };
+
+    // ============================================
+    // SMART MATCH API - AI-powered recommendations
+    // aliexpress.affiliate.product.smartmatch
+    // ============================================
+    const callSmartMatch = async (productIds?: string, keywords?: string) => {
+      const params: Record<string, string> = {
+        app_key: appKey,
+        method: "aliexpress.affiliate.product.smartmatch",
+        timestamp: Date.now().toString(),
+        v: "2.0",
+        sign_method: "md5",
+        tracking_id: trackingId,
+        target_language: "EN",
+        target_currency: "ILS",
+        ship_to_country: "IL",
+        page_no: pageNo.toString(),
+        page_size: "50",
+      };
+
+      if (productIds) params.product_id = productIds;
+      if (keywords) params.keywords = keywords;
+      if (category) params.category_ids = category;
+
+      const sign = await generateMd5Signature(params, appSecret);
+      const qs = Object.entries({ ...params, sign })
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join("&");
+
+      const apiUrl = `https://api-sg.aliexpress.com/sync?${qs}`;
+      console.log("[fetch-hot-products] SMART MATCH API - productIds:", productIds || "none", "| keywords:", keywords || "none");
       
       const resp = await fetch(apiUrl, { method: "GET" });
       return await resp.json().catch(() => ({}));
@@ -295,7 +339,7 @@ serve(async (req) => {
 
     const seen = new Set<string>();
     const products: HotProduct[] = [];
-
+    let extraCampaigns: CampaignInfo[] | undefined;
     // ============================================
     // FETCH BASED ON SOURCE TYPE
     // ============================================
@@ -347,14 +391,32 @@ serve(async (req) => {
           }
         }
       }
-    } else if (source === "campaigns") {
-      // First get available promotions, then fetch products
+    } else if (source === "campaigns" || source === "incentive") {
+      // Campaigns + Incentive: get all available promotions and their products
       const promoData = await callGetPromotions();
       const promos = promoData?.aliexpress_affiliate_featuredpromo_get_response?.resp_result?.result?.promos?.promo || [];
       console.log("[fetch-hot-products] Available promotions:", promos.length);
       
-      // Fetch products from top promotions
-      for (const promo of promos.slice(0, 3)) {
+      // For incentive, filter for incentive-type campaigns
+      let targetPromos = promos;
+      if (source === "incentive") {
+        const filtered = promos.filter((p: any) => {
+          const name = (p.promo_name || "").toLowerCase();
+          return name.includes("incentive") || name.includes("bonus") || name.includes("reward");
+        });
+        targetPromos = filtered.length > 0 ? filtered : promos.slice(0, 3);
+      }
+      
+      // Collect campaign info with banners
+      const campaignInfos: CampaignInfo[] = targetPromos.map((p: any) => ({
+        promo_name: p.promo_name || "",
+        promo_desc: p.promo_desc || "",
+        landing_page_url: p.landing_page_url || "",
+        banner_url: p.banner_url || "",
+      }));
+      
+      // Fetch products from target promotions
+      for (const promo of targetPromos.slice(0, 5)) {
         if (products.length >= desiredCount) break;
         const promoName = promo.promo_name || "";
         const data = await callFeaturedPromoProducts(promoName, pageNo);
@@ -371,6 +433,65 @@ serve(async (req) => {
           }
         }
       }
+      
+      // Include campaign info in response
+      extraCampaigns = campaignInfos;
+    } else if (source === "search") {
+      // Ad Center Search: use product.query with different sort options
+      const searchKw = userKeywords || "bestseller";
+      const sortOptions = ["VOLUME_DESC", "SALE_PRICE_ASC", "LAST_VOLUME_DESC"];
+      
+      // Try multiple sort strategies for variety
+      for (const sort of sortOptions) {
+        if (products.length >= desiredCount) break;
+        const data = await callProductQuery(searchKw, category || undefined, sort);
+        const rr = data?.aliexpress_affiliate_product_query_response?.resp_result;
+        if (rr?.resp_code === 200) {
+          const rawProducts = rr?.result?.products?.product || [];
+          console.log("[fetch-hot-products] Search sort:", sort, "returned", rawProducts.length, "products");
+          for (const p of rawProducts) {
+            if (products.length >= desiredCount) break;
+            const mapped = mapProduct(p, "search");
+            if (!mapped || seen.has(mapped.product_id)) continue;
+            seen.add(mapped.product_id);
+            products.push(mapped);
+          }
+        }
+      }
+    } else if (source === "smart_match") {
+      // Smart Match: AI-powered recommendations
+      const data = await callSmartMatch(matchProductIds || undefined, userKeywords || undefined);
+      
+      // Try multiple response keys (API documentation varies)
+      const rr = data?.aliexpress_affiliate_product_smartmatch_response?.resp_result 
+        || data?.aliexpress_affiliate_product_smartmatch_response;
+      
+      if (rr?.resp_code === 200 || rr?.result) {
+        const rawProducts = rr?.result?.products?.product || [];
+        console.log("[fetch-hot-products] Smart Match returned", rawProducts.length, "products");
+        for (const p of rawProducts) {
+          if (products.length >= desiredCount) break;
+          const mapped = mapProduct(p, "smart_match");
+          if (!mapped || seen.has(mapped.product_id)) continue;
+          seen.add(mapped.product_id);
+          products.push(mapped);
+        }
+      } else {
+        console.warn("[fetch-hot-products] Smart Match failed, falling back to hot products");
+        // Fallback to hot products
+        const fallbackData = await callHotProductQuery(category || undefined, userKeywords || undefined, pageNo);
+        const fallbackRr = fallbackData?.aliexpress_affiliate_hotproduct_query_response?.resp_result;
+        if (fallbackRr?.resp_code === 200) {
+          const rawProducts = fallbackRr?.result?.products?.product || [];
+          for (const p of rawProducts) {
+            if (products.length >= desiredCount) break;
+            const mapped = mapProduct(p, "smart_match");
+            if (!mapped || seen.has(mapped.product_id)) continue;
+            seen.add(mapped.product_id);
+            products.push(mapped);
+          }
+        }
+      }
     } else {
       // Default: HOT products
       if (userKeywords) {
@@ -379,7 +500,6 @@ serve(async (req) => {
         const err = data?.error_response;
         if (err?.msg || err?.code) {
           console.warn("[fetch-hot-products] Hot API Error:", err);
-          // Fallback to regular product query
           const fallbackData = await callProductQuery(userKeywords, category || undefined, "LAST_VOLUME_DESC");
           const rr = fallbackData?.aliexpress_affiliate_product_query_response?.resp_result;
           if (rr?.resp_code === 200) {
@@ -411,16 +531,13 @@ serve(async (req) => {
           }
         }
       } else {
-        // No keywords - fetch by category or all
         if (category) {
-          // Single category: use pagination directly
           const data = await callHotProductQuery(category, undefined, pageNo);
           const err = data?.error_response;
           if (!err?.msg && !err?.code) {
             const rr = data?.aliexpress_affiliate_hotproduct_query_response?.resp_result;
             if (rr?.resp_code === 200) {
               const rawProducts = rr?.result?.products?.product || [];
-              console.log("[fetch-hot-products] Category", category, "page", pageNo, "returned", rawProducts.length, "hot products");
               for (const p of rawProducts) {
                 if (products.length >= desiredCount) break;
                 const mapped = mapProduct(p, "hot");
@@ -433,11 +550,7 @@ serve(async (req) => {
             }
           }
         } else {
-          // All categories: distribute pages across categories for variety
-          // Use pageNo to pick different categories and sub-pages
           const categoriesToFetch = [...ALL_CATEGORY_IDS].sort(() => Math.random() - 0.5);
-          
-          // Fetch from multiple categories in parallel for speed
           const promises = categoriesToFetch.map(catId => 
             callHotProductQuery(catId, undefined, pageNo).catch(() => ({}))
           );
@@ -452,8 +565,6 @@ serve(async (req) => {
             if (rr?.resp_code !== 200) continue;
             
             const rawProducts = rr?.result?.products?.product || [];
-            console.log("[fetch-hot-products] Category", categoriesToFetch[i], "page", pageNo, "returned", rawProducts.length, "hot products");
-            
             for (const p of rawProducts) {
               const mapped = mapProduct(p, "hot");
               if (!mapped || seen.has(mapped.product_id)) continue;
@@ -476,7 +587,7 @@ serve(async (req) => {
 
     console.log("[fetch-hot-products] Returning", products.length, "products from source:", source);
     
-    const payload: ApiOk = { success: true, products, total: products.length };
+    const payload: ApiOk = { success: true, products, total: products.length, campaigns: extraCampaigns };
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: unknown) {
     console.error("[fetch-hot-products] Error:", e);
