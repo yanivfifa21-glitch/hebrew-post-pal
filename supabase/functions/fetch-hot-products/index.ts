@@ -19,8 +19,8 @@ const CATEGORY_IDS: Record<string, string> = {
   "44": "44",             // Consumer Electronics (Audio)
 };
 
-// AD CENTER product sources
-type ProductSource = "hot" | "hot_deals" | "high_commission" | "featured" | "campaigns";
+// AD CENTER + Incentive product sources
+type ProductSource = "hot" | "hot_deals" | "high_commission" | "featured" | "campaigns" | "search" | "smart_match" | "incentive";
 
 const ALL_CATEGORY_IDS = ["509", "15", "66", "200000297", "34", "200003482", "7", "44"];
 
@@ -94,8 +94,10 @@ serve(async (req) => {
     const userKeywords = String(body?.keywords || "").trim();
     const pageSize = Math.min(parseInt(body?.pageSize) || 20, 50);
     const pageNo = Math.max(parseInt(body?.pageNo) || 1, 1);
-    // NEW: Product source selector
+    // Product source selector (AD CENTER / Incentive)
     const source: ProductSource = body?.source || "hot";
+    // For smart_match, optional product IDs
+    const matchProductIds = String(body?.matchProductIds || "").trim();
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -238,13 +240,13 @@ serve(async (req) => {
         tracking_id: trackingId,
         target_language: "EN",
         target_currency: "ILS",
-        ship_to_country: "IL",                   // Target market
+        ship_to_country: "IL",
         delivery_days: MAX_DELIVERY_DAYS.toString(),
         page_no: pageNo.toString(),
         page_size: "50",
-        sort: sort,                              // VOLUME_DESC for winning products
+        sort: sort,
         keywords: keywords,
-        min_sale_price: MIN_PRICE_USD,           // Price floor: $10+
+        min_sale_price: MIN_PRICE_USD,
       };
 
       if (categoryId) params.category_ids = categoryId;
@@ -255,7 +257,42 @@ serve(async (req) => {
         .join("&");
 
       const apiUrl = `https://api-sg.aliexpress.com/sync?${qs}`;
-      console.log("[fetch-hot-products] PRODUCT QUERY - keywords:", keywords, "| sort:", sort, "| minPrice:", MIN_PRICE_USD);
+      console.log("[fetch-hot-products] PRODUCT QUERY - keywords:", keywords, "| sort:", sort);
+      
+      const resp = await fetch(apiUrl, { method: "GET" });
+      return await resp.json().catch(() => ({}));
+    };
+
+    // ============================================
+    // SMART MATCH API - AI-powered recommendations
+    // aliexpress.affiliate.product.smartmatch
+    // ============================================
+    const callSmartMatch = async (productIds?: string, keywords?: string) => {
+      const params: Record<string, string> = {
+        app_key: appKey,
+        method: "aliexpress.affiliate.product.smartmatch",
+        timestamp: Date.now().toString(),
+        v: "2.0",
+        sign_method: "md5",
+        tracking_id: trackingId,
+        target_language: "EN",
+        target_currency: "ILS",
+        ship_to_country: "IL",
+        page_no: pageNo.toString(),
+        page_size: "50",
+      };
+
+      if (productIds) params.product_id = productIds;
+      if (keywords) params.keywords = keywords;
+      if (category) params.category_ids = category;
+
+      const sign = await generateMd5Signature(params, appSecret);
+      const qs = Object.entries({ ...params, sign })
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join("&");
+
+      const apiUrl = `https://api-sg.aliexpress.com/sync?${qs}`;
+      console.log("[fetch-hot-products] SMART MATCH API - productIds:", productIds || "none", "| keywords:", keywords || "none");
       
       const resp = await fetch(apiUrl, { method: "GET" });
       return await resp.json().catch(() => ({}));
