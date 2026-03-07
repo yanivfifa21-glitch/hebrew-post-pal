@@ -226,6 +226,9 @@ const Discovery = () => {
         high_commission: "עמלה גבוהה",
         featured: "מוצרים מומלצים",
         campaigns: "קמפיינים",
+        search: "חיפוש Ad Center",
+        smart_match: "Smart Match",
+        incentive: "Incentive Campaign",
       };
       setDataSource(trimmedKeywords ? "חיפוש" : sourceLabels[source]);
     } catch (e) {
