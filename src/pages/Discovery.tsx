@@ -929,8 +929,8 @@ const Discovery = () => {
                 ))}
               </div>
 
-              {/* Categories Grid - only show for "hot" source */}
-              {productSource === "hot" && (
+              {/* Categories Grid - show for sources that support category filtering */}
+              {["hot", "search", "smart_match"].includes(productSource) && (
                 <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2">
                   {CATEGORIES.map((cat) => (
                     <button
