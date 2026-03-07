@@ -587,7 +587,7 @@ serve(async (req) => {
 
     console.log("[fetch-hot-products] Returning", products.length, "products from source:", source);
     
-    const payload: ApiOk = { success: true, products, total: products.length };
+    const payload: ApiOk = { success: true, products, total: products.length, campaigns: extraCampaigns };
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: unknown) {
     console.error("[fetch-hot-products] Error:", e);

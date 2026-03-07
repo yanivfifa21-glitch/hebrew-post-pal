@@ -36,14 +36,17 @@ type HotProduct = {
 
 type ImportedProduct = ExcelProduct & { id: string };
 
-// Product sources for AD CENTER / Campaigns
-type ProductSource = "hot" | "hot_deals" | "high_commission" | "featured" | "campaigns";
+// Product sources - AD CENTER + Incentive Campaign
+type ProductSource = "hot" | "hot_deals" | "high_commission" | "featured" | "campaigns" | "search" | "smart_match" | "incentive";
 
 const PRODUCT_SOURCES = [
   { id: "hot", label: "מוצרים לוהטים", icon: Flame, emoji: "🔥" },
   { id: "hot_deals", label: "Hot Deals", icon: Zap, emoji: "⚡" },
   { id: "high_commission", label: "עמלה גבוהה", icon: Percent, emoji: "💰" },
+  { id: "featured", label: "מוצרים מומלצים", icon: Star, emoji: "⭐" },
   { id: "campaigns", label: "קמפיינים", icon: TrendingUp, emoji: "📈" },
+  { id: "incentive", label: "Incentive", icon: Sparkles, emoji: "🎁" },
+  { id: "smart_match", label: "Smart Match", icon: Lightbulb, emoji: "🧠" },
 ];
 
 // Hebrew category mapping with AliExpress category IDs and icons
