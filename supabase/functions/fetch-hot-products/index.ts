@@ -339,7 +339,7 @@ serve(async (req) => {
 
     const seen = new Set<string>();
     const products: HotProduct[] = [];
-
+    let extraCampaigns: CampaignInfo[] | undefined;
     // ============================================
     // FETCH BASED ON SOURCE TYPE
     // ============================================
