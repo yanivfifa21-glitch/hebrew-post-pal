@@ -311,31 +311,54 @@ async function prePublishStockCheck(
   const checkUrl = product.affiliate_link || product.original_url;
   if (!checkUrl) return true;
 
+  const todayIsrael = getIsraelDateKey();
+  const lastCheckIsrael = product.last_stock_check ? getIsraelDateKey(new Date(product.last_stock_check)) : null;
+
+  // Only one real stock request per product per Israel day
+  if (lastCheckIsrael === todayIsrael) {
+    const todayStatus = String(product.stock_status || "unchecked");
+    if (todayStatus === "unavailable") {
+      console.log(`[auto-post] Product ${product.id}: already checked today (unavailable) - skipping`);
+      return false;
+    }
+    if (todayStatus === "available") {
+      return true;
+    }
+  }
+
+  const nowIso = new Date().toISOString();
   const status = await checkProductStock(checkUrl);
   await supabase.from("products").update({
     stock_status: status,
-    last_stock_check: new Date().toISOString(),
+    last_stock_check: nowIso,
+    auto_disabled: status === "unavailable",
   }).eq("id", product.id);
 
   if (status === "unavailable") {
-    await supabase.from("products").update({ auto_disabled: true }).eq("id", product.id);
     console.log(`[auto-post] Product ${product.id}: OUT OF STOCK - skipping`);
     return false;
   }
+
   if (status === "error") {
     // Retry once
     const retryStatus = await checkProductStock(checkUrl);
-    await supabase.from("products").update({ stock_status: retryStatus }).eq("id", product.id);
+    await supabase.from("products").update({
+      stock_status: retryStatus,
+      last_stock_check: nowIso,
+      auto_disabled: retryStatus === "unavailable",
+    }).eq("id", product.id);
+
     if (retryStatus === "unavailable") {
-      await supabase.from("products").update({ auto_disabled: true }).eq("id", product.id);
       console.log(`[auto-post] Product ${product.id}: OUT OF STOCK on retry - skipping`);
       return false;
     }
+
     if (retryStatus === "error") {
       console.log(`[auto-post] Product ${product.id}: Stock check error, skipping`);
       return false;
     }
   }
+
   return true;
 }
 
