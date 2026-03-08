@@ -372,6 +372,7 @@ export default function ManualSend() {
 
   // Get the effective media URL and type (file upload takes priority, then image URL)
   const effectiveMediaPreview = mediaPreview || imageUrlPreview || (mediaPreviews.length > 0 ? mediaPreviews[0] : null);
+  const displayMediaPreview = (addWatermark && watermarkedPreview) ? watermarkedPreview : effectiveMediaPreview;
   const effectiveMediaType = mediaType || (imageUrlPreview ? "image" : null);
   const hasMedia = !!mediaFile || !!imageUrlPreview || mediaFiles.length > 0;
   const isAlbumMode = mediaFiles.length > 1;
