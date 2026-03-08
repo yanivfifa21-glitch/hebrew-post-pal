@@ -585,49 +585,6 @@ const GroupListener = () => {
             )}
           </TabsContent>
 
-          {/* SETTINGS TAB */}
-          <TabsContent value="settings" className="space-y-6">
-            <Card className="glass-card">
-              <CardHeader>
-                <CardTitle>פרמטרי אפילייט שלי</CardTitle>
-                <CardDescription>
-                  כשפוסט נקלט מקבוצת ממסר, הקישורים של AliExpress מוחלפים אוטומטית עם הפרמטרים שלך כדי שתקבל עמלה.
-                  <br />
-                  את הפרמטרים תמצא בפורטל השותפים של AliExpress.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {([
-                  { key: "aff_id", label: "מזהה שותף (Tracking ID)", placeholder: "לדוגמה: 12345678", hint: "המזהה הראשי שלך בתוכנית השותפים" },
-                  { key: "dp", label: "Deep Link Param", placeholder: "אופציונלי", hint: "פרמטר מעקב נוסף (לרוב לא נדרש)" },
-                  { key: "cv", label: "Creative Value", placeholder: "אופציונלי", hint: "ערך קריאייטיב לצורך מעקב קמפיינים" },
-                  { key: "sk", label: "Sub Key", placeholder: "אופציונלי", hint: "מפתח משנה למעקב פנימי" },
-                  { key: "aff_fcid", label: "First Click ID", placeholder: "אופציונלי", hint: "מזהה קליק ראשון (לרוב לא נדרש)" },
-                  { key: "aff_fsk", label: "First Sub Key", placeholder: "אופציונלי", hint: "מפתח משנה של קליק ראשון" },
-                ] as const).map(({ key, label, placeholder, hint }) => (
-                  <div key={key} className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-sm font-medium">{label}</Label>
-                      <span className="text-xs text-muted-foreground font-mono" dir="ltr">({key})</span>
-                    </div>
-                    <Input
-                      value={affiliateParams[key] || ""}
-                      onChange={(e) => setAffiliateParams((prev) => ({ ...prev, [key]: e.target.value }))}
-                      placeholder={placeholder}
-                      dir="ltr"
-                    />
-                    <p className="text-xs text-muted-foreground">{hint}</p>
-                  </div>
-                ))}
-                <div className="pt-2">
-                  <Button variant="gradient" onClick={handleSaveSettings} disabled={isSavingSettings} className="gap-2">
-                    {isSavingSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                    שמור הגדרות
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
         </Tabs>
 
         {/* Edit Post Dialog */}
