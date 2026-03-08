@@ -58,8 +58,6 @@ type EarningsSummary = {
       completed_earnings: number;
     }
   >;
-    }
-  >;
 };
 
 function getTimeRange(range: TimeRange): { startTime: string; endTime: string } {
