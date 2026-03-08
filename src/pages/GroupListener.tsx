@@ -101,20 +101,6 @@ const GroupListener = () => {
     }
   };
 
-  const fetchSettings = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data } = await supabase
-        .from("app_settings")
-        .select("affiliate_params")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (data) {
-        setAffiliateParams((data.affiliate_params as Record<string, string>) || {});
-      }
-    } catch {}
-  };
 
   const handleAddGroup = async () => {
     if (!newGroupName || !newGroupId) {
