@@ -164,7 +164,7 @@ serve(async (req) => {
     const { data: settings } = await supabase
       .from("app_settings")
       .select("aliexpress_tracking_id")
-      .eq("user_id", user.id)
+      .eq("user_id", resolvedUserId)
       .maybeSingle();
 
     const appKey = credentials?.aliexpress_app_key?.trim();
