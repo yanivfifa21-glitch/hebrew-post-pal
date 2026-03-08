@@ -582,6 +582,30 @@ const GroupListener = () => {
               ))}
             </div>
 
+            {/* Persistent account selection */}
+            <Card className="glass-card">
+              <CardContent className="p-3">
+                <Label className="font-hebrew text-sm font-medium mb-2 block">בחר קבוצות לשליחה</Label>
+                <div className="flex gap-3 flex-wrap">
+                  {accounts.map((acc) => (
+                    <label key={acc.id} className={`flex items-center gap-2 text-sm cursor-pointer ${!acc.is_active ? "opacity-50" : ""}`}>
+                      <Checkbox
+                        checked={selectedAccounts.includes(acc.id)}
+                        onCheckedChange={(checked) => {
+                          setSelectedAccounts(prev =>
+                            checked ? [...prev, acc.id] : prev.filter(id => id !== acc.id)
+                          );
+                        }}
+                      />
+                      <span>{acc.account_name}</span>
+                      <Badge variant="outline" className="text-xs">{acc.account_type === "telegram" ? "📱 Telegram" : "💬 WhatsApp"}</Badge>
+                      {!acc.is_active && <Badge variant="secondary" className="text-xs">לא פעיל</Badge>}
+                    </label>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Bulk actions bar */}
             {selectedPostIds.size > 0 && (
               <div className="flex gap-2 flex-wrap items-center bg-primary/5 border border-primary/20 rounded-xl p-3">
@@ -590,9 +614,9 @@ const GroupListener = () => {
                   {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <ListPlus className="h-3 w-3" />}
                   הוסף נבחרים לתור
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => openSendDialog(capturedPosts.filter(p => selectedPostIds.has(p.id)))} className="gap-1">
-                  <Send className="h-3 w-3" />
-                  שלח נבחרים
+                <Button variant="outline" size="sm" onClick={() => handleBulkSendAndQueue()} disabled={isBulkProcessing || selectedAccounts.length === 0} className="gap-1">
+                  {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                  שלח והוסף לתור ({selectedAccounts.length})
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setSelectedPostIds(new Set())} className="gap-1 text-muted-foreground">
                   <X className="h-3 w-3" />
