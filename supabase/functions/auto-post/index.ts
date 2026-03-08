@@ -265,29 +265,69 @@ serve(async (req) => {
 
   // SECURITY: Verify request is from authorized source (cron job or admin)
   const authHeader = req.headers.get("authorization");
-  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  
-  if (!authHeader) {
-    console.error("[auto-post] Missing authorization header");
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { 
-      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } 
+  const apiKeyHeader = req.headers.get("apikey");
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")?.trim() || "";
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")?.trim() || "";
+  const supabasePublishableKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY")?.trim() || "";
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim() || "";
+
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.error("[auto-post] Missing backend configuration");
+    return new Response(JSON.stringify({ error: "Server misconfiguration" }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }
-  
-  const token = authHeader.replace("Bearer ", "");
-  // Allow anon key (from cron job) or service role key
-  if (token !== supabaseAnonKey && token !== supabaseServiceKey) {
+
+  const authorizationToken = authHeader?.replace(/^Bearer\s+/i, "").trim();
+  const providedToken = (authorizationToken || apiKeyHeader || "").trim();
+
+  if (!providedToken) {
+    console.error("[auto-post] Missing authorization/apikey header");
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
+  }
+
+  const allowedTokens = new Set([supabaseAnonKey, supabasePublishableKey, supabaseServiceKey].filter(Boolean));
+  const matchesAnon = providedToken === supabaseAnonKey;
+  const matchesPublishable = !!supabasePublishableKey && providedToken === supabasePublishableKey;
+  const matchesService = providedToken === supabaseServiceKey;
+
+  console.log(
+    `[auto-post] token check len=${providedToken.length} preview=${providedToken.slice(0, 16)}... anon=${matchesAnon} publishable=${matchesPublishable} service=${matchesService}`
+  );
+
+  let isAuthorized = allowedTokens.has(providedToken);
+
+  if (!isAuthorized && (supabasePublishableKey || supabaseAnonKey)) {
+    try {
+      const authClient = createClient(supabaseUrl, supabasePublishableKey || supabaseAnonKey, {
+        global: { headers: { Authorization: `Bearer ${providedToken}` } }
+      });
+
+      const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(providedToken);
+      const role = claimsData?.claims?.role;
+
+      if (!claimsError && (role === "anon" || role === "service_role")) {
+        isAuthorized = true;
+      }
+    } catch (e) {
+      console.error("[auto-post] Token claims validation failed", e);
+    }
+  }
+
+  if (!isAuthorized) {
     console.error("[auto-post] Invalid authorization token");
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { 
-      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } 
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }
 
   const jitter = Math.floor(Math.random() * 2000) + 1000;
   await new Promise((r) => setTimeout(r, jitter));
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
