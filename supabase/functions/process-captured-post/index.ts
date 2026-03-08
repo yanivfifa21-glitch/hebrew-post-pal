@@ -3,49 +3,34 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 function extractUrls(text: string): string[] {
-  const urlRegex = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/gi;
-  return text.match(urlRegex) || [];
-}
-
-function extractAliExpressProductId(url: string): string | null {
-  const match = url.match(/\/item\/(\d+)\.html/i) || url.match(/\/(\d{10,})\.html/i) || url.match(/productId=(\d+)/i);
-  return match ? match[1] : null;
+  return (text.match(/(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/gi) || []);
 }
 
 function stripAffiliateParams(url: string): string {
   try {
-    const urlObj = new URL(url);
-    const affiliateKeys = ["aff_id", "af", "dp", "cv", "sk", "aff_fcid", "aff_fsk", "aff_platform", "aff_trace_key", "terminal_id", "algo_pvid", "algo_exp_id"];
-    for (const key of affiliateKeys) {
-      urlObj.searchParams.delete(key);
+    const u = new URL(url);
+    for (const k of ["aff_id","af","dp","cv","sk","aff_fcid","aff_fsk","aff_platform","aff_trace_key","terminal_id","algo_pvid","algo_exp_id"]) {
+      u.searchParams.delete(k);
     }
-    return urlObj.toString();
-  } catch {
-    return url;
-  }
+    return u.toString();
+  } catch { return url; }
 }
 
-function buildAffiliateUrl(baseUrl: string, affiliateParams: Record<string, string>): string {
+function buildAffiliateUrl(base: string, params: Record<string, string>): string {
   try {
-    const urlObj = new URL(baseUrl);
-    for (const [key, value] of Object.entries(affiliateParams)) {
-      if (value) urlObj.searchParams.set(key, value);
-    }
-    return urlObj.toString();
-  } catch {
-    return baseUrl;
-  }
+    const u = new URL(base);
+    for (const [k, v] of Object.entries(params)) { if (v) u.searchParams.set(k, v); }
+    return u.toString();
+  } catch { return base; }
 }
 
 function replaceLinksInText(text: string, originalUrl: string, newUrl: string): string {
   if (!text || !originalUrl) return text;
-  // Replace exact URL matches
   let result = text.replace(new RegExp(originalUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), newUrl);
-  // Also try to replace any aliexpress URLs
   result = result.replace(/https?:\/\/[^\s]*aliexpress[^\s]*/gi, newUrl);
   return result;
 }
@@ -56,18 +41,15 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAnon = Deno.env.get("SUPABASE_ANON_KEY")!;
 
     // Auth check
     const authHeader = req.headers.get("authorization");
-    const supabaseAnon = Deno.env.get("SUPABASE_ANON_KEY")!;
-    
     const authClient = createClient(supabaseUrl, supabaseAnon, {
       global: { headers: { Authorization: authHeader || "" } },
     });
 
     let userId: string | null = null;
-
-    // Try JWT auth first
     if (authHeader) {
       const token = authHeader.replace("Bearer ", "");
       const { data: claimsData } = await authClient.auth.getClaims(token);
@@ -77,10 +59,7 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    // Allow service-level calls with explicit userId
-    if (!userId && body.userId) {
-      userId = body.userId;
-    }
+    if (!userId && body.userId) userId = body.userId;
 
     if (!userId) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -89,14 +68,7 @@ serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    const {
-      originalText,
-      originalUrl,
-      imageUrl,
-      sourceGroupId,
-      sourceGroupName,
-    } = body;
+    const { originalText, originalUrl, imageUrl, sourceGroupId, sourceGroupName } = body;
 
     // Get user's affiliate params
     const { data: settings } = await supabase
@@ -108,7 +80,7 @@ serve(async (req) => {
     const affiliateParams = (settings?.affiliate_params as Record<string, string>) || {};
     const trackingId = settings?.aliexpress_tracking_id || "";
 
-    // Process the URL
+    // Process URL
     let modifiedUrl = originalUrl || "";
     if (originalUrl) {
       const cleanUrl = stripAffiliateParams(originalUrl);
@@ -117,26 +89,20 @@ serve(async (req) => {
       modifiedUrl = buildAffiliateUrl(cleanUrl, params);
     }
 
-    // Process the text
+    // Process text
     let modifiedText = originalText || "";
-    
-    // Get group template if available
+
     if (sourceGroupId) {
       const { data: group } = await supabase
-        .from("listened_groups")
+        .from("relay_groups")
         .select("text_template_prepend, text_template_append")
         .eq("id", sourceGroupId)
         .maybeSingle();
 
-      if (group?.text_template_prepend) {
-        modifiedText = group.text_template_prepend + "\n" + modifiedText;
-      }
-      if (group?.text_template_append) {
-        modifiedText = modifiedText + "\n" + group.text_template_append;
-      }
+      if (group?.text_template_prepend) modifiedText = group.text_template_prepend + "\n" + modifiedText;
+      if (group?.text_template_append) modifiedText = modifiedText + "\n" + group.text_template_append;
     }
 
-    // Replace links in text
     if (originalUrl && modifiedUrl) {
       modifiedText = replaceLinksInText(modifiedText, originalUrl, modifiedUrl);
     }
@@ -145,7 +111,7 @@ serve(async (req) => {
     let autoApprove = false;
     if (sourceGroupId) {
       const { data: group } = await supabase
-        .from("listened_groups")
+        .from("relay_groups")
         .select("auto_approve")
         .eq("id", sourceGroupId)
         .maybeSingle();
@@ -154,7 +120,6 @@ serve(async (req) => {
 
     const status = autoApprove ? "approved" : "pending_review";
 
-    // Create captured post
     const { data: capturedPost, error: insertError } = await supabase
       .from("captured_posts")
       .insert({
@@ -175,13 +140,18 @@ serve(async (req) => {
 
     // Increment captured count
     if (sourceGroupId) {
-      await supabase.rpc("increment_captured_count" as any, { p_group_id: sourceGroupId }).catch(() => {
-        // Fallback: manual increment
-        supabase
-          .from("listened_groups")
-          .update({ captured_count: undefined as any }) // will be handled by trigger
+      const { data: currentGroup } = await supabase
+        .from("relay_groups")
+        .select("captured_count")
+        .eq("id", sourceGroupId)
+        .single();
+      
+      if (currentGroup) {
+        await supabase
+          .from("relay_groups")
+          .update({ captured_count: (currentGroup.captured_count || 0) + 1 })
           .eq("id", sourceGroupId);
-      });
+      }
     }
 
     // If auto-approved, create product
@@ -213,11 +183,7 @@ serve(async (req) => {
     }
 
     return new Response(JSON.stringify({
-      success: true,
-      capturedPostId: capturedPost.id,
-      productId,
-      status,
-      modifiedUrl,
+      success: true, capturedPostId: capturedPost.id, productId, status, modifiedUrl,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
