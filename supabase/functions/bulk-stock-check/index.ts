@@ -51,7 +51,17 @@ serve(async (req) => {
 
       for (const product of products) {
         const checkUrl = product.affiliate_link || product.original_url;
-        if (!checkUrl) continue;
+        if (!checkUrl || !isValidHttpUrl(checkUrl)) {
+          await supabase
+            .from("products")
+            .update({
+              stock_status: "unchecked",
+              last_stock_check: new Date().toISOString(),
+              auto_disabled: false,
+            })
+            .eq("id", product.id);
+          continue;
+        }
 
         try {
           // Call check-product-stock function inline (same logic)
