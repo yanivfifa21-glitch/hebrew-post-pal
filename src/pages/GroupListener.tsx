@@ -816,8 +816,8 @@ const GroupListener = () => {
                             <ListPlus className="h-3 w-3" />
                             הוסף לתור
                           </Button>
-                          <Button variant="outline" size="sm" onClick={() => openSendDialog(post)} disabled={isBulkProcessing} className="gap-1">
-                            <Send className="h-3 w-3" />
+                          <Button variant="outline" size="sm" onClick={() => { setSendPosts([post]); handleSingleSendAndQueue(post); }} disabled={isBulkProcessing || selectedAccounts.length === 0} className="gap-1">
+                            {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                             שלח והוסף לתור
                           </Button>
                           <Button variant="outline" size="sm" onClick={() => { setEditingPost(post); setEditText(post.modified_text || post.original_text || ""); setEditUrl(post.modified_url || post.original_url || ""); }} className="gap-1">
