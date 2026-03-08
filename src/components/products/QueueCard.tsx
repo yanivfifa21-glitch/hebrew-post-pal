@@ -23,7 +23,7 @@ interface QueueCardProps {
   onStockChecked?: (productId: string, status: string) => void;
 }
 
-export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelected = false, onSelectionChange, showCheckbox = false }: QueueCardProps) => {
+export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelected = false, onSelectionChange, showCheckbox = false, onStockChecked }: QueueCardProps) => {
   const [hebrewDescription, setHebrewDescription] = useState(product.hebrew_description || "");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSending, setIsSending] = useState(false);
