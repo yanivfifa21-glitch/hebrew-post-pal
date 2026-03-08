@@ -329,6 +329,13 @@ async function processMessage(supabase: any, supabaseUrl: string, message: any, 
         const fetchData = await fetchResp.json();
 
         if (fetchData?.success && fetchData?.data) {
+          // Check if product is eligible for affiliate program
+          if (fetchData.eligible === false) {
+            console.warn(`[telegram-listener-webhook] Product ${productId} not eligible for affiliate program – skipping`);
+            return new Response(JSON.stringify({ ok: true, skipped: "not_affiliate_eligible", productId }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
           if (fetchData.data.image_url) fetchedImageUrl = fetchData.data.image_url;
           if (fetchData.data.orders_count) ordersCount = Number(fetchData.data.orders_count);
           if (fetchData.data.rating) rating = Number(fetchData.data.rating);

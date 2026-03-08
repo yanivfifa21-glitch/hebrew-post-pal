@@ -250,7 +250,12 @@ serve(async (req) => {
     }
 
     const meta = normalizeMetaFromApi(product);
-    const payload: ApiOk = { success: true, data: meta, cleanUrl, productId };
+
+    // Check if product is eligible for affiliate program
+    const promotionLink = product?.promotion_link || product?.promotionLink || "";
+    const eligible = !!promotionLink;
+
+    const payload: ApiOk = { success: true, data: meta, cleanUrl, productId, eligible };
 
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: unknown) {
