@@ -301,29 +301,38 @@ const Queue = () => {
       }
     };
 
-    for (const product of scheduledProducts) {
-      const checkUrl = product.affiliate_link || product.original_url;
-      if (!isValidHttpUrl(checkUrl)) {
-        skipped++;
-        continue;
-      }
+    const validProducts = scheduledProducts.filter(p => isValidHttpUrl(p.affiliate_link || p.original_url));
+    skipped = scheduledProducts.length - validProducts.length;
+    setStockCheckTotal(validProducts.length);
+    setStockCheckProgress(0);
 
-      try {
-        const { data } = await supabase.functions.invoke("check-product-stock", {
-          body: { productId: product.id, url: checkUrl },
-        });
+    // Process in parallel batches of 5
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < validProducts.length; i += BATCH_SIZE) {
+      const batch = validProducts.slice(i, i + BATCH_SIZE);
+      const results = await Promise.allSettled(
+        batch.map(async (product) => {
+          const checkUrl = product.affiliate_link || product.original_url;
+          const { data } = await supabase.functions.invoke("check-product-stock", {
+            body: { productId: product.id, url: checkUrl },
+          });
+          return { productId: product.id, data };
+        })
+      );
 
-        if (data?.status) {
-          handleStockChecked(product.id, data.status);
+      for (const result of results) {
+        if (result.status === "fulfilled" && result.value.data?.status) {
+          handleStockChecked(result.value.productId, result.value.data.status);
           checked++;
-          if (data.status === "unavailable") unavailable++;
+          if (result.value.data.status === "unavailable") unavailable++;
         }
-      } catch {
-        // continue
       }
+      setStockCheckProgress(Math.min(i + BATCH_SIZE, validProducts.length));
     }
 
     setIsCheckingAllStock(false);
+    setStockCheckProgress(0);
+    setStockCheckTotal(0);
     toast({
       title: `✅ נבדקו ${checked} מוצרים`,
       description: [
