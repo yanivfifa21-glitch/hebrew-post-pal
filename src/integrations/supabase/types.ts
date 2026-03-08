@@ -609,6 +609,7 @@ export type Database = {
         Args: { p_user_id: string }
         Returns: Json
       }
+      get_encryption_key: { Args: never; Returns: string }
       get_my_access_status: { Args: never; Returns: string }
       get_my_credentials_status: { Args: never; Returns: Json }
       get_my_messaging_accounts_safe: {
@@ -660,6 +661,10 @@ export type Database = {
           p_telegram_chat_id?: string
         }
         Returns: Json
+      }
+      update_vault_encryption_key: {
+        Args: { p_key: string }
+        Returns: undefined
       }
     }
     Enums: {
