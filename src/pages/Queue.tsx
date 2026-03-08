@@ -469,8 +469,11 @@ const Queue = () => {
               ) : (
                 <PackageSearch className="h-4 w-4" />
               )}
-              בדוק מלאי ({scheduledProducts.length})
+              {isCheckingAllStock ? `בודק... (${stockCheckProgress}/${stockCheckTotal})` : `בדוק מלאי (${scheduledProducts.length})`}
             </Button>
+            {isCheckingAllStock && stockCheckTotal > 0 && (
+              <Progress value={(stockCheckProgress / stockCheckTotal) * 100} className="h-2 w-48" />
+            )}
           </div>
         </div>
 
