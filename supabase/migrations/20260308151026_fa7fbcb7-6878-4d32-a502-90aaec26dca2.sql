@@ -1,0 +1,1 @@
+ALTER TABLE public.relay_groups ADD COLUMN rewrite_mode text NOT NULL DEFAULT 'link_only';
