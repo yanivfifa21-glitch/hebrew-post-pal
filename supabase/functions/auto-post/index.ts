@@ -294,6 +294,14 @@ serve(async (req) => {
   }
 
   const allowedTokens = new Set([supabaseAnonKey, supabasePublishableKey, supabaseServiceKey].filter(Boolean));
+  const matchesAnon = providedToken === supabaseAnonKey;
+  const matchesPublishable = !!supabasePublishableKey && providedToken === supabasePublishableKey;
+  const matchesService = providedToken === supabaseServiceKey;
+
+  console.log(
+    `[auto-post] token check len=${providedToken.length} preview=${providedToken.slice(0, 16)}... anon=${matchesAnon} publishable=${matchesPublishable} service=${matchesService}`
+  );
+
   let isAuthorized = allowedTokens.has(providedToken);
 
   if (!isAuthorized && (supabasePublishableKey || supabaseAnonKey)) {
