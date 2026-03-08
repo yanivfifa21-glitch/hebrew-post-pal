@@ -13,9 +13,11 @@ import {
 } from "@/components/ui/tooltip";
 import {
   DollarSign, ShoppingCart, CheckCircle2, TrendingUp, RefreshCw,
-  Calendar, Package, AlertTriangle, Loader2,
+  Calendar, Package, AlertTriangle, Loader2, Plus,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
+import { formatProductLink } from "@/lib/ctaUtils";
 
 type Period = "last_week" | "current_month" | "last_month";
 
@@ -74,6 +76,10 @@ function formatHebrewDate(dateStr: string): string {
   }
 }
 
+function buildAliUrl(productId: string): string {
+  return `https://www.aliexpress.com/item/${productId}.html`;
+}
+
 async function fetchEarnings(period: Period): Promise<EarningsResponse> {
   const { data, error } = await supabase.functions.invoke("get-affiliate-earnings", {
     body: { period },
@@ -85,17 +91,111 @@ async function fetchEarnings(period: Period): Promise<EarningsResponse> {
 
 const EarningsDashboard = () => {
   const [period, setPeriod] = useState<Period>("last_week");
+  const [addingProductIds, setAddingProductIds] = useState<Set<string>>(new Set());
 
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ["affiliate-earnings", period],
     queryFn: () => fetchEarnings(period),
-    staleTime: 2 * 60 * 1000, // 2 minutes
+    staleTime: 2 * 60 * 1000,
     enabled: true,
   });
 
   const summary = data?.summary;
   const orders = data?.orders || [];
   const spinning = isLoading || isFetching;
+
+  const handleAddToQueue = async (order: OrderItem) => {
+    if (!order.product_id || addingProductIds.has(order.product_id)) return;
+
+    const productId = order.product_id;
+    setAddingProductIds((prev) => new Set(prev).add(productId));
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const productUrl = buildAliUrl(productId);
+
+      // Step 1: Fetch product metadata
+      const { data: metaResp, error: metaErr } = await supabase.functions.invoke("fetch-ali-product", {
+        body: { productUrl },
+      });
+      if (metaErr || !metaResp?.success) {
+        throw new Error(metaResp?.error || "Failed to fetch product data");
+      }
+
+      const meta = metaResp.data as {
+        title: string;
+        price: number;
+        image_url: string;
+        orders_count: number;
+        rating: number;
+      };
+      const cleanUrl = metaResp.cleanUrl as string;
+
+      // Step 2: Generate affiliate link
+      const { data: affResp, error: affErr } = await supabase.functions.invoke("generate-affiliate-link", {
+        body: { productUrl: cleanUrl || productUrl, userId: user.id },
+      });
+      if (affErr) throw new Error(affErr.message);
+      const affiliateLink = affResp?.success ? (affResp.affiliateLink as string) : (cleanUrl || productUrl);
+
+      // Step 3: Generate Hebrew description
+      const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
+        body: {
+          title: meta.title,
+          ordersCount: meta.orders_count,
+          rating: meta.rating,
+          userId: user.id,
+        },
+      });
+      if (hebErr || !hebResp?.success) {
+        throw new Error(hebResp?.error || "Failed to generate Hebrew post");
+      }
+
+      const aiDescription = hebResp.hebrewDescription as string;
+      const hebrewDescription = `${aiDescription}\n\n${formatProductLink(affiliateLink)}`;
+
+      // Normalize rating
+      let normalizedRating = meta.rating ?? 0;
+      if (normalizedRating > 5) normalizedRating = normalizedRating / 20;
+
+      // Step 4: Save to products table
+      const { error: insertErr } = await supabase.from("products").insert({
+        original_url: cleanUrl || productUrl,
+        title: meta.title,
+        price: meta.price ?? 0,
+        image_url: meta.image_url || null,
+        orders_count: meta.orders_count ?? 0,
+        rating: Math.min(normalizedRating, 5),
+        affiliate_link: affiliateLink || null,
+        hebrew_description: hebrewDescription || null,
+        status: "Scheduled",
+        channels: [],
+        user_id: user.id,
+        sent_via: "manual",
+      });
+
+      if (insertErr) throw new Error(insertErr.message);
+
+      toast({
+        title: "✅ נוסף למחסנית!",
+        description: `${meta.title.substring(0, 50)}...`,
+      });
+    } catch (err) {
+      toast({
+        title: "שגיאה בהוספה למחסנית",
+        description: err instanceof Error ? err.message : "שגיאה לא ידועה",
+        variant: "destructive",
+      });
+    } finally {
+      setAddingProductIds((prev) => {
+        const next = new Set(prev);
+        next.delete(productId);
+        return next;
+      });
+    }
+  };
 
   return (
     <MainLayout>
@@ -212,40 +312,79 @@ const EarningsDashboard = () => {
                           <TableHead className="text-right">עמלה</TableHead>
                           <TableHead className="text-right">סטטוס</TableHead>
                           <TableHead className="text-right">תאריך</TableHead>
+                          <TableHead className="text-right w-[50px]"></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {orders.map((order, idx) => (
-                          <TableRow key={`${order.order_number}_${idx}`}>
-                            <TableCell className="max-w-[200px]">
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="text-sm truncate block">
+                        {orders.map((order, idx) => {
+                          const isAdding = addingProductIds.has(order.product_id);
+                          const aliUrl = order.product_id ? buildAliUrl(order.product_id) : null;
+
+                          return (
+                            <TableRow key={`${order.order_number}_${idx}`}>
+                              <TableCell className="max-w-[220px]">
+                                {aliUrl ? (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <a
+                                        href={aliUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-sm text-primary hover:underline truncate block"
+                                      >
+                                        {order.product_title || aliUrl}
+                                      </a>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-xs text-xs">
+                                      {order.product_title || order.product_id}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                ) : (
+                                  <span className="text-sm truncate block text-muted-foreground">
                                     {order.product_title || `מוצר #${order.product_id}`}
                                   </span>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" className="max-w-xs">
-                                  {order.product_title || order.product_id}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TableCell>
-                            <TableCell>
-                              <span className="font-mono text-xs text-muted-foreground">
-                                {order.order_number}
-                              </span>
-                            </TableCell>
-                            <TableCell className="font-medium">
-                              ${order.paid_amount.toFixed(2)}
-                            </TableCell>
-                            <TableCell className="font-semibold text-success">
-                              ${order.commission.toFixed(2)}
-                            </TableCell>
-                            <TableCell>{getStatusBadge(order.status)}</TableCell>
-                            <TableCell className="text-muted-foreground text-sm">
-                              {formatHebrewDate(order.created_time)}
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <span className="font-mono text-xs text-muted-foreground">
+                                  {order.order_number}
+                                </span>
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                ${order.paid_amount.toFixed(2)}
+                              </TableCell>
+                              <TableCell className="font-semibold text-success">
+                                ${order.commission.toFixed(2)}
+                              </TableCell>
+                              <TableCell>{getStatusBadge(order.status)}</TableCell>
+                              <TableCell className="text-muted-foreground text-sm">
+                                {formatHebrewDate(order.created_time)}
+                              </TableCell>
+                              <TableCell>
+                                {order.product_id && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7"
+                                        disabled={isAdding}
+                                        onClick={() => handleAddToQueue(order)}
+                                      >
+                                        {isAdding ? (
+                                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        ) : (
+                                          <Plus className="h-3.5 w-3.5" />
+                                        )}
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top">הוספה למחסנית</TooltipContent>
+                                  </Tooltip>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </div>
