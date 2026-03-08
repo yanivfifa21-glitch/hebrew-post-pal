@@ -120,6 +120,19 @@ const AddProduct = () => {
         throw new Error(formatAliError(metaResp));
       }
 
+
+      // Check if product is eligible for affiliate program
+      if (metaResp.eligible === false) {
+        toast({
+          title: "⚠️ מוצר לא זכאי לעמלה",
+          description: "המוצר הזה לא משתתף בתוכנית השותפים של אליאקספרס. לא ניתן להרוויח ממנו עמלה.",
+          variant: "destructive",
+        });
+        setIsFetching(false);
+        setFetchStatus("");
+        return;
+      }
+
       const meta = metaResp.data as {
         title: string;
         price: number;
