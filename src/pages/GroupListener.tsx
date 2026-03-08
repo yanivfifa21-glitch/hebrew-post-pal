@@ -13,7 +13,7 @@ import { StockBadge } from "@/components/products/StockBadge";
 import {
   Plus, Trash2, Loader2, Eye, EyeOff, Check, X, Edit,
   Headphones, Copy, Settings, Wifi, WifiOff, Filter,
-  CheckCircle, XCircle
+  CheckCircle, XCircle, Link, Sparkles
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -32,6 +32,7 @@ const GroupListener = () => {
   const [newAutoApprove, setNewAutoApprove] = useState(false);
   const [newPrepend, setNewPrepend] = useState("");
   const [newAppend, setNewAppend] = useState("");
+  const [newRewriteMode, setNewRewriteMode] = useState<'link_only' | 'full_rewrite'>("link_only");
   const [isSavingGroup, setIsSavingGroup] = useState(false);
   const [postFilter, setPostFilter] = useState<string>("pending_review");
   const [editingPost, setEditingPost] = useState<CapturedPost | null>(null);
@@ -49,6 +50,7 @@ const GroupListener = () => {
   const [editGroupActive, setEditGroupActive] = useState(true);
   const [editPrepend, setEditPrepend] = useState("");
   const [editAppend, setEditAppend] = useState("");
+  const [editRewriteMode, setEditRewriteMode] = useState<'link_only' | 'full_rewrite'>("link_only");
   const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
 
   useEffect(() => {
@@ -128,11 +130,12 @@ const GroupListener = () => {
         auto_approve: newAutoApprove,
         text_template_prepend: newPrepend || null,
         text_template_append: newAppend || null,
+        rewrite_mode: newRewriteMode,
       } as any);
       if (error) throw error;
       toast({ title: "✅ קבוצת ממסר נוספה בהצלחה" });
       setShowAddGroup(false);
-      setNewGroupName(""); setNewGroupId(""); setNewBotToken(""); setNewAutoApprove(false); setNewPrepend(""); setNewAppend("");
+      setNewGroupName(""); setNewGroupId(""); setNewBotToken(""); setNewAutoApprove(false); setNewPrepend(""); setNewAppend(""); setNewRewriteMode("link_only");
       fetchGroups();
     } catch {
       toast({ title: "שגיאה בהוספת קבוצה", variant: "destructive" });
@@ -150,6 +153,7 @@ const GroupListener = () => {
     setEditGroupActive(Boolean(group.is_active));
     setEditPrepend(group.text_template_prepend || "");
     setEditAppend(group.text_template_append || "");
+    setEditRewriteMode(group.rewrite_mode || "link_only");
   };
 
   const handleSaveGroupChanges = async () => {
@@ -169,6 +173,7 @@ const GroupListener = () => {
         is_active: editGroupActive,
         text_template_prepend: editPrepend.trim() || null,
         text_template_append: editAppend.trim() || null,
+        rewrite_mode: editRewriteMode,
       };
 
       const { data, error } = await supabase
@@ -533,6 +538,36 @@ const GroupListener = () => {
                       <Switch checked={newAutoApprove} onCheckedChange={setNewAutoApprove} />
                       <Label>אישור אוטומטי (פוסטים יועברו ישירות לתור)</Label>
                     </div>
+                    <div className="space-y-2">
+                      <Label>מצב עיבוד פוסט</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          type="button"
+                          variant={newRewriteMode === "link_only" ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setNewRewriteMode("link_only")}
+                          className="gap-1.5 h-auto py-2 text-xs"
+                        >
+                          <Link className="h-3.5 w-3.5" />
+                          קישור שותף בלבד
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={newRewriteMode === "full_rewrite" ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setNewRewriteMode("full_rewrite")}
+                          className="gap-1.5 h-auto py-2 text-xs"
+                        >
+                          <Sparkles className="h-3.5 w-3.5" />
+                          ניסוח מחדש + קישור
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {newRewriteMode === "link_only"
+                          ? "רק הקישור יוחלף לקישור שותף, הטקסט יישאר כמו שהוא"
+                          : "הטקסט ינוסח מחדש בעברית + קישור שותף + תמונת מוצר"}
+                      </p>
+                    </div>
                     <div>
                       <Label>טקסט לפני הפוסט (אופציונלי)</Label>
                       <Input value={newPrepend} onChange={(e) => setNewPrepend(e.target.value)} placeholder="🔥 מבצע חם!" className="mt-1" />
@@ -638,8 +673,15 @@ const GroupListener = () => {
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
                         <span>📊 נקלטו: {group.captured_count}</span>
+                        <Badge variant="outline" className="text-xs gap-1">
+                          {group.rewrite_mode === "full_rewrite" ? (
+                            <><Sparkles className="h-3 w-3" />ניסוח מחדש + קישור</>
+                          ) : (
+                            <><Link className="h-3 w-3" />קישור שותף בלבד</>
+                          )}
+                        </Badge>
                       </div>
                     </CardContent>
                   </Card>
@@ -676,6 +718,36 @@ const GroupListener = () => {
               <div className="flex items-center justify-between">
                 <Label>אישור אוטומטי</Label>
                 <Switch checked={editAutoApprove} onCheckedChange={setEditAutoApprove} />
+              </div>
+              <div className="space-y-2">
+                <Label>מצב עיבוד פוסט</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant={editRewriteMode === "link_only" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setEditRewriteMode("link_only")}
+                    className="gap-1.5 h-auto py-2 text-xs"
+                  >
+                    <Link className="h-3.5 w-3.5" />
+                    קישור שותף בלבד
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={editRewriteMode === "full_rewrite" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setEditRewriteMode("full_rewrite")}
+                    className="gap-1.5 h-auto py-2 text-xs"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    ניסוח מחדש + קישור
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {editRewriteMode === "link_only"
+                    ? "רק הקישור יוחלף לקישור שותף, הטקסט יישאר כמו שהוא"
+                    : "הטקסט ינוסח מחדש בעברית + קישור שותף + תמונת מוצר"}
+                </p>
               </div>
               <div>
                 <Label>טקסט לפני הפוסט (אופציונלי)</Label>

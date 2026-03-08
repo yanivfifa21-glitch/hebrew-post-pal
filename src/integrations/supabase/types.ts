@@ -640,6 +640,7 @@ export type Database = {
           group_name: string
           id: string
           is_active: boolean
+          rewrite_mode: string
           telegram_group_id: string
           text_template_append: string | null
           text_template_prepend: string | null
@@ -655,6 +656,7 @@ export type Database = {
           group_name: string
           id?: string
           is_active?: boolean
+          rewrite_mode?: string
           telegram_group_id: string
           text_template_append?: string | null
           text_template_prepend?: string | null
@@ -670,6 +672,7 @@ export type Database = {
           group_name?: string
           id?: string
           is_active?: boolean
+          rewrite_mode?: string
           telegram_group_id?: string
           text_template_append?: string | null
           text_template_prepend?: string | null

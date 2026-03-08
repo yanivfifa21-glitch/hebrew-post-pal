@@ -70,6 +70,7 @@ export interface RelayGroup {
   text_template_append: string | null;
   webhook_active: boolean;
   captured_count: number;
+  rewrite_mode: 'link_only' | 'full_rewrite';
   created_at: string;
   updated_at?: string;
 }
