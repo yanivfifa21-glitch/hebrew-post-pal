@@ -39,8 +39,6 @@ const GroupListener = () => {
   const [editUrl, setEditUrl] = useState("");
   const [isApproving, setIsApproving] = useState<string | null>(null);
   const [isBulkApproving, setIsBulkApproving] = useState(false);
-  const [affiliateParams, setAffiliateParams] = useState<Record<string, string>>({});
-  const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingUpWebhook, setSettingUpWebhook] = useState<string | null>(null);
   const [showBotToken, setShowBotToken] = useState<Record<string, boolean>>({});
 
