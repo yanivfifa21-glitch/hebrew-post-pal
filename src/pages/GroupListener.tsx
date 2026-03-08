@@ -19,6 +19,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { CapturedPost, RelayGroup } from "@/types/product";
 import { format } from "date-fns";
+import { ZoneSelector } from "@/components/products/ZoneSelector";
+import { Checkbox } from "@/components/ui/checkbox";
+
+interface MessagingAccountSafe {
+  id: string;
+  account_type: string;
+  account_name: string;
+  is_active: boolean;
+  telegram_chat_id: string | null;
+  whatsapp_chat_id: string | null;
+}
 
 const GroupListener = () => {
   const [groups, setGroups] = useState<RelayGroup[]>([]);
