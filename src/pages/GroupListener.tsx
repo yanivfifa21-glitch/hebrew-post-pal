@@ -65,7 +65,7 @@ const GroupListener = () => {
   const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
   // Send/Queue dialog state
   const [showSendDialog, setShowSendDialog] = useState(false);
-  const [dialogMode, setDialogMode] = useState<'send' | 'queue'>('send');
+  const [_dialogMode, setDialogMode] = useState<'send' | 'queue'>('send');
   const [sendPosts, setSendPosts] = useState<CapturedPost[]>([]);
   const [accounts, setAccounts] = useState<MessagingAccountSafe[]>([]);
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
