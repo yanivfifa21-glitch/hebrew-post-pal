@@ -87,6 +87,7 @@ export default function ManualSend() {
   const [addWatermark, setAddWatermark] = useState(false);
   const [watermarkFile, setWatermarkFile] = useState<File | null>(null);
   const [watermarkPreview, setWatermarkPreview] = useState<string | null>(null);
+  const [watermarkedPreview, setWatermarkedPreview] = useState<string | null>(null);
   const watermarkCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Load saved watermark from localStorage
@@ -192,6 +193,38 @@ export default function ManualSend() {
       img.src = imageUrl;
     });
   };
+  // Generate watermarked preview whenever media or watermark settings change
+  useEffect(() => {
+    const generateWatermarkedPreview = async () => {
+      const sourcePreview = mediaPreview || imageUrlPreview || (mediaPreviews.length > 0 ? mediaPreviews[0] : null);
+      if (!sourcePreview || !addWatermark || !watermarkPreview) {
+        setWatermarkedPreview(null);
+        return;
+      }
+      // Only for images
+      if (mediaType === "video") {
+        setWatermarkedPreview(null);
+        return;
+      }
+      try {
+        if (mediaFile) {
+          // For uploaded files, apply watermark and create preview
+          const watermarked = await applyWatermark(mediaFile);
+          setWatermarkedPreview(URL.createObjectURL(watermarked));
+        } else if (imageUrlPreview) {
+          const result = await applyWatermarkToUrl(imageUrlPreview);
+          setWatermarkedPreview(result);
+        } else if (mediaPreviews.length > 0 && mediaFiles.length > 0) {
+          const watermarked = await applyWatermark(mediaFiles[0]);
+          setWatermarkedPreview(URL.createObjectURL(watermarked));
+        }
+      } catch {
+        setWatermarkedPreview(null);
+      }
+    };
+    generateWatermarkedPreview();
+  }, [mediaPreview, imageUrlPreview, mediaPreviews, addWatermark, watermarkPreview, mediaFile, mediaType]);
+
   useEffect(() => {
     fetchAccounts();
     getCurrentUser();
@@ -328,6 +361,7 @@ export default function ManualSend() {
     setMediaPreview(null);
     setMediaType(null);
     setImageUrlPreview(null);
+    setWatermarkedPreview(null);
   };
 
   const clearForm = () => {
@@ -338,6 +372,7 @@ export default function ManualSend() {
 
   // Get the effective media URL and type (file upload takes priority, then image URL)
   const effectiveMediaPreview = mediaPreview || imageUrlPreview || (mediaPreviews.length > 0 ? mediaPreviews[0] : null);
+  const displayMediaPreview = (addWatermark && watermarkedPreview) ? watermarkedPreview : effectiveMediaPreview;
   const effectiveMediaType = mediaType || (imageUrlPreview ? "image" : null);
   const hasMedia = !!mediaFile || !!imageUrlPreview || mediaFiles.length > 0;
   const isAlbumMode = mediaFiles.length > 1;
@@ -1049,11 +1084,16 @@ export default function ManualSend() {
         <div className="space-y-4">
           {/* Media Preview */}
           {effectiveMediaPreview && (
-            <div className="rounded-lg overflow-hidden border border-border">
+            <div className="rounded-lg overflow-hidden border border-border relative">
               {effectiveMediaType === "video" ? (
                 <video src={effectiveMediaPreview} className="w-full max-h-64" controls />
               ) : (
-                <img src={effectiveMediaPreview} alt="Preview" className="w-full object-contain max-h-64" />
+                <img src={displayMediaPreview || effectiveMediaPreview} alt="Preview" className="w-full object-contain max-h-64" />
+              )}
+              {addWatermark && watermarkedPreview && effectiveMediaType !== "video" && (
+                <Badge variant="secondary" className="absolute top-2 left-2 text-xs font-hebrew">
+                  <Stamp className="h-3 w-3 mr-1" /> עם לוגו
+                </Badge>
               )}
             </div>
           )}
@@ -1244,7 +1284,12 @@ export default function ManualSend() {
                       {effectiveMediaType === "video" ? (
                         <video src={effectiveMediaPreview} className="max-h-48 rounded-lg border border-border" controls />
                       ) : (
-                        <img src={effectiveMediaPreview} alt="Preview" className="max-h-48 rounded-lg border border-border" />
+                        <img src={displayMediaPreview || effectiveMediaPreview} alt="Preview" className="max-h-48 rounded-lg border border-border" />
+                      )}
+                      {addWatermark && watermarkedPreview && effectiveMediaType !== "video" && (
+                        <Badge variant="secondary" className="absolute top-2 left-2 text-xs font-hebrew">
+                          <Stamp className="h-3 w-3 mr-1" /> עם לוגו
+                        </Badge>
                       )}
                       <Button variant="destructive" size="icon-sm" className="absolute -top-2 -right-2" onClick={clearMedia}>
                         <X className="h-4 w-4" />
