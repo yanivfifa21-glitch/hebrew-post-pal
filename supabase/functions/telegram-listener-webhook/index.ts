@@ -337,34 +337,13 @@ async function processMessage(supabase: any, supabaseUrl: string, message: any, 
 
     // For full_rewrite mode: also fetch product data and rewrite text
     if (rewriteMode === "full_rewrite") {
-      console.log(`[telegram-listener-webhook] Full rewrite mode: fetching product data + AI rewrite`);
+      console.log(`[telegram-listener-webhook] Full rewrite mode: using product data + AI rewrite`);
 
-      // Fetch product data for image + stats
-      try {
-        const fetchResp = await fetch(`${supabaseUrl}/functions/v1/fetch-ali-product`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-          },
-          body: JSON.stringify({ productUrl: cleanUrl, userId }),
-        });
-        const fetchData = await fetchResp.json();
-
-        if (fetchData?.success && fetchData?.data) {
-          // Check if product is eligible for affiliate program
-          if (fetchData.eligible === false) {
-            console.warn(`[telegram-listener-webhook] Product ${productId} not eligible for affiliate program – skipping`);
-            return new Response(JSON.stringify({ ok: true, skipped: "not_affiliate_eligible", productId }), {
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
-          }
-          if (fetchData.data.image_url) fetchedImageUrl = fetchData.data.image_url;
-          if (fetchData.data.orders_count) ordersCount = Number(fetchData.data.orders_count);
-          if (fetchData.data.rating) rating = Number(fetchData.data.rating);
-        }
-      } catch (e) {
-        console.error("[telegram-listener-webhook] fetch-ali-product failed:", e);
+      // Reuse cached product detail data (already fetched for eligibility check)
+      if (productDetailData?.success && productDetailData?.data) {
+        if (productDetailData.data.image_url) fetchedImageUrl = productDetailData.data.image_url;
+        if (productDetailData.data.orders_count) ordersCount = Number(productDetailData.data.orders_count);
+        if (productDetailData.data.rating) rating = Number(productDetailData.data.rating);
       }
 
       // AI rewrite
