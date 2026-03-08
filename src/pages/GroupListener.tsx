@@ -786,7 +786,7 @@ const GroupListener = () => {
                           </div>
                         ) : post.original_text ? (
                           <div className="bg-muted/30 rounded-lg p-3 text-sm text-muted-foreground" dir="rtl">
-                            <p className="whitespace-pre-wrap">{post.original_text}</p>
+                            <p className="whitespace-pre-wrap">{getPostFinalText(post, 'original')}</p>
                           </div>
                         ) : null}
 
