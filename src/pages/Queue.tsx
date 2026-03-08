@@ -302,19 +302,36 @@ const Queue = () => {
       }
     };
 
+    const resolveCheckUrl = (product: Product): string | null => {
+      if (isValidHttpUrl(product.original_url)) return product.original_url;
+      if (isValidHttpUrl(product.affiliate_link)) return product.affiliate_link as string;
+      return null;
+    };
+
     try {
-      const validProducts = scheduledProducts.filter((p) => isValidHttpUrl(p.original_url || p.affiliate_link));
-      skipped = scheduledProducts.length - validProducts.length;
-      setStockCheckTotal(validProducts.length);
+      const productsToCheck = scheduledProducts
+        .map((product) => ({ product, checkUrl: resolveCheckUrl(product) }))
+        .filter((item): item is { product: Product; checkUrl: string } => Boolean(item.checkUrl));
+
+      skipped = scheduledProducts.length - productsToCheck.length;
+      setStockCheckTotal(productsToCheck.length);
       setStockCheckProgress(0);
+
+      if (productsToCheck.length === 0) {
+        toast({
+          title: "אין קישורי מוצר תקינים לבדיקה",
+          description: `נמצאו ${skipped} מוצרים בלי קישור HTTP/HTTPS מלא`,
+          variant: "destructive",
+        });
+        return;
+      }
 
       // Process in parallel batches of 5
       const BATCH_SIZE = 5;
-      for (let i = 0; i < validProducts.length; i += BATCH_SIZE) {
-        const batch = validProducts.slice(i, i + BATCH_SIZE);
+      for (let i = 0; i < productsToCheck.length; i += BATCH_SIZE) {
+        const batch = productsToCheck.slice(i, i + BATCH_SIZE);
         const results = await Promise.allSettled(
-          batch.map(async (product) => {
-            const checkUrl = product.affiliate_link || product.original_url;
+          batch.map(async ({ product, checkUrl }) => {
             const { data, error } = await supabase.functions.invoke("check-product-stock", {
               body: { productId: product.id, url: checkUrl },
             });
@@ -340,7 +357,7 @@ const Queue = () => {
           }
         }
 
-        setStockCheckProgress(Math.min(i + BATCH_SIZE, validProducts.length));
+        setStockCheckProgress(Math.min(i + BATCH_SIZE, productsToCheck.length));
       }
 
       toast({

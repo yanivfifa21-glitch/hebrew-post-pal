@@ -16,6 +16,12 @@ const isValidHttpUrl = (value: string | null | undefined): boolean => {
   }
 };
 
+const resolveCheckUrl = (originalUrl: string | null | undefined, affiliateUrl: string | null | undefined): string | null => {
+  if (isValidHttpUrl(originalUrl)) return originalUrl as string;
+  if (isValidHttpUrl(affiliateUrl)) return affiliateUrl as string;
+  return null;
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
