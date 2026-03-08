@@ -77,19 +77,15 @@ function getTimeRange(period: Period): { start: string; end: string } {
   return { start: formatDate(startDate), end: formatDate(endDate) };
 }
 
-async function hmacSha256Sign(params: Record<string, string>, appSecret: string): Promise<string> {
+async function generateMd5Signature(params: Record<string, string>, appSecret: string): Promise<string> {
   const sortedKeys = Object.keys(params).sort();
   let signStr = appSecret;
   for (const key of sortedKeys) signStr += key + params[key];
   signStr += appSecret;
 
   const encoder = new TextEncoder();
-  const keyData = encoder.encode(appSecret);
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-  );
-  const sigBuffer = await crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(signStr));
-  return Array.from(new Uint8Array(sigBuffer))
+  const hashBuffer = await crypto.subtle.digest("MD5", encoder.encode(signStr));
+  return Array.from(new Uint8Array(hashBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("")
     .toUpperCase();
@@ -141,7 +137,7 @@ async function fetchOrdersByStatus(
     const params: Record<string, string> = {
       method: "aliexpress.affiliate.order.list",
       app_key: appKey,
-      sign_method: "hmac-sha256",
+      sign_method: "md5",
       timestamp,
       format: "json",
       v: "2.0",
@@ -159,7 +155,7 @@ async function fetchOrdersByStatus(
       params.tracking_id = trackingId;
     }
 
-    params.sign = await hmacSha256Sign(params, appSecret);
+    params.sign = await generateMd5Signature(params, appSecret);
 
     const qs = Object.entries(params)
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
