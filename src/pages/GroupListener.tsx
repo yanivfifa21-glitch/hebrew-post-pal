@@ -311,9 +311,6 @@ const GroupListener = () => {
     ));
     toast({ title: "נדחה" });
   };
-    setIsBulkApproving(false);
-    toast({ title: `✅ אושרו ${count} פוסטים` });
-  };
 
   const handleSaveEdit = async () => {
     if (!editingPost) return;
