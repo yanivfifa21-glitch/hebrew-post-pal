@@ -87,6 +87,7 @@ export default function ManualSend() {
   const [addWatermark, setAddWatermark] = useState(false);
   const [watermarkFile, setWatermarkFile] = useState<File | null>(null);
   const [watermarkPreview, setWatermarkPreview] = useState<string | null>(null);
+  const [watermarkedPreview, setWatermarkedPreview] = useState<string | null>(null);
   const watermarkCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Load saved watermark from localStorage
