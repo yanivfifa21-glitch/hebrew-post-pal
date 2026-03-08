@@ -600,18 +600,43 @@ const GroupListener = () => {
               </Card>
             ) : (
               <div className="space-y-4">
-                {capturedPosts.map((post) => (
-                  <Card key={post.id} className="glass-card overflow-hidden">
+                {/* Select all */}
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    checked={selectedPostIds.size === capturedPosts.length && capturedPosts.length > 0}
+                    onCheckedChange={toggleSelectAll}
+                    className="h-4 w-4"
+                  />
+                  <Label className="text-sm text-muted-foreground font-hebrew cursor-pointer" onClick={toggleSelectAll}>
+                    בחר הכל ({capturedPosts.length})
+                  </Label>
+                </div>
+
+                {capturedPosts.map((post) => {
+                  const hasRewrite = !!(post.modified_text && post.modified_text !== post.original_text);
+                  const choice = textChoice[post.id] || (hasRewrite ? 'rewrite' : 'original');
+                  return (
+                  <Card key={post.id} className={`glass-card overflow-hidden transition-all ${selectedPostIds.has(post.id) ? "ring-2 ring-primary/40" : ""}`}>
                     <div className="flex flex-col md:flex-row">
-                      {post.image_url && (
-                        <div className="w-full md:w-40 h-40 flex-shrink-0 overflow-hidden">
-                          {post.media_type === 'video' ? (
-                            <video src={post.image_url} className="w-full h-full object-cover" muted playsInline controls />
-                          ) : (
-                            <img src={post.image_url} alt="" className="w-full h-full object-cover" />
-                          )}
+                      {/* Checkbox + Image */}
+                      <div className="flex">
+                        <div className="flex items-start p-3">
+                          <Checkbox
+                            checked={selectedPostIds.has(post.id)}
+                            onCheckedChange={() => togglePostSelection(post.id)}
+                            className="h-4 w-4 mt-1"
+                          />
                         </div>
-                      )}
+                        {post.image_url && (
+                          <div className="w-32 md:w-40 h-40 flex-shrink-0 overflow-hidden">
+                            {post.media_type === 'video' ? (
+                              <video src={post.image_url} className="w-full h-full object-cover" muted playsInline controls />
+                            ) : (
+                              <img src={post.image_url} alt="" className="w-full h-full object-cover" />
+                            )}
+                          </div>
+                        )}
+                      </div>
                       <div className="flex-1 p-4 space-y-3">
                         <div className="flex items-center gap-2 flex-wrap">
                           <Badge className={getStatusColor(post.status)}>{getStatusLabel(post.status)}</Badge>
@@ -624,23 +649,41 @@ const GroupListener = () => {
                             {format(new Date(post.captured_at), "dd/MM/yyyy HH:mm")}
                           </span>
                         </div>
-                        {post.original_text && (
+
+                        {/* Text version selector */}
+                        {hasRewrite ? (
+                          <div className="space-y-2">
+                            <label
+                              className={`block rounded-lg p-3 text-sm cursor-pointer border transition-all ${choice === 'original' ? 'border-primary bg-primary/5' : 'border-border bg-muted/30 text-muted-foreground'}`}
+                              onClick={() => setTextChoice(prev => ({ ...prev, [post.id]: 'original' }))}
+                              dir="rtl"
+                            >
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className={`h-3 w-3 rounded-full border-2 ${choice === 'original' ? 'border-primary bg-primary' : 'border-muted-foreground'}`} />
+                                <span className="text-xs font-medium">מקורי + קישור חדש</span>
+                              </div>
+                              <p className="line-clamp-2 text-xs">{post.original_text}</p>
+                            </label>
+                            <label
+                              className={`block rounded-lg p-3 text-sm cursor-pointer border transition-all ${choice === 'rewrite' ? 'border-primary bg-primary/5' : 'border-border bg-muted/30 text-muted-foreground'}`}
+                              onClick={() => setTextChoice(prev => ({ ...prev, [post.id]: 'rewrite' }))}
+                              dir="rtl"
+                            >
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className={`h-3 w-3 rounded-full border-2 ${choice === 'rewrite' ? 'border-primary bg-primary' : 'border-muted-foreground'}`} />
+                                <span className="text-xs font-medium">✨ מנוסח מחדש</span>
+                              </div>
+                              <p className="line-clamp-2 text-xs">{post.modified_text}</p>
+                            </label>
+                          </div>
+                        ) : post.original_text ? (
                           <div className="bg-muted/30 rounded-lg p-3 text-sm text-muted-foreground" dir="rtl">
                             <p className="line-clamp-3">{post.original_text}</p>
                           </div>
-                        )}
-                        {post.modified_text && post.modified_text !== post.original_text && (
-                          <div className="bg-primary/5 rounded-lg p-3 text-sm border border-primary/20" dir="rtl">
-                            <p className="line-clamp-3">{post.modified_text}</p>
-                          </div>
-                        )}
+                        ) : null}
+
+                        {/* URLs */}
                         <div className="flex flex-col gap-1 text-xs">
-                          {post.original_url && (
-                            <div className="flex items-center gap-1 text-destructive line-through truncate" dir="ltr">
-                              <XCircle className="h-3 w-3 flex-shrink-0" />
-                              <span className="truncate">{post.original_url}</span>
-                            </div>
-                          )}
                           {post.modified_url && (
                             <div className="flex items-center gap-1 text-success truncate" dir="ltr">
                               <CheckCircle className="h-3 w-3 flex-shrink-0" />
@@ -650,38 +693,33 @@ const GroupListener = () => {
                             </div>
                           )}
                         </div>
-                        {post.status === "pending_review" && (
-                          <div className="flex gap-2 flex-wrap">
-                            {post.modified_text && post.modified_text !== post.original_text && (
-                              <Button variant="gradient" size="sm" onClick={() => handleApprovePost(post, false)} disabled={isApproving === post.id} className="gap-1">
-                                {isApproving === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                                אשר ניסוח מחדש
-                              </Button>
-                            )}
-                            <Button variant={post.modified_text && post.modified_text !== post.original_text ? "outline" : "gradient"} size="sm" onClick={() => handleApprovePost(post, true)} disabled={isApproving === post.id} className="gap-1">
-                              {isApproving === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Link className="h-3 w-3" />}
-                              {post.modified_text && post.modified_text !== post.original_text ? "מקורי + קישור חדש" : "אשר והוסף לתור"}
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={() => { setEditingPost(post); setEditText(post.modified_text || post.original_text || ""); setEditUrl(post.modified_url || post.original_url || ""); }} className="gap-1">
-                              <Edit className="h-3 w-3" />
-                              ערוך
-                            </Button>
+
+                        {/* Action buttons */}
+                        <div className="flex gap-2 flex-wrap">
+                          <Button variant="gradient" size="sm" onClick={() => handleAddToQueue(post)} disabled={isApproving === post.id || post.status === "queued"} className="gap-1">
+                            {isApproving === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <ListPlus className="h-3 w-3" />}
+                            הוסף לתור
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => openSendDialog(post)} disabled={isBulkProcessing} className="gap-1">
+                            <Send className="h-3 w-3" />
+                            שלח והוסף לתור
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => { setEditingPost(post); setEditText(post.modified_text || post.original_text || ""); setEditUrl(post.modified_url || post.original_url || ""); }} className="gap-1">
+                            <Edit className="h-3 w-3" />
+                            ערוך
+                          </Button>
+                          {post.status === "pending_review" && (
                             <Button variant="ghost" size="sm" onClick={() => handleRejectPost(post.id)} className="gap-1 text-destructive hover:text-destructive">
                               <X className="h-3 w-3" />
                               דחה
                             </Button>
-                          </div>
-                        )}
-                        <div className="flex gap-2 flex-wrap">
-                          <Button variant="outline" size="sm" onClick={() => openSendDialog(post)} disabled={sendingPostId === post.id} className="gap-1">
-                            {sendingPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                            שלח והוסף לתור
-                          </Button>
+                          )}
                         </div>
                       </div>
                     </div>
                   </Card>
-                ))}
+                  );
+                })}
               </div>
             )}
           </TabsContent>
