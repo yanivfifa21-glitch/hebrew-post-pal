@@ -586,6 +586,71 @@ serve(async (req) => {
     }
 
     console.log("[fetch-hot-products] Returning", products.length, "products from source:", source);
+
+    // ============================================
+    // CACHE: Save campaigns and products to DB
+    // ============================================
+    try {
+      // Cache campaigns if any
+      if (extraCampaigns && extraCampaigns.length > 0) {
+        for (const camp of extraCampaigns) {
+          await supabase.from("affiliate_campaigns").upsert({
+            user_id: user.id,
+            campaign_name: camp.promo_name,
+            promo_desc: camp.promo_desc || null,
+            landing_page_url: camp.landing_page_url || null,
+            banner_url: camp.banner_url || null,
+            source: source,
+            fetched_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "user_id,campaign_name", ignoreDuplicates: false }).select();
+        }
+      }
+
+      // Cache products
+      if (products.length > 0) {
+        // Get campaign IDs for linking
+        const { data: campaignRows } = await supabase
+          .from("affiliate_campaigns")
+          .select("id, campaign_name")
+          .eq("user_id", user.id);
+        const campaignMap = new Map((campaignRows || []).map((c: any) => [c.campaign_name, c.id]));
+
+        const productRows = products.map((p) => {
+          // Extract campaign name from source label like "campaign:PromoName"
+          const campName = p.source?.startsWith("campaign:") ? p.source.replace("campaign:", "") : null;
+          return {
+            user_id: user.id,
+            product_id: p.product_id,
+            title: p.title,
+            image_url: p.image_url,
+            price: p.price,
+            original_price: p.original_price,
+            product_url: p.product_url,
+            source: source,
+            campaign_id: campName ? (campaignMap.get(campName) || null) : null,
+            sales_count: p.sales_count,
+            rating: p.rating,
+            commission_rate: p.commission_rate || 0,
+            fetched_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+        });
+
+        // Upsert in batches of 50
+        for (let i = 0; i < productRows.length; i += 50) {
+          const batch = productRows.slice(i, i + 50);
+          await supabase.from("ad_center_products").upsert(batch, {
+            onConflict: "user_id,product_id,source",
+            ignoreDuplicates: false,
+          });
+        }
+        console.log("[fetch-hot-products] Cached", productRows.length, "products to ad_center_products");
+      }
+    } catch (cacheErr) {
+      // Don't fail the request if caching fails
+      console.warn("[fetch-hot-products] Cache error (non-fatal):", cacheErr);
+    }
     
     const payload: ApiOk = { success: true, products, total: products.length, campaigns: extraCampaigns };
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });

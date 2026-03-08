@@ -9,7 +9,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { 
   Search, Loader2, Sparkles, TrendingUp, Flame, Star, 
   ShoppingBag, RefreshCw, Zap, AlertCircle, Link as LinkIcon,
-  FileSpreadsheet, CheckCircle2, ListPlus, Percent, Filter, SlidersHorizontal, Send
+  FileSpreadsheet, CheckCircle2, ListPlus, Percent, Filter, SlidersHorizontal, Send,
+  ExternalLink, Image as ImageIcon, Database
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -19,6 +20,7 @@ import { PullToRefreshIndicator, PullToRefreshContainer } from "@/components/ui/
 import { ExcelImporter, ExcelProduct } from "@/components/products/ExcelImporter";
 import { ExcelProductCard } from "@/components/products/ExcelProductCard";
 import { ZoneSelector } from "@/components/products/ZoneSelector";
+import { Smartphone, Home, Heart, Dumbbell, Car, Lightbulb, Monitor, Headphones } from "lucide-react";
 
 type HotProduct = {
   product_id: string;
@@ -34,9 +36,21 @@ type HotProduct = {
   source?: string;
 };
 
+type CampaignData = {
+  id: string;
+  campaign_name: string;
+  campaign_id: string | null;
+  commission_rate: number;
+  promo_desc: string | null;
+  landing_page_url: string | null;
+  banner_url: string | null;
+  source: string;
+  is_active: boolean;
+  fetched_at: string;
+};
+
 type ImportedProduct = ExcelProduct & { id: string };
 
-// Product sources - AD CENTER + Incentive Campaign
 type ProductSource = "hot" | "hot_deals" | "high_commission" | "featured" | "campaigns" | "search" | "smart_match" | "incentive";
 
 const PRODUCT_SOURCES = [
@@ -48,9 +62,6 @@ const PRODUCT_SOURCES = [
   { id: "incentive", label: "Incentive", icon: Sparkles, emoji: "🎁" },
   { id: "smart_match", label: "Smart Match", icon: Lightbulb, emoji: "🧠" },
 ];
-
-// Hebrew category mapping with AliExpress category IDs and icons
-import { Smartphone, Home, Heart, Dumbbell, Car, Lightbulb, Monitor, Headphones } from "lucide-react";
 
 const CATEGORIES = [
   { id: "", label: "הכל", icon: Flame, emoji: "🔥" },
@@ -65,6 +76,7 @@ const CATEGORIES = [
 ];
 
 const STORAGE_KEY = "aliaffilio_imported_products";
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour cache
 
 const Discovery = () => {
   const navigate = useNavigate();
@@ -81,16 +93,19 @@ const Discovery = () => {
   const [dataSource, setDataSource] = useState<string>("");
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMoreProducts, setHasMoreProducts] = useState(true);
-  
-  // Product source state (for AD CENTER categories)
   const [productSource, setProductSource] = useState<ProductSource>("hot");
-  
-  // Price filter state
   const [minPrice, setMinPrice] = useState<number>(0);
   const [maxPrice, setMaxPrice] = useState<number>(500);
   const [showFilters, setShowFilters] = useState(false);
   
-  // Excel import state - with localStorage persistence
+  // Campaigns state
+  const [campaigns, setCampaigns] = useState<CampaignData[]>([]);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
+  const [isLoadingCampaigns, setIsLoadingCampaigns] = useState(false);
+  const [campaignProducts, setCampaignProducts] = useState<HotProduct[]>([]);
+  const [isFromCache, setIsFromCache] = useState(false);
+
+  // Excel import state
   const [importedProducts, setImportedProducts] = useState<ImportedProduct[]>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -101,40 +116,28 @@ const Discovery = () => {
   });
   const [addingProductId, setAddingProductId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
-  
-  // Channel selection for Excel import
-  const [excelTargetChannels, setExcelTargetChannels] = useState<string[]>([]); // empty = all/general
+  const [excelTargetChannels, setExcelTargetChannels] = useState<string[]>([]);
   const [messagingAccounts, setMessagingAccounts] = useState<Array<{
     id: string;
     account_type: string;
     account_name: string;
     is_active: boolean;
   }>>([]);
-  
-  // Multi-select state (used for both Excel and API products)
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [isAddingSelected, setIsAddingSelected] = useState(false);
-  
-  // API products selection state
   const [selectedApiProductIds, setSelectedApiProductIds] = useState<Set<string>>(new Set());
-  
-  // Zone selection for destination
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
 
-  // Get current user ID on mount
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUserId(session?.user?.id ?? null);
     });
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
       setUserId(session?.user?.id ?? null);
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
-  // Fetch messaging accounts for channel selection
   useEffect(() => {
     const fetchAccounts = async () => {
       try {
@@ -154,7 +157,6 @@ const Discovery = () => {
     fetchAccounts();
   }, []);
 
-  // Persist imported products to localStorage
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(importedProducts));
@@ -163,7 +165,110 @@ const Discovery = () => {
     }
   }, [importedProducts]);
 
-  // Pull to refresh handler
+  // Load campaigns from DB on mount
+  useEffect(() => {
+    if (userId) {
+      loadCampaignsFromDb();
+    }
+  }, [userId]);
+
+  const loadCampaignsFromDb = async () => {
+    if (!userId) return;
+    try {
+      const { data, error } = await supabase
+        .from("affiliate_campaigns")
+        .select("*")
+        .eq("user_id", userId)
+        .order("fetched_at", { ascending: false });
+      if (!error && data) {
+        setCampaigns(data as CampaignData[]);
+      }
+    } catch (e) {
+      console.error("Error loading campaigns:", e);
+    }
+  };
+
+  // Load cached products from DB
+  const loadProductsFromCache = async (source: ProductSource, campaignId?: string): Promise<HotProduct[] | null> => {
+    if (!userId) return null;
+    try {
+      let query = supabase
+        .from("ad_center_products")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("source", source)
+        .order("sales_count", { ascending: false })
+        .limit(50);
+
+      if (campaignId) {
+        query = query.eq("campaign_id", campaignId);
+      }
+
+      const { data, error } = await query;
+      if (error || !data || data.length === 0) return null;
+
+      // Check if cache is fresh (< 1 hour old)
+      const oldestFetch = new Date(data[data.length - 1].fetched_at).getTime();
+      if (Date.now() - oldestFetch > CACHE_TTL_MS) return null;
+
+      return data.map((p: any) => ({
+        product_id: p.product_id,
+        title: p.title,
+        price: Number(p.price) || 0,
+        original_price: Number(p.original_price) || 0,
+        image_url: p.image_url || "",
+        sales_count: p.sales_count || 0,
+        rating: Number(p.rating) || 0,
+        product_url: p.product_url || `https://www.aliexpress.com/item/${p.product_id}.html`,
+        commission_rate: Number(p.commission_rate) || 0,
+        source: p.source,
+      }));
+    } catch (e) {
+      console.error("Error loading cache:", e);
+      return null;
+    }
+  };
+
+  // Load campaign-specific products from DB
+  const loadCampaignProducts = async (campaignId: string) => {
+    if (!userId) return;
+    setIsLoadingCampaigns(true);
+    setSelectedCampaignId(campaignId);
+    
+    try {
+      const { data, error } = await supabase
+        .from("ad_center_products")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("campaign_id", campaignId)
+        .order("sales_count", { ascending: false })
+        .limit(50);
+
+      if (!error && data && data.length > 0) {
+        const mapped = data.map((p: any) => ({
+          product_id: p.product_id,
+          title: p.title,
+          price: Number(p.price) || 0,
+          original_price: Number(p.original_price) || 0,
+          image_url: p.image_url || "",
+          sales_count: p.sales_count || 0,
+          rating: Number(p.rating) || 0,
+          product_url: p.product_url || `https://www.aliexpress.com/item/${p.product_id}.html`,
+          commission_rate: Number(p.commission_rate) || 0,
+          source: p.source,
+        }));
+        setCampaignProducts(mapped);
+      } else {
+        setCampaignProducts([]);
+      }
+    } catch (e) {
+      console.error("Error loading campaign products:", e);
+      setCampaignProducts([]);
+    } finally {
+      setIsLoadingCampaigns(false);
+    }
+  };
+
   const handlePullRefresh = useCallback(async () => {
     if (activeMode === "api") {
       await fetchHotProductsAsync(selectedCategory, searchQuery);
@@ -178,16 +283,35 @@ const Discovery = () => {
     shouldTrigger,
   } = usePullToRefresh({ onRefresh: handlePullRefresh });
 
-  // Async versions for pull-to-refresh
-
   const fetchHotProductsAsync = async (category = selectedCategory, keywords = "", page = 1, append = false, source: ProductSource = productSource) => {
     setShowManualInput(false);
     try {
+      // Try loading from cache first (only on first page, no keywords)
+      if (page === 1 && !append && !keywords.trim()) {
+        const cached = await loadProductsFromCache(source);
+        if (cached && cached.length > 0) {
+          setProducts(cached);
+          setHasFetched(true);
+          setIsFromCache(true);
+          setCurrentPage(1);
+          setHasMoreProducts(cached.length >= 15);
+          const sourceLabels: Record<ProductSource, string> = {
+            hot: "מוצרים לוהטים",
+            hot_deals: "Hot Deals",
+            high_commission: "עמלה גבוהה",
+            featured: "מוצרים מומלצים",
+            campaigns: "קמפיינים",
+            search: "חיפוש Ad Center",
+            smart_match: "Smart Match",
+            incentive: "Incentive Campaign",
+          };
+          setDataSource(`${sourceLabels[source]} (קאש)`);
+          return;
+        }
+      }
+
       const trimmedKeywords = keywords.trim();
-
-      // If user typed keywords, use the general search endpoint
       const fnName = trimmedKeywords ? "search-ali-products" : "fetch-hot-products";
-
       const { data, error } = await supabase.functions.invoke(fnName, {
         body: {
           category,
@@ -195,7 +319,7 @@ const Discovery = () => {
           pageSize: 20,
           pageNo: page,
           sort: "VOLUME_DESC",
-          source: source, // Pass the product source for AD CENTER
+          source: source,
         },
       });
 
@@ -205,7 +329,6 @@ const Discovery = () => {
       const newProducts = data.products || [];
       
       if (append) {
-        // Filter out duplicates when appending
         setProducts(prev => {
           const existingIds = new Set(prev.map(p => p.product_id));
           const uniqueNew = newProducts.filter((p: HotProduct) => !existingIds.has(p.product_id));
@@ -216,10 +339,15 @@ const Discovery = () => {
       }
       
       setHasFetched(true);
+      setIsFromCache(false);
       setCurrentPage(page);
       setHasMoreProducts(newProducts.length >= 15);
       
-      // Set data source label
+      // Reload campaigns after API fetch (they may have been cached)
+      if (data.campaigns) {
+        loadCampaignsFromDb();
+      }
+
       const sourceLabels: Record<ProductSource, string> = {
         hot: "מוצרים לוהטים",
         hot_deals: "Hot Deals",
@@ -240,7 +368,6 @@ const Discovery = () => {
     }
   };
 
-  // Fetch from official API (with loading state)
   const fetchHotProducts = async (category = selectedCategory, keywords = "", page = 1, append = false, source: ProductSource = productSource) => {
     if (append) {
       setIsLoadingMore(true);
@@ -252,9 +379,52 @@ const Discovery = () => {
     setIsLoadingMore(false);
   };
 
+  // Force refresh from API (bypass cache)
+  const forceRefreshFromApi = async () => {
+    setIsFromCache(false);
+    setIsLoading(true);
+    setShowManualInput(false);
+    try {
+      const trimmedKeywords = searchQuery.trim();
+      const fnName = trimmedKeywords ? "search-ali-products" : "fetch-hot-products";
+      const { data, error } = await supabase.functions.invoke(fnName, {
+        body: {
+          category: selectedCategory,
+          keywords: trimmedKeywords,
+          pageSize: 20,
+          pageNo: 1,
+          sort: "VOLUME_DESC",
+          source: productSource,
+        },
+      });
+
+      if (error) throw new Error(error.message);
+      if (!data?.success) throw new Error(data?.error || "Failed to fetch products");
+
+      setProducts(data.products || []);
+      setHasFetched(true);
+      setCurrentPage(1);
+      setHasMoreProducts((data.products || []).length >= 15);
+      
+      if (data.campaigns) loadCampaignsFromDb();
+      
+      const sourceLabels: Record<ProductSource, string> = {
+        hot: "מוצרים לוהטים", hot_deals: "Hot Deals", high_commission: "עמלה גבוהה",
+        featured: "מוצרים מומלצים", campaigns: "קמפיינים", search: "חיפוש Ad Center",
+        smart_match: "Smart Match", incentive: "Incentive Campaign",
+      };
+      setDataSource(trimmedKeywords ? "חיפוש" : sourceLabels[productSource]);
+    } catch (e) {
+      toast({ title: "שגיאה", description: e instanceof Error ? e.message : "שגיאה בטעינה", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSearch = () => {
     if (activeMode === "api") {
       setCurrentPage(1);
+      setIsFromCache(false);
       fetchHotProducts(selectedCategory, searchQuery, 1, false);
     }
   };
@@ -269,8 +439,10 @@ const Discovery = () => {
   
   const handleSourceChange = (source: ProductSource) => {
     setProductSource(source);
-    setSelectedCategory(""); // Reset category when changing source
+    setSelectedCategory("");
     setCurrentPage(1);
+    setSelectedCampaignId(null);
+    setCampaignProducts([]);
     if (activeMode === "api") {
       fetchHotProducts("", searchQuery, 1, false, source);
     }
@@ -292,7 +464,6 @@ const Discovery = () => {
     setShowManualInput(false);
   };
 
-  // Excel import handlers
   const handleExcelProductsLoaded = (excelProducts: ExcelProduct[]) => {
     const productsWithId = excelProducts.map((p, idx) => ({
       ...p,
@@ -306,72 +477,46 @@ const Discovery = () => {
     setImportedProducts([]);
     setSelectedProductIds(new Set());
     localStorage.removeItem(STORAGE_KEY);
-    toast({
-      title: "נמחקו",
-      description: "כל המוצרים המיובאים נמחקו",
-    });
+    toast({ title: "נמחקו", description: "כל המוצרים המיובאים נמחקו" });
   };
 
-  // Toggle product selection (Excel)
   const toggleProductSelection = (productId: string) => {
     setSelectedProductIds(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(productId)) {
-        newSet.delete(productId);
-      } else {
-        newSet.add(productId);
-      }
+      if (newSet.has(productId)) newSet.delete(productId);
+      else newSet.add(productId);
       return newSet;
     });
   };
 
-  // Select/deselect all (Excel)
   const toggleSelectAll = () => {
-    if (selectedProductIds.size === importedProducts.length) {
-      setSelectedProductIds(new Set());
-    } else {
-      setSelectedProductIds(new Set(importedProducts.map(p => p.id)));
-    }
+    if (selectedProductIds.size === importedProducts.length) setSelectedProductIds(new Set());
+    else setSelectedProductIds(new Set(importedProducts.map(p => p.id)));
   };
   
-  // Apply filters - price only (quality filtering done server-side)
   const filteredProducts = products.filter(p => {
-    // Price filter
     if (minPrice > 0 && p.price < minPrice) return false;
     if (maxPrice < 500 && p.price > maxPrice) return false;
-    
-    // High commission filter: only show 8%+ commission products
     if (productSource === "high_commission" && (p.commission_rate || 0) < 8) return false;
-    
     return true;
   });
 
-  // Toggle API product selection
   const toggleApiProductSelection = (productId: string) => {
     setSelectedApiProductIds(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(productId)) {
-        newSet.delete(productId);
-      } else {
-        newSet.add(productId);
-      }
+      if (newSet.has(productId)) newSet.delete(productId);
+      else newSet.add(productId);
       return newSet;
     });
   };
 
-  // Select/deselect all API products
   const toggleSelectAllApi = () => {
-    if (selectedApiProductIds.size === filteredProducts.length) {
-      setSelectedApiProductIds(new Set());
-    } else {
-      setSelectedApiProductIds(new Set(filteredProducts.map(p => p.product_id)));
-    }
+    if (selectedApiProductIds.size === filteredProducts.length) setSelectedApiProductIds(new Set());
+    else setSelectedApiProductIds(new Set(filteredProducts.map(p => p.product_id)));
   };
 
-  // Add selected API products to queue
   const handleAddSelectedApiToQueue = async () => {
     if (!userId || selectedApiProductIds.size === 0) return;
-
     setIsAddingSelected(true);
     const selectedProducts = filteredProducts.filter(p => selectedApiProductIds.has(p.product_id));
     let successCount = 0;
@@ -379,24 +524,15 @@ const Discovery = () => {
 
     for (const product of selectedProducts) {
       try {
-        // 1. Generate affiliate link
         const { data: affResp, error: affErr } = await supabase.functions.invoke("generate-affiliate-link", {
           body: { productUrl: product.product_url, userId },
         });
-
         if (affErr) throw new Error(affErr.message);
         const affiliateLink = affResp?.success ? affResp.affiliateLink : product.product_url;
 
-        // 2. Generate Hebrew description with random prompt style (1-4)
         const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
-          body: { 
-            title: product.title,
-            ordersCount: product.sales_count || 0,
-            rating: product.rating || 0,
-            userId,
-          },
+          body: { title: product.title, ordersCount: product.sales_count || 0, rating: product.rating || 0, userId },
         });
-
         if (hebErr) throw new Error(hebErr.message);
         if (!hebResp?.success) throw new Error(hebResp?.error || "Failed to generate Hebrew content");
 
@@ -404,14 +540,10 @@ const Discovery = () => {
         const randomCta = ctaOptions[Math.floor(Math.random() * ctaOptions.length)];
         const hebrewDescription = `${hebResp.hebrewDescription}\n\n👇 ${randomCta}:\n${affiliateLink}`;
 
-        // Normalize rating to 0-5 scale
         let normalizedRating = product.rating ?? 0;
-        if (normalizedRating > 5) {
-          normalizedRating = normalizedRating / 20;
-        }
+        if (normalizedRating > 5) normalizedRating = normalizedRating / 20;
         normalizedRating = Math.min(normalizedRating, 5);
 
-        // 3. Save to queue
         const { data: savedProduct, error: saveErr } = await supabase.from("products").insert({
           original_url: product.product_url,
           title: product.title,
@@ -428,12 +560,9 @@ const Discovery = () => {
 
         if (saveErr) throw new Error(saveErr.message);
 
-        // 4. Assign to zones if selected
         if (selectedZones.length > 0 && savedProduct) {
           const zoneInserts = selectedZones.map(zoneId => ({
-            zone_id: zoneId,
-            product_id: savedProduct.id,
-            status: "Scheduled",
+            zone_id: zoneId, product_id: savedProduct.id, status: "Scheduled",
           }));
           await supabase.from("zone_products").insert(zoneInserts);
         }
@@ -444,21 +573,16 @@ const Discovery = () => {
       }
     }
 
-    // Clear selection
     setSelectedApiProductIds(new Set());
-
     toast({
       title: `✨ נוספו ${successCount} מוצרים לתור!`,
       description: failCount > 0 ? `${failCount} נכשלו` : "כל המוצרים נוספו בהצלחה עם פרומפטים שונים",
     });
-
     setIsAddingSelected(false);
   };
 
-  // Add selected products to queue
   const handleAddSelectedToQueue = async () => {
     if (!userId || selectedProductIds.size === 0) return;
-
     setIsAddingSelected(true);
     const selectedProducts = importedProducts.filter(p => selectedProductIds.has(p.id));
     let successCount = 0;
@@ -466,32 +590,21 @@ const Discovery = () => {
 
     for (const product of selectedProducts) {
       try {
-        // IMPORTANT: keep the affiliate link coming from Excel (Promotion Url)
         const affiliateLink = product.affiliateLink || product.promotionLink;
-
-        // Always generate Hebrew from Product Desc (English) unless Excel already contains Hebrew (rare)
         let hebrewDescription = product.hebrewDescription || "";
 
         if (!hebrewDescription) {
           const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
-            body: {
-              title: product.title, // mapped from Product Desc
-              ordersCount: product.sales180Day || 0,
-              rating: product.positiveFeedback || 0, // percent (0-100)
-              userId,
-            },
+            body: { title: product.title, ordersCount: product.sales180Day || 0, rating: product.positiveFeedback || 0, userId },
           });
-
           if (hebErr) throw hebErr;
           if (!hebResp?.success) throw new Error(hebResp?.error || "Failed to generate Hebrew content");
           hebrewDescription = hebResp.hebrewDescription;
           
-          // Only add stats for promptStyle 1 (the structured format with rating/orders)
           if (hebResp.promptStyle === 1 && (product.sales180Day || product.positiveFeedback)) {
             const stats: string[] = [];
             if (product.sales180Day) stats.push(`📦 מעל ${product.sales180Day.toLocaleString()} הזמנות`);
             if (product.positiveFeedback) {
-              // Convert percentage to 5-star rating
               const rating5 = Math.min(5, product.positiveFeedback / 20);
               stats.push(`⭐ דירוג: ${rating5.toFixed(1)} מתוך 5`);
             }
@@ -505,7 +618,6 @@ const Discovery = () => {
         const randomCtaExcel = ctaOptionsExcel[Math.floor(Math.random() * ctaOptionsExcel.length)];
         const finalDescription = `${hebrewDescription}\n\n👇 ${randomCtaExcel}:\n${affiliateLink}`;
 
-        // Save to queue
         const { data: savedProduct, error: saveErr } = await supabase.from("products").insert({
           original_url: product.promotionLink,
           title: product.title,
@@ -522,12 +634,9 @@ const Discovery = () => {
 
         if (saveErr) throw saveErr;
 
-        // Assign to zones if selected
         if (selectedZones.length > 0 && savedProduct) {
           const zoneInserts = selectedZones.map(zoneId => ({
-            zone_id: zoneId,
-            product_id: savedProduct.id,
-            status: "Scheduled",
+            zone_id: zoneId, product_id: savedProduct.id, status: "Scheduled",
           }));
           await supabase.from("zone_products").insert(zoneInserts);
         }
@@ -538,67 +647,40 @@ const Discovery = () => {
       }
     }
 
-    // Remove successfully added products
-    const addedIds = new Set(
-      selectedProducts
-        .filter((_, i) => i < successCount)
-        .map(p => p.id)
-    );
-    
-    // Actually remove all selected since we processed them
     setImportedProducts(prev => prev.filter(p => !selectedProductIds.has(p.id)));
     setSelectedProductIds(new Set());
-
     toast({
       title: `✨ נוספו ${successCount} מוצרים לתור!`,
       description: failCount > 0 ? `${failCount} נכשלו` : "כל המוצרים נוספו בהצלחה",
-      variant: failCount > 0 ? "default" : "default",
     });
-
     setIsAddingSelected(false);
   };
 
   const handleQuickAddFromExcel = async (product: ImportedProduct) => {
     if (!userId) {
-      toast({
-        title: "Not Authenticated",
-        description: "Please log in to add products",
-        variant: "destructive",
-      });
+      toast({ title: "Not Authenticated", description: "Please log in to add products", variant: "destructive" });
       return;
     }
-
     setAddingProductId(product.id);
     try {
-      // IMPORTANT: keep the affiliate link coming from Excel (Promotion Url)
       const affiliateLink = product.affiliateLink || product.promotionLink;
-
-      // Use existing Hebrew description from Excel if available, otherwise generate from Product Desc
       let hebrewDescription = product.hebrewDescription || "";
-      let promptStyle = 1; // default
+      let promptStyle = 1;
 
       if (!hebrewDescription) {
         const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
-          body: {
-            title: product.title,
-            ordersCount: product.sales180Day || 0,
-            rating: product.positiveFeedback || 0, // percent (0-100)
-            userId,
-          },
+          body: { title: product.title, ordersCount: product.sales180Day || 0, rating: product.positiveFeedback || 0, userId },
         });
-
         if (hebErr) throw new Error(hebErr.message);
         if (!hebResp?.success) throw new Error(hebResp?.error || "Failed to generate Hebrew content");
         hebrewDescription = hebResp.hebrewDescription;
         promptStyle = hebResp.promptStyle || 1;
       }
 
-      // Only add stats for promptStyle 1 (the structured format with rating/orders)
       if (promptStyle === 1 && (product.sales180Day || product.positiveFeedback)) {
         const stats: string[] = [];
         if (product.sales180Day) stats.push(`📦 מעל ${product.sales180Day.toLocaleString()} הזמנות`);
         if (product.positiveFeedback) {
-          // Convert percentage to 5-star rating
           const rating5 = Math.min(5, product.positiveFeedback / 20);
           stats.push(`⭐ דירוג: ${rating5.toFixed(1)} מתוך 5`);
         }
@@ -607,12 +689,10 @@ const Discovery = () => {
         }
       }
 
-      // Add affiliate link at the end with random CTA
       const ctaOptionsQuick = ["לרכישה", "להזמנה", "להזמנה מאליאקספרס"];
       const randomCtaQuick = ctaOptionsQuick[Math.floor(Math.random() * ctaOptionsQuick.length)];
       const finalDescription = `${hebrewDescription}\n\n👇 ${randomCtaQuick}:\n${affiliateLink}`;
 
-      // Save to queue
       const { data: savedProduct, error: saveErr } = await supabase.from("products").insert({
         original_url: product.promotionLink,
         title: product.title,
@@ -629,36 +709,23 @@ const Discovery = () => {
 
       if (saveErr) throw new Error(saveErr.message);
 
-      // Assign to zones if selected
       if (selectedZones.length > 0 && savedProduct) {
         const zoneInserts = selectedZones.map(zoneId => ({
-          zone_id: zoneId,
-          product_id: savedProduct.id,
-          status: "Scheduled",
+          zone_id: zoneId, product_id: savedProduct.id, status: "Scheduled",
         }));
         await supabase.from("zone_products").insert(zoneInserts);
       }
 
-      toast({
-        title: "✨ נוסף לתור!",
-        description: "הפוסט נוצר ונוסף לתור הפרסום שלך",
-      });
-
-      // Remove from imported list
+      toast({ title: "✨ נוסף לתור!", description: "הפוסט נוצר ונוסף לתור הפרסום שלך" });
       setImportedProducts(prev => prev.filter(p => p.id !== product.id));
     } catch (e) {
-      toast({
-        title: "Creation Failed",
-        description: e instanceof Error ? e.message : "Could not create post",
-        variant: "destructive",
-      });
+      toast({ title: "Creation Failed", description: e instanceof Error ? e.message : "Could not create post", variant: "destructive" });
     } finally {
       setAddingProductId(null);
     }
   };
 
   const handleEditFromExcel = (product: ImportedProduct) => {
-    // Navigate to add product page with pre-filled data
     const params = new URLSearchParams({
       url: product.promotionLink,
       title: product.title,
@@ -673,18 +740,14 @@ const Discovery = () => {
 
   const handleManualAdd = async () => {
     if (!manualUrl.trim()) return;
-    
     setCreatingPostId("manual");
     try {
-      // Use the existing fetch-ali-product function
       const { data: productData, error: productErr } = await supabase.functions.invoke("fetch-ali-product", {
         body: { productUrl: manualUrl },
       });
-
       if (productErr) throw new Error(productErr.message);
       if (!productData?.success) throw new Error(productData?.error || "Failed to fetch product");
 
-      // Create post from fetched data
       await handleCreatePost({
         product_id: productData.productId || "manual",
         title: productData.data.title,
@@ -695,14 +758,9 @@ const Discovery = () => {
         rating: productData.data.rating,
         product_url: productData.cleanUrl || manualUrl,
       });
-
       setManualUrl("");
     } catch (e) {
-      toast({
-        title: "Failed",
-        description: e instanceof Error ? e.message : "Could not process product",
-        variant: "destructive",
-      });
+      toast({ title: "Failed", description: e instanceof Error ? e.message : "Could not process product", variant: "destructive" });
     } finally {
       setCreatingPostId(null);
     }
@@ -710,34 +768,20 @@ const Discovery = () => {
 
   const handleCreatePost = async (product: HotProduct) => {
     if (!userId) {
-      toast({
-        title: "Not Authenticated",
-        description: "Please log in to add products",
-        variant: "destructive",
-      });
+      toast({ title: "Not Authenticated", description: "Please log in to add products", variant: "destructive" });
       return;
     }
-
     setCreatingPostId(product.product_id);
     try {
-      // 1. Generate affiliate link
       const { data: affResp, error: affErr } = await supabase.functions.invoke("generate-affiliate-link", {
         body: { productUrl: product.product_url, userId },
       });
-
       if (affErr) throw new Error(affErr.message);
       const affiliateLink = affResp?.success ? affResp.affiliateLink : product.product_url;
 
-      // 2. Generate Hebrew description - PASS userId to fetch custom prompt
       const { data: hebResp, error: hebErr } = await supabase.functions.invoke("generate-hebrew-post", {
-        body: { 
-          title: product.title,
-          ordersCount: product.sales_count || 0,
-          rating: product.rating || 0,
-          userId, // Critical: pass userId to fetch custom prompt
-        },
+        body: { title: product.title, ordersCount: product.sales_count || 0, rating: product.rating || 0, userId },
       });
-
       if (hebErr) throw new Error(hebErr.message);
       if (!hebResp?.success) throw new Error(hebResp?.error || "Failed to generate Hebrew content");
 
@@ -745,14 +789,10 @@ const Discovery = () => {
       const randomCtaSingle = ctaOptionsSingle[Math.floor(Math.random() * ctaOptionsSingle.length)];
       const hebrewDescription = `${hebResp.hebrewDescription}\n\n👇 ${randomCtaSingle}:\n${affiliateLink}`;
 
-      // Normalize rating to 0-5 scale
       let normalizedRating = product.rating ?? 0;
-      if (normalizedRating > 5) {
-        normalizedRating = normalizedRating / 20;
-      }
+      if (normalizedRating > 5) normalizedRating = normalizedRating / 20;
       normalizedRating = Math.min(normalizedRating, 5);
 
-      // 3. Save to queue
       const { data: savedProduct, error: saveErr } = await supabase.from("products").insert({
         original_url: product.product_url,
         title: product.title,
@@ -769,32 +809,136 @@ const Discovery = () => {
 
       if (saveErr) throw new Error(saveErr.message);
 
-      // 4. Assign to zones if selected
       if (selectedZones.length > 0 && savedProduct) {
         const zoneInserts = selectedZones.map(zoneId => ({
-          zone_id: zoneId,
-          product_id: savedProduct.id,
-          status: "Scheduled",
+          zone_id: zoneId, product_id: savedProduct.id, status: "Scheduled",
         }));
         await supabase.from("zone_products").insert(zoneInserts);
       }
 
-      toast({
-        title: "✨ נוסף לתור!",
-        description: "הפוסט נוצר ונוסף לתור הפרסום שלך",
-      });
+      toast({ title: "✨ נוסף לתור!", description: "הפוסט נוצר ונוסף לתור הפרסום שלך" });
     } catch (e) {
-      toast({
-        title: "Creation Failed",
-        description: e instanceof Error ? e.message : "Could not create post",
-        variant: "destructive",
-      });
+      toast({ title: "Creation Failed", description: e instanceof Error ? e.message : "Could not create post", variant: "destructive" });
     } finally {
       setCreatingPostId(null);
     }
   };
 
-  
+  // Render product card (reusable for both Ad Center and Campaign products)
+  const renderProductCard = (product: HotProduct) => (
+    <div key={product.product_id} className={`relative glass-card neon-border overflow-hidden group card-interactive transition-all ${selectedApiProductIds.has(product.product_id) ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}`}>
+      {/* Selection Checkbox */}
+      <div 
+        className="absolute top-2 left-2 z-10"
+        onClick={(e) => { e.stopPropagation(); toggleApiProductSelection(product.product_id); }}
+      >
+        <div className={`p-1.5 rounded-lg backdrop-blur-sm cursor-pointer transition-all shadow-md ${
+          selectedApiProductIds.has(product.product_id) 
+            ? 'bg-primary shadow-glow-sm scale-110' 
+            : 'bg-background/90 hover:bg-background border border-border hover:border-primary'
+        }`}>
+          {selectedApiProductIds.has(product.product_id) ? (
+            <CheckCircle2 className="h-5 w-5 text-primary-foreground" />
+          ) : (
+            <div className="h-5 w-5 border-2 border-muted-foreground/50 rounded-md" />
+          )}
+        </div>
+      </div>
+
+      {/* Image */}
+      <div className="relative aspect-square overflow-hidden">
+        <img
+          src={product.image_url}
+          alt={product.title}
+          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+          loading="lazy"
+          onError={(e) => { (e.target as HTMLImageElement).src = "/placeholder.svg"; }}
+        />
+        {product.discount_percent && product.discount_percent > 30 && (
+          <Badge className="absolute top-1 right-1 md:top-2 md:right-2 bg-destructive/90 text-[10px] md:text-xs px-1.5 md:px-2 shadow-glow-sm">
+            -{product.discount_percent}%
+          </Badge>
+        )}
+        {(product.sales_count || 0) > 100 && !product.discount_percent && (
+          <Badge className="absolute top-8 left-2 md:top-10 md:left-2 bg-destructive/90 text-[10px] md:text-xs px-1.5 md:px-2">
+            <Flame className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5" />
+            חם
+          </Badge>
+        )}
+        {(product.rating || 0) > 4.5 && (
+          <Badge className="absolute bottom-1 right-1 md:bottom-2 md:right-2 bg-primary/90 text-[10px] md:text-xs px-1.5 md:px-2 shadow-glow-sm">
+            <Star className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5" />
+            {(product.rating || 0).toFixed(1)}
+          </Badge>
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="p-2 md:p-4 space-y-2 md:space-y-3">
+        <h3 className="font-medium text-foreground line-clamp-2 text-xs md:text-sm leading-snug min-h-[2.5em]">
+          {product.title}
+        </h3>
+        <div className="flex items-center justify-between">
+          <div className="flex flex-col md:flex-row md:items-baseline gap-0.5 md:gap-2">
+            <span className="text-sm md:text-lg font-bold text-primary">
+              ${product.price.toFixed(2)}
+            </span>
+            {product.original_price > product.price && (
+              <span className="text-[10px] md:text-xs text-muted-foreground line-through">
+                ${product.original_price.toFixed(2)}
+              </span>
+            )}
+          </div>
+          {(product.commission_rate || 0) > 0 && (
+            <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] md:text-xs font-medium ${
+              (product.commission_rate || 0) >= 8 
+                ? 'bg-success/30 text-success font-bold' 
+                : 'bg-success/20 text-success'
+            }`}>
+              <Percent className="h-2.5 w-2.5 md:h-3 md:w-3" />
+              {product.commission_rate?.toFixed(1)}%
+            </div>
+          )}
+        </div>
+        <div className="flex items-center justify-between text-[10px] md:text-xs text-muted-foreground">
+          <div className="flex items-center gap-1">
+            <ShoppingBag className="h-2.5 w-2.5 md:h-3 md:w-3" />
+            {(product.sales_count || 0).toLocaleString()} נמכרו
+          </div>
+          {(product.rating || 0) > 0 && (
+            <div className="flex items-center gap-1">
+              <Star className="h-2.5 w-2.5 md:h-3 md:w-3 text-warning" />
+              {(product.rating || 0).toFixed(1)}
+            </div>
+          )}
+        </div>
+        <Button
+          variant="gradient"
+          size="sm"
+          className="w-full h-8 md:h-9 text-xs md:text-sm"
+          onClick={() => handleCreatePost(product)}
+          disabled={creatingPostId === product.product_id}
+        >
+          {creatingPostId === product.product_id ? (
+            <>
+              <Loader2 className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2 animate-spin" />
+              <span className="hidden md:inline">יוצר פוסט...</span>
+              <span className="md:hidden">מעבד...</span>
+            </>
+          ) : (
+            <>
+              <Sparkles className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
+              <span className="hidden md:inline">הוסף מהיר</span>
+              <span className="md:hidden">הוסף</span>
+            </>
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+
+  // Products to display based on selected campaign or source
+  const displayProducts = selectedCampaignId ? campaignProducts : filteredProducts;
 
   return (
     <MainLayout>
@@ -813,11 +957,19 @@ const Discovery = () => {
               <Flame className="h-6 w-6 md:h-8 md:w-8 text-primary animate-pulse-soft" />
               <span className="gradient-text">🔥 מוצרים לוהטים</span>
             </h1>
-            {dataSource && (
-              <Badge variant="outline" className="text-xs border-primary/30 text-primary">
-                {dataSource}
-              </Badge>
-            )}
+            <div className="flex items-center gap-2">
+              {isFromCache && (
+                <Badge variant="outline" className="text-xs border-muted-foreground/30 text-muted-foreground gap-1">
+                  <Database className="h-3 w-3" />
+                  קאש
+                </Badge>
+              )}
+              {dataSource && (
+                <Badge variant="outline" className="text-xs border-primary/30 text-primary">
+                  {dataSource}
+                </Badge>
+              )}
+            </div>
           </div>
           <p className="text-muted-foreground text-sm md:text-base">20 המוצרים הכי נמכרים בכל קטגוריה</p>
         </div>
@@ -929,7 +1081,7 @@ const Discovery = () => {
                 ))}
               </div>
 
-              {/* Categories Grid - show for sources that support category filtering */}
+              {/* Categories Grid */}
               {["hot", "search", "smart_match"].includes(productSource) && (
                 <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2">
                   {CATEGORIES.map((cat) => (
@@ -954,7 +1106,74 @@ const Discovery = () => {
                 </div>
               )}
 
-              {/* Zone Selector - Choose destination before loading */}
+              {/* Campaign Banners - shown when campaigns source or when campaigns exist */}
+              {(productSource === "campaigns" || productSource === "featured") && campaigns.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between" dir="rtl">
+                    <h3 className="font-semibold text-foreground flex items-center gap-2 text-sm">
+                      <TrendingUp className="h-4 w-4 text-primary" />
+                      קמפיינים פעילים ({campaigns.length})
+                    </h3>
+                    {selectedCampaignId && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => { setSelectedCampaignId(null); setCampaignProducts([]); }}
+                        className="text-xs"
+                      >
+                        הצג הכל
+                      </Button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {campaigns.map((camp) => (
+                      <button
+                        key={camp.id}
+                        onClick={() => loadCampaignProducts(camp.id)}
+                        className={cn(
+                          "relative rounded-xl overflow-hidden border transition-all text-right",
+                          selectedCampaignId === camp.id
+                            ? "ring-2 ring-primary border-primary shadow-lg"
+                            : "border-border/50 hover:border-primary/50 hover:shadow-md"
+                        )}
+                      >
+                        {camp.banner_url ? (
+                          <div className="relative h-24 md:h-32">
+                            <img
+                              src={camp.banner_url}
+                              alt={camp.campaign_name}
+                              className="w-full h-full object-cover"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-background/90 to-transparent" />
+                            <div className="absolute bottom-2 right-3 left-3">
+                              <p className="font-semibold text-foreground text-sm truncate">{camp.campaign_name}</p>
+                              {camp.promo_desc && (
+                                <p className="text-[10px] text-muted-foreground truncate">{camp.promo_desc}</p>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-4 bg-card/50">
+                            <p className="font-semibold text-foreground text-sm">{camp.campaign_name}</p>
+                            {camp.promo_desc && (
+                              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{camp.promo_desc}</p>
+                            )}
+                            {camp.landing_page_url && (
+                              <div className="flex items-center gap-1 mt-2 text-xs text-primary">
+                                <ExternalLink className="h-3 w-3" />
+                                <span>דף הנחיתה</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Zone Selector */}
               <ZoneSelector
                 selectedZones={selectedZones}
                 onSelectionChange={setSelectedZones}
@@ -980,7 +1199,6 @@ const Discovery = () => {
               />
             </div>
 
-            {/* Channel Selection for Excel Import */}
             {messagingAccounts.length > 0 && (
               <div className="glass-card neon-border p-4 space-y-3" dir="rtl">
                 <div className="flex items-center gap-2">
@@ -998,10 +1216,7 @@ const Discovery = () => {
                         key={acc.id}
                         onClick={() => {
                           setExcelTargetChannels(prev => {
-                            // Toggle this account type
-                            if (prev.includes(acc.account_type)) {
-                              return prev.filter(c => c !== acc.account_type);
-                            }
+                            if (prev.includes(acc.account_type)) return prev.filter(c => c !== acc.account_type);
                             return [...new Set([...prev, acc.account_type])];
                           });
                         }}
@@ -1030,14 +1245,12 @@ const Discovery = () => {
               </div>
             )}
 
-            {/* Zone Selector for Excel */}
             <ZoneSelector
               selectedZones={selectedZones}
               onSelectionChange={setSelectedZones}
               className="glass-card neon-border p-4"
             />
 
-            {/* Imported Products Grid */}
             {importedProducts.length > 0 && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between flex-wrap gap-2">
@@ -1045,14 +1258,9 @@ const Discovery = () => {
                     <span className="text-success">●</span>
                     מוצרים מיובאים ({importedProducts.length})
                   </h3>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="border-success/30 text-success">
-                      שמורים מקומית
-                    </Badge>
-                  </div>
+                  <Badge variant="outline" className="border-success/30 text-success">שמורים מקומית</Badge>
                 </div>
 
-                {/* Selection Controls */}
                 <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/30 border border-border/50">
                   <div className="flex items-center gap-3">
                     <Checkbox
@@ -1064,9 +1272,7 @@ const Discovery = () => {
                       {selectedProductIds.size === importedProducts.length ? 'בטל הכל' : 'בחר הכל'}
                     </label>
                     {selectedProductIds.size > 0 && (
-                      <Badge variant="secondary" className="text-xs">
-                        {selectedProductIds.size} נבחרו
-                      </Badge>
+                      <Badge variant="secondary" className="text-xs">{selectedProductIds.size} נבחרו</Badge>
                     )}
                   </div>
                   {selectedProductIds.size > 0 && (
@@ -1078,15 +1284,9 @@ const Discovery = () => {
                       className="gap-2"
                     >
                       {isAddingSelected ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          מוסיף {selectedProductIds.size}...
-                        </>
+                        <><Loader2 className="h-4 w-4 animate-spin" />מוסיף {selectedProductIds.size}...</>
                       ) : (
-                        <>
-                          <ListPlus className="h-4 w-4" />
-                          הוסף {selectedProductIds.size} לתור
-                        </>
+                        <><ListPlus className="h-4 w-4" />הוסף {selectedProductIds.size} לתור</>
                       )}
                     </Button>
                   )}
@@ -1095,21 +1295,15 @@ const Discovery = () => {
                 <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                   {importedProducts.map((product) => (
                     <div key={product.id} className="relative group">
-                      {/* Selection Checkbox - Always Visible */}
                       <div 
                         className="absolute top-2 left-2 z-10"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleProductSelection(product.id);
-                        }}
+                        onClick={(e) => { e.stopPropagation(); toggleProductSelection(product.id); }}
                       >
-                        <div 
-                          className={`p-1.5 rounded-lg backdrop-blur-sm cursor-pointer transition-all shadow-md ${
-                            selectedProductIds.has(product.id) 
-                              ? 'bg-primary shadow-glow-sm scale-110' 
-                              : 'bg-background/90 hover:bg-background border border-border hover:border-primary'
-                          }`}
-                        >
+                        <div className={`p-1.5 rounded-lg backdrop-blur-sm cursor-pointer transition-all shadow-md ${
+                          selectedProductIds.has(product.id) 
+                            ? 'bg-primary shadow-glow-sm scale-110' 
+                            : 'bg-background/90 hover:bg-background border border-border hover:border-primary'
+                        }`}>
                           {selectedProductIds.has(product.id) ? (
                             <CheckCircle2 className="h-5 w-5 text-primary-foreground" />
                           ) : (
@@ -1138,7 +1332,7 @@ const Discovery = () => {
           </TabsContent>
         </Tabs>
 
-        {/* Initial State - only for API/Scrape modes */}
+        {/* Initial State */}
         {activeMode !== "excel" && !hasFetched && !isLoading && !showManualInput && (
           <div className="glass-card neon-border p-12 text-center">
             <div className="relative inline-block">
@@ -1178,184 +1372,79 @@ const Discovery = () => {
           </div>
         )}
 
+        {/* Loading campaign products */}
+        {isLoadingCampaigns && (
+          <div className="glass-card neon-border p-8 text-center">
+            <Loader2 className="h-8 w-8 text-primary mx-auto mb-3 animate-spin" />
+            <p className="text-sm text-muted-foreground">טוען מוצרי קמפיין...</p>
+          </div>
+        )}
+
         {/* Products Grid */}
-        {!isLoading && hasFetched && (
+        {!isLoading && !isLoadingCampaigns && hasFetched && (
           <>
-            {filteredProducts.length === 0 ? (
+            {displayProducts.length === 0 ? (
               <div className="glass-card p-8 text-center">
                 <p className="text-muted-foreground">לא נמצאו מוצרים</p>
+                {selectedCampaignId && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    לחץ על "קמפיינים" כדי לרענן את המוצרים מה-API
+                  </p>
+                )}
               </div>
             ) : (
               <>
-
-                {/* Selection Controls for API Products */}
+                {/* Selection Controls + Refresh button */}
                 <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/30 border border-border/50">
                   <div className="flex items-center gap-3">
                     <Checkbox
-                      checked={selectedApiProductIds.size === filteredProducts.length && filteredProducts.length > 0}
+                      checked={selectedApiProductIds.size === displayProducts.length && displayProducts.length > 0}
                       onCheckedChange={toggleSelectAllApi}
                       id="select-all-api"
                     />
                     <label htmlFor="select-all-api" className="text-sm cursor-pointer">
-                      {selectedApiProductIds.size === filteredProducts.length ? 'בטל הכל' : 'בחר הכל'}
+                      {selectedApiProductIds.size === displayProducts.length ? 'בטל הכל' : 'בחר הכל'}
                     </label>
                     {selectedApiProductIds.size > 0 && (
-                      <Badge variant="secondary" className="text-xs">
-                        {selectedApiProductIds.size} נבחרו
-                      </Badge>
+                      <Badge variant="secondary" className="text-xs">{selectedApiProductIds.size} נבחרו</Badge>
                     )}
                   </div>
-                  {selectedApiProductIds.size > 0 && (
-                    <Button
-                      onClick={handleAddSelectedApiToQueue}
-                      disabled={isAddingSelected}
-                      variant="gradient"
-                      size="sm"
-                      className="gap-2"
-                    >
-                      {isAddingSelected ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          מוסיף {selectedApiProductIds.size}...
-                        </>
-                      ) : (
-                        <>
-                          <ListPlus className="h-4 w-4" />
-                          הוסף {selectedApiProductIds.size} לתור
-                        </>
-                      )}
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {isFromCache && (
+                      <Button
+                        onClick={forceRefreshFromApi}
+                        variant="outline"
+                        size="sm"
+                        className="gap-1 text-xs"
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                        רענן מ-API
+                      </Button>
+                    )}
+                    {selectedApiProductIds.size > 0 && (
+                      <Button
+                        onClick={handleAddSelectedApiToQueue}
+                        disabled={isAddingSelected}
+                        variant="gradient"
+                        size="sm"
+                        className="gap-2"
+                      >
+                        {isAddingSelected ? (
+                          <><Loader2 className="h-4 w-4 animate-spin" />מוסיף {selectedApiProductIds.size}...</>
+                        ) : (
+                          <><ListPlus className="h-4 w-4" />הוסף {selectedApiProductIds.size} לתור</>
+                        )}
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-4">
-                  {filteredProducts.map((product) => (
-                    <div key={product.product_id} className={`relative glass-card neon-border overflow-hidden group card-interactive transition-all ${selectedApiProductIds.has(product.product_id) ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}`}>
-                      {/* Selection Checkbox */}
-                      <div 
-                        className="absolute top-2 left-2 z-10"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleApiProductSelection(product.product_id);
-                        }}
-                      >
-                        <div 
-                          className={`p-1.5 rounded-lg backdrop-blur-sm cursor-pointer transition-all shadow-md ${
-                            selectedApiProductIds.has(product.product_id) 
-                              ? 'bg-primary shadow-glow-sm scale-110' 
-                              : 'bg-background/90 hover:bg-background border border-border hover:border-primary'
-                          }`}
-                        >
-                          {selectedApiProductIds.has(product.product_id) ? (
-                            <CheckCircle2 className="h-5 w-5 text-primary-foreground" />
-                          ) : (
-                            <div className="h-5 w-5 border-2 border-muted-foreground/50 rounded-md" />
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Image */}
-                      <div className="relative aspect-square overflow-hidden">
-                        <img
-                          src={product.image_url}
-                          alt={product.title}
-                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                          loading="lazy"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).src = "/placeholder.svg";
-                          }}
-                        />
-                        {product.discount_percent && product.discount_percent > 30 && (
-                          <Badge className="absolute top-1 right-1 md:top-2 md:right-2 bg-destructive/90 text-[10px] md:text-xs px-1.5 md:px-2 shadow-glow-sm">
-                            -{product.discount_percent}%
-                          </Badge>
-                        )}
-                        {(product.sales_count || 0) > 100 && !product.discount_percent && (
-                          <Badge className="absolute top-8 left-2 md:top-10 md:left-2 bg-destructive/90 text-[10px] md:text-xs px-1.5 md:px-2">
-                            <Flame className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5" />
-                            חם
-                          </Badge>
-                        )}
-                        {(product.rating || 0) > 4.5 && (
-                          <Badge className="absolute bottom-1 right-1 md:bottom-2 md:right-2 bg-primary/90 text-[10px] md:text-xs px-1.5 md:px-2 shadow-glow-sm">
-                            <Star className="h-2.5 w-2.5 md:h-3 md:w-3 mr-0.5" />
-                            {(product.rating || 0).toFixed(1)}
-                          </Badge>
-                        )}
-                      </div>
-
-                      {/* Content */}
-                      <div className="p-2 md:p-4 space-y-2 md:space-y-3">
-                        <h3 className="font-medium text-foreground line-clamp-2 text-xs md:text-sm leading-snug min-h-[2.5em]">
-                          {product.title}
-                        </h3>
-
-                        <div className="flex items-center justify-between">
-                          <div className="flex flex-col md:flex-row md:items-baseline gap-0.5 md:gap-2">
-                            <span className="text-sm md:text-lg font-bold text-primary">
-                              ${product.price.toFixed(2)}
-                            </span>
-                            {product.original_price > product.price && (
-                              <span className="text-[10px] md:text-xs text-muted-foreground line-through">
-                                ${product.original_price.toFixed(2)}
-                              </span>
-                            )}
-                          </div>
-                          {/* Commission Rate Badge - Always visible when > 0 */}
-                          {(product.commission_rate || 0) > 0 && (
-                            <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] md:text-xs font-medium ${
-                              (product.commission_rate || 0) >= 8 
-                                ? 'bg-success/30 text-success font-bold' 
-                                : 'bg-success/20 text-success'
-                            }`}>
-                              <Percent className="h-2.5 w-2.5 md:h-3 md:w-3" />
-                              {product.commission_rate?.toFixed(1)}%
-                            </div>
-                          )}
-                        </div>
-                        
-                        {/* Stats row: Sales + Rating */}
-                        <div className="flex items-center justify-between text-[10px] md:text-xs text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <ShoppingBag className="h-2.5 w-2.5 md:h-3 md:w-3" />
-                            {(product.sales_count || 0).toLocaleString()} נמכרו
-                          </div>
-                          {(product.rating || 0) > 0 && (
-                            <div className="flex items-center gap-1">
-                              <Star className="h-2.5 w-2.5 md:h-3 md:w-3 text-warning" />
-                              {(product.rating || 0).toFixed(1)}
-                            </div>
-                          )}
-                        </div>
-
-                        <Button
-                          variant="gradient"
-                          size="sm"
-                          className="w-full h-8 md:h-9 text-xs md:text-sm"
-                          onClick={() => handleCreatePost(product)}
-                          disabled={creatingPostId === product.product_id}
-                        >
-                          {creatingPostId === product.product_id ? (
-                            <>
-                              <Loader2 className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2 animate-spin" />
-                              <span className="hidden md:inline">יוצר פוסט...</span>
-                              <span className="md:hidden">מעבד...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Sparkles className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
-                              <span className="hidden md:inline">הוסף מהיר</span>
-                              <span className="md:hidden">הוסף</span>
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                  {displayProducts.map(renderProductCard)}
                 </div>
                 
                 {/* Load More Button */}
-                {hasMoreProducts && (
+                {hasMoreProducts && !selectedCampaignId && (
                   <div className="flex justify-center pt-6">
                     <Button
                       onClick={handleLoadMore}
@@ -1365,15 +1454,9 @@ const Discovery = () => {
                       className="gap-2 min-w-[200px]"
                     >
                       {isLoadingMore ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          טוען עוד...
-                        </>
+                        <><Loader2 className="h-4 w-4 animate-spin" />טוען עוד...</>
                       ) : (
-                        <>
-                          <RefreshCw className="h-4 w-4" />
-                          טען עוד מוצרים
-                        </>
+                        <><RefreshCw className="h-4 w-4" />טען עוד מוצרים</>
                       )}
                     </Button>
                   </div>
