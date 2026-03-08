@@ -10,7 +10,7 @@ import {
   Search, Loader2, Sparkles, TrendingUp, Flame, Star, 
   ShoppingBag, RefreshCw, Zap, AlertCircle, Link as LinkIcon,
   FileSpreadsheet, CheckCircle2, ListPlus, Percent, Filter, SlidersHorizontal, Send,
-  ExternalLink, Image as ImageIcon, Database
+  ExternalLink, Image as ImageIcon, Database, ArrowRight, ChevronLeft, Package, Globe
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -51,16 +51,14 @@ type CampaignData = {
 
 type ImportedProduct = ExcelProduct & { id: string };
 
-type ProductSource = "hot" | "hot_deals" | "high_commission" | "featured" | "campaigns" | "search" | "smart_match" | "incentive";
+type ProductSource = "hot" | "hot_deals" | "high_commission" | "featured" | "all_products" | "campaigns" | "search" | "smart_match" | "incentive";
 
-const PRODUCT_SOURCES = [
-  { id: "hot", label: "מוצרים לוהטים", icon: Flame, emoji: "🔥" },
+// AD CENTER sub-tabs
+const AD_CENTER_TABS = [
   { id: "hot_deals", label: "Hot Deals", icon: Zap, emoji: "⚡" },
-  { id: "high_commission", label: "עמלה גבוהה", icon: Percent, emoji: "💰" },
-  { id: "featured", label: "מוצרים מומלצים", icon: Star, emoji: "⭐" },
-  { id: "campaigns", label: "קמפיינים", icon: TrendingUp, emoji: "📈" },
-  { id: "incentive", label: "Incentive", icon: Sparkles, emoji: "🎁" },
-  { id: "smart_match", label: "Smart Match", icon: Lightbulb, emoji: "🧠" },
+  { id: "high_commission", label: "Higher Commission", icon: Percent, emoji: "💰" },
+  { id: "featured", label: "Featured Products", icon: Star, emoji: "⭐" },
+  { id: "hot", label: "All Products", icon: Globe, emoji: "🔥" },
 ];
 
 const CATEGORIES = [
@@ -87,13 +85,13 @@ const Discovery = () => {
   const [selectedCategory, setSelectedCategory] = useState("");
   const [creatingPostId, setCreatingPostId] = useState<string | null>(null);
   const [hasFetched, setHasFetched] = useState(false);
-  const [activeMode, setActiveMode] = useState<"api" | "excel">("api");
+  const [activeMode, setActiveMode] = useState<"ad_center" | "campaigns" | "excel">("ad_center");
   const [showManualInput, setShowManualInput] = useState(false);
   const [manualUrl, setManualUrl] = useState("");
   const [dataSource, setDataSource] = useState<string>("");
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMoreProducts, setHasMoreProducts] = useState(true);
-  const [productSource, setProductSource] = useState<ProductSource>("hot");
+  const [productSource, setProductSource] = useState<ProductSource>("hot_deals");
   const [minPrice, setMinPrice] = useState<number>(0);
   const [maxPrice, setMaxPrice] = useState<number>(500);
   const [showFilters, setShowFilters] = useState(false);
@@ -101,9 +99,14 @@ const Discovery = () => {
   // Campaigns state
   const [campaigns, setCampaigns] = useState<CampaignData[]>([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
+  const [selectedCampaignName, setSelectedCampaignName] = useState<string>("");
   const [isLoadingCampaigns, setIsLoadingCampaigns] = useState(false);
   const [campaignProducts, setCampaignProducts] = useState<HotProduct[]>([]);
   const [isFromCache, setIsFromCache] = useState(false);
+  const [isFetchingCampaigns, setIsFetchingCampaigns] = useState(false);
+  const [campaignPage, setCampaignPage] = useState(1);
+  const [campaignsPerPage] = useState(10);
+  const [totalCampaignPages, setTotalCampaignPages] = useState(1);
 
   // Excel import state
   const [importedProducts, setImportedProducts] = useState<ImportedProduct[]>(() => {
@@ -182,14 +185,34 @@ const Discovery = () => {
         .order("fetched_at", { ascending: false });
       if (!error && data) {
         setCampaigns(data as CampaignData[]);
+        setTotalCampaignPages(Math.ceil(data.length / campaignsPerPage));
       }
     } catch (e) {
       console.error("Error loading campaigns:", e);
     }
   };
 
+  // Fetch campaigns from API
+  const fetchCampaignsFromApi = async () => {
+    if (!userId) return;
+    setIsFetchingCampaigns(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("fetch-hot-products", {
+        body: { source: "campaigns", pageSize: 1 },
+      });
+      if (error) throw new Error(error.message);
+      // Reload from DB after API fetch
+      await loadCampaignsFromDb();
+      toast({ title: "✅ קמפיינים עודכנו", description: `נטענו קמפיינים חדשים מה-API` });
+    } catch (e) {
+      toast({ title: "שגיאה", description: e instanceof Error ? e.message : "שגיאה בטעינת קמפיינים", variant: "destructive" });
+    } finally {
+      setIsFetchingCampaigns(false);
+    }
+  };
+
   // Load cached products from DB
-  const loadProductsFromCache = async (source: ProductSource, campaignId?: string): Promise<HotProduct[] | null> => {
+  const loadProductsFromCache = async (source: ProductSource): Promise<HotProduct[] | null> => {
     if (!userId) return null;
     try {
       let query = supabase
@@ -200,15 +223,11 @@ const Discovery = () => {
         .order("sales_count", { ascending: false })
         .limit(50);
 
-      if (campaignId) {
-        query = query.eq("campaign_id", campaignId);
-      }
-
       const { data, error } = await query;
       if (error || !data || data.length === 0) return null;
 
       // Check if cache is fresh (< 1 hour old)
-      const oldestFetch = new Date(data[data.length - 1].fetched_at).getTime();
+      const oldestFetch = new Date(data[data.length - 1].fetched_at!).getTime();
       if (Date.now() - oldestFetch > CACHE_TTL_MS) return null;
 
       return data.map((p: any) => ({
@@ -229,14 +248,16 @@ const Discovery = () => {
     }
   };
 
-  // Load campaign-specific products from DB
-  const loadCampaignProducts = async (campaignId: string) => {
+  // Load campaign-specific products - fetch from API with promotion_name
+  const loadCampaignProducts = async (campaignId: string, campaignName: string) => {
     if (!userId) return;
     setIsLoadingCampaigns(true);
     setSelectedCampaignId(campaignId);
+    setSelectedCampaignName(campaignName);
     
     try {
-      const { data, error } = await supabase
+      // First try loading from DB cache
+      const { data: cached, error: cacheErr } = await supabase
         .from("ad_center_products")
         .select("*")
         .eq("user_id", userId)
@@ -244,33 +265,56 @@ const Discovery = () => {
         .order("sales_count", { ascending: false })
         .limit(50);
 
-      if (!error && data && data.length > 0) {
-        const mapped = data.map((p: any) => ({
-          product_id: p.product_id,
-          title: p.title,
-          price: Number(p.price) || 0,
-          original_price: Number(p.original_price) || 0,
-          image_url: p.image_url || "",
-          sales_count: p.sales_count || 0,
-          rating: Number(p.rating) || 0,
-          product_url: p.product_url || `https://www.aliexpress.com/item/${p.product_id}.html`,
-          commission_rate: Number(p.commission_rate) || 0,
-          source: p.source,
-        }));
-        setCampaignProducts(mapped);
+      if (!cacheErr && cached && cached.length > 0) {
+        // Check freshness
+        const oldestFetch = new Date(cached[cached.length - 1].fetched_at!).getTime();
+        if (Date.now() - oldestFetch < CACHE_TTL_MS) {
+          const mapped = cached.map((p: any) => ({
+            product_id: p.product_id,
+            title: p.title,
+            price: Number(p.price) || 0,
+            original_price: Number(p.original_price) || 0,
+            image_url: p.image_url || "",
+            sales_count: p.sales_count || 0,
+            rating: Number(p.rating) || 0,
+            product_url: p.product_url || `https://www.aliexpress.com/item/${p.product_id}.html`,
+            commission_rate: Number(p.commission_rate) || 0,
+            source: p.source,
+          }));
+          setCampaignProducts(mapped);
+          setIsLoadingCampaigns(false);
+          return;
+        }
+      }
+
+      // Fetch from API using promotion name
+      const { data, error } = await supabase.functions.invoke("fetch-hot-products", {
+        body: { 
+          source: "campaign_products",
+          campaignName: campaignName,
+          campaignId: campaignId,
+          pageSize: 50,
+        },
+      });
+
+      if (error) throw new Error(error.message);
+      
+      if (data?.success && data.products?.length > 0) {
+        setCampaignProducts(data.products);
       } else {
         setCampaignProducts([]);
       }
     } catch (e) {
       console.error("Error loading campaign products:", e);
       setCampaignProducts([]);
+      toast({ title: "שגיאה", description: "לא הצלחנו לטעון מוצרי קמפיין", variant: "destructive" });
     } finally {
       setIsLoadingCampaigns(false);
     }
   };
 
   const handlePullRefresh = useCallback(async () => {
-    if (activeMode === "api") {
+    if (activeMode === "ad_center") {
       await fetchHotProductsAsync(selectedCategory, searchQuery);
     }
   }, [activeMode, selectedCategory, searchQuery]);
@@ -295,17 +339,13 @@ const Discovery = () => {
           setIsFromCache(true);
           setCurrentPage(1);
           setHasMoreProducts(cached.length >= 15);
-          const sourceLabels: Record<ProductSource, string> = {
-            hot: "מוצרים לוהטים",
+          const sourceLabels: Record<string, string> = {
+            hot: "All Products",
             hot_deals: "Hot Deals",
-            high_commission: "עמלה גבוהה",
-            featured: "מוצרים מומלצים",
-            campaigns: "קמפיינים",
-            search: "חיפוש Ad Center",
-            smart_match: "Smart Match",
-            incentive: "Incentive Campaign",
+            high_commission: "Higher Commission",
+            featured: "Featured Products",
           };
-          setDataSource(`${sourceLabels[source]} (קאש)`);
+          setDataSource(`${sourceLabels[source] || source} (קאש)`);
           return;
         }
       }
@@ -343,22 +383,15 @@ const Discovery = () => {
       setCurrentPage(page);
       setHasMoreProducts(newProducts.length >= 15);
       
-      // Reload campaigns after API fetch (they may have been cached)
-      if (data.campaigns) {
-        loadCampaignsFromDb();
-      }
+      if (data.campaigns) loadCampaignsFromDb();
 
-      const sourceLabels: Record<ProductSource, string> = {
-        hot: "מוצרים לוהטים",
+      const sourceLabels: Record<string, string> = {
+        hot: "All Products",
         hot_deals: "Hot Deals",
-        high_commission: "עמלה גבוהה",
-        featured: "מוצרים מומלצים",
-        campaigns: "קמפיינים",
-        search: "חיפוש Ad Center",
-        smart_match: "Smart Match",
-        incentive: "Incentive Campaign",
+        high_commission: "Higher Commission",
+        featured: "Featured Products",
       };
-      setDataSource(trimmedKeywords ? "חיפוש" : sourceLabels[source]);
+      setDataSource(trimmedKeywords ? "חיפוש" : (sourceLabels[source] || source));
     } catch (e) {
       toast({
         title: "שגיאה בטעינה",
@@ -379,7 +412,6 @@ const Discovery = () => {
     setIsLoadingMore(false);
   };
 
-  // Force refresh from API (bypass cache)
   const forceRefreshFromApi = async () => {
     setIsFromCache(false);
     setIsLoading(true);
@@ -408,12 +440,11 @@ const Discovery = () => {
       
       if (data.campaigns) loadCampaignsFromDb();
       
-      const sourceLabels: Record<ProductSource, string> = {
-        hot: "מוצרים לוהטים", hot_deals: "Hot Deals", high_commission: "עמלה גבוהה",
-        featured: "מוצרים מומלצים", campaigns: "קמפיינים", search: "חיפוש Ad Center",
-        smart_match: "Smart Match", incentive: "Incentive Campaign",
+      const sourceLabels: Record<string, string> = {
+        hot: "All Products", hot_deals: "Hot Deals", high_commission: "Higher Commission",
+        featured: "Featured Products",
       };
-      setDataSource(trimmedKeywords ? "חיפוש" : sourceLabels[productSource]);
+      setDataSource(searchQuery.trim() ? "חיפוש" : (sourceLabels[productSource] || productSource));
     } catch (e) {
       toast({ title: "שגיאה", description: e instanceof Error ? e.message : "שגיאה בטעינה", variant: "destructive" });
     } finally {
@@ -422,7 +453,7 @@ const Discovery = () => {
   };
 
   const handleSearch = () => {
-    if (activeMode === "api") {
+    if (activeMode === "ad_center") {
       setCurrentPage(1);
       setIsFromCache(false);
       fetchHotProducts(selectedCategory, searchQuery, 1, false);
@@ -432,20 +463,18 @@ const Discovery = () => {
   const handleCategoryChange = (category: string) => {
     setSelectedCategory(category);
     setCurrentPage(1);
-    if (activeMode === "api") {
+    if (activeMode === "ad_center") {
       fetchHotProducts(category, searchQuery, 1, false, productSource);
     }
   };
   
-  const handleSourceChange = (source: ProductSource) => {
-    setProductSource(source);
+  const handleAdCenterTabChange = (source: string) => {
+    setProductSource(source as ProductSource);
     setSelectedCategory("");
     setCurrentPage(1);
-    setSelectedCampaignId(null);
-    setCampaignProducts([]);
-    if (activeMode === "api") {
-      fetchHotProducts("", searchQuery, 1, false, source);
-    }
+    setProducts([]);
+    setHasFetched(false);
+    fetchHotProducts("", searchQuery, 1, false, source as ProductSource);
   };
   
   const handleLoadMore = () => {
@@ -456,8 +485,19 @@ const Discovery = () => {
   };
 
   const handleModeChange = (mode: string) => {
-    setActiveMode(mode as "api" | "excel");
-    if (mode !== "excel") {
+    setActiveMode(mode as "ad_center" | "campaigns" | "excel");
+    if (mode === "ad_center") {
+      setSelectedCampaignId(null);
+      setCampaignProducts([]);
+      setProducts([]);
+      setHasFetched(false);
+    } else if (mode === "campaigns") {
+      setProducts([]);
+      setHasFetched(false);
+      if (campaigns.length === 0 && userId) {
+        fetchCampaignsFromApi();
+      }
+    } else {
       setProducts([]);
       setHasFetched(false);
     }
@@ -511,14 +551,16 @@ const Discovery = () => {
   };
 
   const toggleSelectAllApi = () => {
-    if (selectedApiProductIds.size === filteredProducts.length) setSelectedApiProductIds(new Set());
-    else setSelectedApiProductIds(new Set(filteredProducts.map(p => p.product_id)));
+    const displayProds = selectedCampaignId ? campaignProducts : filteredProducts;
+    if (selectedApiProductIds.size === displayProds.length) setSelectedApiProductIds(new Set());
+    else setSelectedApiProductIds(new Set(displayProds.map(p => p.product_id)));
   };
 
   const handleAddSelectedApiToQueue = async () => {
     if (!userId || selectedApiProductIds.size === 0) return;
     setIsAddingSelected(true);
-    const selectedProducts = filteredProducts.filter(p => selectedApiProductIds.has(p.product_id));
+    const displayProds = selectedCampaignId ? campaignProducts : filteredProducts;
+    const selectedProducts = displayProds.filter(p => selectedApiProductIds.has(p.product_id));
     let successCount = 0;
     let failCount = 0;
 
@@ -824,10 +866,9 @@ const Discovery = () => {
     }
   };
 
-  // Render product card (reusable for both Ad Center and Campaign products)
+  // Render product card
   const renderProductCard = (product: HotProduct) => (
     <div key={product.product_id} className={`relative glass-card neon-border overflow-hidden group card-interactive transition-all ${selectedApiProductIds.has(product.product_id) ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}`}>
-      {/* Selection Checkbox */}
       <div 
         className="absolute top-2 left-2 z-10"
         onClick={(e) => { e.stopPropagation(); toggleApiProductSelection(product.product_id); }}
@@ -845,7 +886,6 @@ const Discovery = () => {
         </div>
       </div>
 
-      {/* Image */}
       <div className="relative aspect-square overflow-hidden">
         <img
           src={product.image_url}
@@ -873,7 +913,6 @@ const Discovery = () => {
         )}
       </div>
 
-      {/* Content */}
       <div className="p-2 md:p-4 space-y-2 md:space-y-3">
         <h3 className="font-medium text-foreground line-clamp-2 text-xs md:text-sm leading-snug min-h-[2.5em]">
           {product.title}
@@ -937,8 +976,27 @@ const Discovery = () => {
     </div>
   );
 
-  // Products to display based on selected campaign or source
+  // Paginated campaigns
+  const paginatedCampaigns = campaigns.slice(
+    (campaignPage - 1) * campaignsPerPage,
+    campaignPage * campaignsPerPage
+  );
+
+  // Products to display
   const displayProducts = selectedCampaignId ? campaignProducts : filteredProducts;
+
+  // Extract campaign period from promo_desc
+  const extractCampaignInfo = (camp: CampaignData) => {
+    const desc = camp.promo_desc || "";
+    const periodMatch = desc.match(/(\d{4}\/\d{2}\/\d{2}.*?PST)/);
+    const benefitMatch = desc.match(/Campaign benefit:(\w+)/i);
+    const commissionMatch = desc.match(/(\d+)%\s*Commission/i);
+    return {
+      period: periodMatch?.[1] || null,
+      benefit: benefitMatch?.[1] || null,
+      commissionFromName: commissionMatch?.[1] ? parseInt(commissionMatch[1]) : camp.commission_rate,
+    };
+  };
 
   return (
     <MainLayout>
@@ -955,7 +1013,7 @@ const Discovery = () => {
           <div className="flex items-center justify-between">
             <h1 className="text-2xl md:text-3xl font-bold text-foreground flex items-center gap-2">
               <Flame className="h-6 w-6 md:h-8 md:w-8 text-primary animate-pulse-soft" />
-              <span className="gradient-text">🔥 מוצרים לוהטים</span>
+              <span className="gradient-text">גילוי מוצרים</span>
             </h1>
             <div className="flex items-center gap-2">
               {isFromCache && (
@@ -971,15 +1029,21 @@ const Discovery = () => {
               )}
             </div>
           </div>
-          <p className="text-muted-foreground text-sm md:text-base">20 המוצרים הכי נמכרים בכל קטגוריה</p>
+          <p className="text-muted-foreground text-sm md:text-base">חפש מוצרים, קמפיינים ודילים מ-AliExpress</p>
         </div>
 
-        {/* Mode Tabs */}
+        {/* Main Mode Tabs */}
         <Tabs value={activeMode} onValueChange={handleModeChange} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 bg-card/50 backdrop-blur-sm border border-border/50">
-            <TabsTrigger value="api" className="gap-1 md:gap-2 text-xs md:text-sm px-2 md:px-4 data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-              <Flame className="h-3.5 w-3.5 md:h-4 md:w-4" />
-              מוצרים לוהטים
+          <TabsList className="grid w-full grid-cols-3 bg-card/50 backdrop-blur-sm border border-border/50">
+            <TabsTrigger value="ad_center" className="gap-1 md:gap-2 text-xs md:text-sm px-2 md:px-4 data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
+              <Zap className="h-3.5 w-3.5 md:h-4 md:w-4" />
+              <span className="hidden sm:inline">AD CENTER</span>
+              <span className="sm:hidden">AD</span>
+            </TabsTrigger>
+            <TabsTrigger value="campaigns" className="gap-1 md:gap-2 text-xs md:text-sm px-2 md:px-4 data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
+              <TrendingUp className="h-3.5 w-3.5 md:h-4 md:w-4" />
+              <span className="hidden sm:inline">Promote Campaign</span>
+              <span className="sm:hidden">קמפיינים</span>
             </TabsTrigger>
             <TabsTrigger value="excel" className="gap-1 md:gap-2 text-xs md:text-sm px-2 md:px-4 data-[state=active]:bg-success/20 data-[state=active]:text-success">
               <FileSpreadsheet className="h-3.5 w-3.5 md:h-4 md:w-4" />
@@ -987,9 +1051,10 @@ const Discovery = () => {
             </TabsTrigger>
           </TabsList>
 
-          {/* API Mode Content */}
-          <TabsContent value="api" className="space-y-3 mt-3">
+          {/* ==================== AD CENTER TAB ==================== */}
+          <TabsContent value="ad_center" className="space-y-3 mt-3">
             <div className="glass-card neon-border p-3 md:p-4 space-y-3">
+              {/* Search */}
               <div className="flex gap-2">
                 <div className="flex-1 relative neon-input rounded-xl">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -1060,29 +1125,29 @@ const Discovery = () => {
                 </div>
               )}
 
-              {/* Product Source Tabs (AD CENTER) */}
+              {/* AD CENTER Sub-Tabs */}
               <div className="flex gap-2 overflow-x-auto pb-1" dir="rtl">
-                {PRODUCT_SOURCES.map((src) => (
+                {AD_CENTER_TABS.map((tab) => (
                   <button
-                    key={src.id}
-                    onClick={() => handleSourceChange(src.id as ProductSource)}
+                    key={tab.id}
+                    onClick={() => handleAdCenterTabChange(tab.id)}
                     className={`
                       flex items-center gap-2 px-4 py-2 rounded-full whitespace-nowrap
                       transition-all duration-200 text-sm font-medium
-                      ${productSource === src.id 
+                      ${productSource === tab.id 
                         ? 'bg-primary text-primary-foreground shadow-lg scale-105' 
                         : 'bg-card/50 hover:bg-card border border-border/50 hover:border-primary/30'
                       }
                     `}
                   >
-                    <span>{src.emoji}</span>
-                    <span>{src.label}</span>
+                    <span>{tab.emoji}</span>
+                    <span>{tab.label}</span>
                   </button>
                 ))}
               </div>
 
-              {/* Categories Grid */}
-              {["hot", "search", "smart_match"].includes(productSource) && (
+              {/* Categories Grid - for All Products tab */}
+              {productSource === "hot" && (
                 <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2">
                   {CATEGORIES.map((cat) => (
                     <button
@@ -1106,73 +1171,6 @@ const Discovery = () => {
                 </div>
               )}
 
-              {/* Campaign Banners - shown when campaigns source or when campaigns exist */}
-              {(productSource === "campaigns" || productSource === "featured") && campaigns.length > 0 && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between" dir="rtl">
-                    <h3 className="font-semibold text-foreground flex items-center gap-2 text-sm">
-                      <TrendingUp className="h-4 w-4 text-primary" />
-                      קמפיינים פעילים ({campaigns.length})
-                    </h3>
-                    {selectedCampaignId && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => { setSelectedCampaignId(null); setCampaignProducts([]); }}
-                        className="text-xs"
-                      >
-                        הצג הכל
-                      </Button>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {campaigns.map((camp) => (
-                      <button
-                        key={camp.id}
-                        onClick={() => loadCampaignProducts(camp.id)}
-                        className={cn(
-                          "relative rounded-xl overflow-hidden border transition-all text-right",
-                          selectedCampaignId === camp.id
-                            ? "ring-2 ring-primary border-primary shadow-lg"
-                            : "border-border/50 hover:border-primary/50 hover:shadow-md"
-                        )}
-                      >
-                        {camp.banner_url ? (
-                          <div className="relative h-24 md:h-32">
-                            <img
-                              src={camp.banner_url}
-                              alt={camp.campaign_name}
-                              className="w-full h-full object-cover"
-                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-background/90 to-transparent" />
-                            <div className="absolute bottom-2 right-3 left-3">
-                              <p className="font-semibold text-foreground text-sm truncate">{camp.campaign_name}</p>
-                              {camp.promo_desc && (
-                                <p className="text-[10px] text-muted-foreground truncate">{camp.promo_desc}</p>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="p-4 bg-card/50">
-                            <p className="font-semibold text-foreground text-sm">{camp.campaign_name}</p>
-                            {camp.promo_desc && (
-                              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{camp.promo_desc}</p>
-                            )}
-                            {camp.landing_page_url && (
-                              <div className="flex items-center gap-1 mt-2 text-xs text-primary">
-                                <ExternalLink className="h-3 w-3" />
-                                <span>דף הנחיתה</span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Zone Selector */}
               <ZoneSelector
                 selectedZones={selectedZones}
@@ -1180,9 +1178,215 @@ const Discovery = () => {
                 className="p-3 rounded-lg bg-muted/30 border border-border/50"
               />
             </div>
+
+            {/* Initial State for AD CENTER */}
+            {!hasFetched && !isLoading && (
+              <div className="glass-card neon-border p-12 text-center">
+                <div className="relative inline-block">
+                  <Zap className="h-16 w-16 text-primary/50 mx-auto mb-4" />
+                  <div className="absolute inset-0 h-16 w-16 mx-auto bg-primary/20 blur-xl rounded-full" />
+                </div>
+                <h3 className="text-xl font-semibold text-foreground mb-2">
+                  AD CENTER - מרכז השותפים
+                </h3>
+                <p className="text-muted-foreground mb-6">
+                  בחר קטגוריה למעלה כדי לטעון מוצרים מה-API
+                </p>
+                <Button onClick={() => fetchHotProducts("", "", 1, false, productSource)} variant="gradient" size="lg" className="animate-glow-pulse">
+                  <Zap className="h-5 w-5 mr-2" />
+                  טען {AD_CENTER_TABS.find(t => t.id === productSource)?.label || "מוצרים"}
+                </Button>
+              </div>
+            )}
           </TabsContent>
 
-          {/* Excel Import Mode */}
+          {/* ==================== CAMPAIGNS TAB ==================== */}
+          <TabsContent value="campaigns" className="space-y-3 mt-3">
+            {/* Campaign view: either list or products */}
+            {selectedCampaignId ? (
+              /* Campaign Products View */
+              <div className="space-y-3">
+                <div className="glass-card neon-border p-3 md:p-4">
+                  <div className="flex items-center justify-between" dir="rtl">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => { setSelectedCampaignId(null); setCampaignProducts([]); setSelectedApiProductIds(new Set()); }}
+                        className="gap-1"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        חזרה
+                      </Button>
+                      <h3 className="font-semibold text-foreground text-sm md:text-base truncate max-w-[200px] md:max-w-none">
+                        {selectedCampaignName}
+                      </h3>
+                    </div>
+                    <Badge variant="outline" className="text-xs">
+                      {campaignProducts.length} מוצרים
+                    </Badge>
+                  </div>
+                </div>
+
+                <ZoneSelector
+                  selectedZones={selectedZones}
+                  onSelectionChange={setSelectedZones}
+                  className="glass-card neon-border p-3"
+                />
+              </div>
+            ) : (
+              /* Campaigns List View */
+              <div className="space-y-3">
+                <div className="glass-card neon-border p-3 md:p-4">
+                  <div className="flex items-center justify-between" dir="rtl">
+                    <h3 className="font-semibold text-foreground flex items-center gap-2">
+                      <TrendingUp className="h-5 w-5 text-primary" />
+                      Promote Campaigns
+                      {campaigns.length > 0 && (
+                        <Badge variant="secondary" className="text-xs">{campaigns.length}</Badge>
+                      )}
+                    </h3>
+                    <Button
+                      onClick={fetchCampaignsFromApi}
+                      disabled={isFetchingCampaigns}
+                      variant="outline"
+                      size="sm"
+                      className="gap-1"
+                    >
+                      {isFetchingCampaigns ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-3 w-3" />
+                      )}
+                      רענן מ-API
+                    </Button>
+                  </div>
+                </div>
+
+                {isFetchingCampaigns && campaigns.length === 0 ? (
+                  <div className="glass-card neon-border p-8 text-center">
+                    <Loader2 className="h-10 w-10 text-primary mx-auto mb-3 animate-spin" />
+                    <p className="text-muted-foreground">טוען קמפיינים מ-AliExpress...</p>
+                  </div>
+                ) : campaigns.length === 0 ? (
+                  <div className="glass-card neon-border p-8 text-center">
+                    <TrendingUp className="h-12 w-12 text-muted-foreground/50 mx-auto mb-3" />
+                    <h3 className="font-medium text-foreground mb-2">אין קמפיינים עדיין</h3>
+                    <p className="text-sm text-muted-foreground mb-4">לחץ "רענן מ-API" כדי לטעון קמפיינים זמינים</p>
+                    <Button onClick={fetchCampaignsFromApi} variant="gradient" className="gap-2">
+                      <RefreshCw className="h-4 w-4" />
+                      טען קמפיינים
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    {/* Campaign Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {paginatedCampaigns.map((camp) => {
+                        const info = extractCampaignInfo(camp);
+                        return (
+                          <button
+                            key={camp.id}
+                            onClick={() => loadCampaignProducts(camp.id, camp.campaign_name)}
+                            className={cn(
+                              "relative rounded-xl overflow-hidden border transition-all text-right hover:shadow-lg hover:border-primary/50 group",
+                              "border-border/50"
+                            )}
+                          >
+                            {camp.banner_url ? (
+                              <div className="relative h-28 md:h-36">
+                                <img
+                                  src={camp.banner_url}
+                                  alt={camp.campaign_name}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-background/95 via-background/40 to-transparent" />
+                                <div className="absolute bottom-2 right-3 left-3">
+                                  <p className="font-bold text-foreground text-sm md:text-base truncate">{camp.campaign_name}</p>
+                                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                    {info.commissionFromName && info.commissionFromName > 0 && (
+                                      <Badge className="bg-success/80 text-[10px]">
+                                        <Percent className="h-2.5 w-2.5 mr-0.5" />
+                                        {info.commissionFromName}% עמלה
+                                      </Badge>
+                                    )}
+                                    {info.benefit && (
+                                      <Badge variant="outline" className="text-[10px] border-primary/40 text-primary">
+                                        {info.benefit}
+                                      </Badge>
+                                    )}
+                                    <Badge variant="outline" className="text-[10px] border-success/40 text-success">
+                                      פעיל
+                                    </Badge>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="p-4 bg-card/50 group-hover:bg-card transition-colors">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-bold text-foreground text-sm md:text-base truncate">{camp.campaign_name}</p>
+                                    {camp.promo_desc && (
+                                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{camp.promo_desc}</p>
+                                    )}
+                                  </div>
+                                  <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0 mt-1 mr-2" />
+                                </div>
+                                <div className="flex items-center gap-2 mt-3 flex-wrap">
+                                  {info.commissionFromName && info.commissionFromName > 0 && (
+                                    <Badge className="bg-success/80 text-[10px]">
+                                      <Percent className="h-2.5 w-2.5 mr-0.5" />
+                                      {info.commissionFromName}% עמלה
+                                    </Badge>
+                                  )}
+                                  {info.benefit && (
+                                    <Badge variant="outline" className="text-[10px] border-primary/40 text-primary">
+                                      {info.benefit}
+                                    </Badge>
+                                  )}
+                                  <Badge variant="outline" className="text-[10px] border-success/40 text-success">
+                                    פעיל
+                                  </Badge>
+                                </div>
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Pagination for campaigns */}
+                    {totalCampaignPages > 1 && (
+                      <div className="flex items-center justify-center gap-2 pt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={campaignPage <= 1}
+                          onClick={() => setCampaignPage(p => p - 1)}
+                        >
+                          הקודם
+                        </Button>
+                        <span className="text-sm text-muted-foreground">
+                          {campaignPage}/{totalCampaignPages}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={campaignPage >= totalCampaignPages}
+                          onClick={() => setCampaignPage(p => p + 1)}
+                        >
+                          הבא
+                        </Button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* ==================== EXCEL TAB ==================== */}
           <TabsContent value="excel" className="space-y-4 mt-4">
             <div className="glass-card neon-border p-4 space-y-4">
               <div className="flex items-center gap-2 mb-2">
@@ -1332,28 +1536,8 @@ const Discovery = () => {
           </TabsContent>
         </Tabs>
 
-        {/* Initial State */}
-        {activeMode !== "excel" && !hasFetched && !isLoading && !showManualInput && (
-          <div className="glass-card neon-border p-12 text-center">
-            <div className="relative inline-block">
-              <Flame className="h-16 w-16 text-primary/50 mx-auto mb-4" />
-              <div className="absolute inset-0 h-16 w-16 mx-auto bg-primary/20 blur-xl rounded-full" />
-            </div>
-            <h3 className="text-xl font-semibold text-foreground mb-2">
-              גלה את המוצרים הלוהטים ביותר
-            </h3>
-            <p className="text-muted-foreground mb-6">
-              בחר קטגוריה או חפש מוצרים כדי לראות את 20 המוצרים הנמכרים ביותר
-            </p>
-            <Button onClick={() => fetchHotProducts()} variant="gradient" size="lg" className="animate-glow-pulse">
-              <Flame className="h-5 w-5 mr-2" />
-              טען מוצרים לוהטים
-            </Button>
-          </div>
-        )}
-
         {/* Loading State */}
-        {isLoading && (
+        {isLoading && activeMode === "ad_center" && (
           <div className="space-y-4">
             <div className="glass-card neon-border p-8 text-center">
               <Loader2 className="h-12 w-12 text-primary mx-auto mb-4 animate-spin" />
@@ -1380,15 +1564,16 @@ const Discovery = () => {
           </div>
         )}
 
-        {/* Products Grid */}
-        {!isLoading && !isLoadingCampaigns && hasFetched && (
+        {/* Products Grid (shared for AD CENTER and Campaign Products) */}
+        {!isLoading && !isLoadingCampaigns && (activeMode === "ad_center" ? hasFetched : selectedCampaignId) && (
           <>
             {displayProducts.length === 0 ? (
               <div className="glass-card p-8 text-center">
+                <Package className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
                 <p className="text-muted-foreground">לא נמצאו מוצרים</p>
                 {selectedCampaignId && (
                   <p className="text-xs text-muted-foreground mt-2">
-                    לחץ על "קמפיינים" כדי לרענן את המוצרים מה-API
+                    הקמפיין הזה לא כולל מוצרים כרגע
                   </p>
                 )}
               </div>
@@ -1410,7 +1595,7 @@ const Discovery = () => {
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    {isFromCache && (
+                    {isFromCache && !selectedCampaignId && (
                       <Button
                         onClick={forceRefreshFromApi}
                         variant="outline"
@@ -1444,7 +1629,7 @@ const Discovery = () => {
                 </div>
                 
                 {/* Load More Button */}
-                {hasMoreProducts && !selectedCampaignId && (
+                {hasMoreProducts && !selectedCampaignId && activeMode === "ad_center" && (
                   <div className="flex justify-center pt-6">
                     <Button
                       onClick={handleLoadMore}
