@@ -130,6 +130,7 @@ const GroupListener = () => {
         auto_approve: newAutoApprove,
         text_template_prepend: newPrepend || null,
         text_template_append: newAppend || null,
+        rewrite_mode: newRewriteMode,
       } as any);
       if (error) throw error;
       toast({ title: "✅ קבוצת ממסר נוספה בהצלחה" });
