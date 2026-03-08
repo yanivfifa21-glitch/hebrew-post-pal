@@ -37,6 +37,7 @@ const Admin = () => {
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; type: string; userId: string; email: string }>({ open: false, type: "", userId: "", email: "" });
 
   const checkIsAdmin = async (): Promise<boolean> => {
     const { data, error } = await supabase.rpc("is_admin");
