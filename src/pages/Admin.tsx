@@ -138,6 +138,50 @@ const Admin = () => {
     setProcessingId(null);
   };
 
+  const handleRevokeAccess = async (userId: string, email: string) => {
+    setProcessingId(userId);
+    const { error } = await supabase
+      .from("authorized_users")
+      .update({ status: "revoked" })
+      .eq("id", userId);
+
+    if (error) {
+      toast({ title: "שגיאה", description: "לא ניתן לבטל גישה.", variant: "destructive" });
+    } else {
+      toast({ title: "הגישה בוטלה", description: `${email} כבר לא יכול להיכנס.` });
+      await fetchPendingUsers();
+    }
+    setProcessingId(null);
+  };
+
+  const handleDeleteUser = async (userId: string, email: string) => {
+    setProcessingId(userId);
+    const { error } = await supabase
+      .from("authorized_users")
+      .delete()
+      .eq("id", userId);
+
+    if (error) {
+      toast({ title: "שגיאה", description: "לא ניתן למחוק משתמש.", variant: "destructive" });
+    } else {
+      toast({ title: "משתמש נמחק", description: `${email} הוסר מהמערכת.` });
+      await fetchPendingUsers();
+    }
+    setProcessingId(null);
+  };
+
+  const handleSendPasswordReset = async (email: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+
+    if (error) {
+      toast({ title: "שגיאה", description: "לא ניתן לשלוח מייל איפוס.", variant: "destructive" });
+    } else {
+      toast({ title: "נשלח!", description: `מייל איפוס סיסמה נשלח ל-${email}` });
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
