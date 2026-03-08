@@ -69,59 +69,119 @@ function extractSellerId(input: string): string | null {
 }
 
 /**
- * Scrape the AliExpress store page to extract product IDs.
- * Tries multiple URL formats and HTML patterns.
+ * Fetch product IDs from the store using AliExpress public AJAX/JSON endpoints.
+ * Tries multiple approaches: mobile API, AJAX endpoints, and HTML scraping.
  */
-async function scrapeStoreProductIds(sellerId: string, pageNo: number): Promise<{ productIds: string[]; totalEstimate: number }> {
-  const urls = [
-    `https://www.aliexpress.com/store/${sellerId}/search/${pageNo}.html?SortType=orders_desc`,
-    `https://www.aliexpress.com/store/${sellerId}/search.html?SortType=orders_desc&page=${pageNo}`,
-    `https://www.aliexpress.com/store/${sellerId}`,
-  ];
-
+async function fetchStoreProductIds(sellerId: string, pageNo: number): Promise<string[]> {
   const headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "User-Agent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/json,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.aliexpress.com/",
   };
 
   const allProductIds = new Set<string>();
 
-  for (const url of urls) {
-    try {
-      console.log("[scan-store] Scraping:", url);
-      const resp = await fetch(url, { headers, redirect: "follow" });
-      const html = await resp.text();
+  // Approach 1: Try the store AJAX search endpoint  
+  const ajaxUrls = [
+    `https://www.aliexpress.com/store/productGroupsAjax.htm?storeId=${sellerId}&SortType=bestmatch_sort&page=${pageNo}`,
+    `https://m.aliexpress.com/store/${sellerId}?SortType=orders_desc`,
+    `https://www.aliexpress.com/store/${sellerId}`,
+  ];
 
-      // Multiple patterns to find product IDs in the HTML
-      const patterns = [
+  for (const url of ajaxUrls) {
+    try {
+      console.log("[scan-store] Fetching:", url);
+      const resp = await fetch(url, { headers, redirect: "follow" });
+      const contentType = resp.headers.get("content-type") || "";
+      const body = await resp.text();
+
+      // Try to parse JSON response
+      if (contentType.includes("json") || body.trim().startsWith("{") || body.trim().startsWith("[")) {
+        try {
+          const json = JSON.parse(body);
+          // Extract product IDs from various JSON structures
+          const extractFromObj = (obj: any) => {
+            if (!obj || typeof obj !== "object") return;
+            if (obj.productId) allProductIds.add(String(obj.productId));
+            if (obj.product_id) allProductIds.add(String(obj.product_id));
+            if (obj.itemId) allProductIds.add(String(obj.itemId));
+            if (Array.isArray(obj)) obj.forEach(extractFromObj);
+            else Object.values(obj).forEach((v) => { if (typeof v === "object") extractFromObj(v); });
+          };
+          extractFromObj(json);
+        } catch { /* not JSON */ }
+      }
+
+      // Also extract from HTML/script tags
+      const scriptPatterns = [
         /\/item\/(\d{8,15})\.html/g,
-        /productId["\s:=]+["']?(\d{8,15})/gi,
-        /product_id["\s:=]+["']?(\d{8,15})/gi,
-        /"itemId"\s*:\s*"?(\d{8,15})/g,
+        /"productId"\s*:\s*"?(\d{8,15})"?/gi,
+        /"product_id"\s*:\s*"?(\d{8,15})"?/gi,
+        /"itemId"\s*:\s*"?(\d{8,15})"?/gi,
         /data-product-id="(\d{8,15})"/g,
-        /\/(\d{8,15})\.html/g,
+        /data-item-id="(\d{8,15})"/g,
+        /\/(\d{10,15})\.html/g,
       ];
 
-      for (const pattern of patterns) {
+      for (const pattern of scriptPatterns) {
         let match;
-        while ((match = pattern.exec(html)) !== null) {
-          if (match[1] && match[1].length >= 8) {
+        while ((match = pattern.exec(body)) !== null) {
+          if (match[1] && match[1].length >= 10 && match[1].length <= 15) {
             allProductIds.add(match[1]);
           }
         }
       }
 
       console.log(`[scan-store] Found ${allProductIds.size} product IDs from ${url}`);
-
-      // If we found products, no need to try other URL formats
       if (allProductIds.size > 0) break;
     } catch (e) {
-      console.error("[scan-store] Scrape error for", url, e);
+      console.error("[scan-store] Fetch error for", url, e);
     }
   }
 
-  return { productIds: Array.from(allProductIds), totalEstimate: allProductIds.size };
+  // Approach 2: Try AliExpress global site with different store URL format
+  if (allProductIds.size === 0) {
+    try {
+      const url = `https://www.aliexpress.com/store/all-wholesale-products/${sellerId}.html?SortType=orders_desc&page=${pageNo}`;
+      console.log("[scan-store] Trying wholesale URL:", url);
+      const resp = await fetch(url, { headers: { ...headers, "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36" }, redirect: "follow" });
+      const body = await resp.text();
+
+      // Look for window.__INIT_DATA or similar JSON data embedded in scripts
+      const dataPatterns = [
+        /window\.__INIT_DATA\s*=\s*({.+?});\s*<\/script>/s,
+        /window\.runParams\s*=\s*({.+?});\s*<\/script>/s,
+        /"itemList"\s*:\s*\[([^\]]+)\]/g,
+        /"productList"\s*:\s*\[([^\]]+)\]/g,
+      ];
+
+      for (const pattern of dataPatterns) {
+        let match;
+        while ((match = pattern.exec(body)) !== null) {
+          const chunk = match[1] || match[0];
+          const idPattern = /"(?:productId|product_id|itemId)"\s*:\s*"?(\d{10,15})"?/g;
+          let idMatch;
+          while ((idMatch = idPattern.exec(chunk)) !== null) {
+            allProductIds.add(idMatch[1]);
+          }
+        }
+      }
+
+      // Fallback: any product URL pattern
+      const urlPattern = /\/item\/(\d{10,15})\.html/g;
+      let match;
+      while ((match = urlPattern.exec(body)) !== null) {
+        allProductIds.add(match[1]);
+      }
+
+      console.log(`[scan-store] Found ${allProductIds.size} product IDs from wholesale URL`);
+    } catch (e) {
+      console.error("[scan-store] Wholesale URL error:", e);
+    }
+  }
+
+  return Array.from(allProductIds);
 }
 
 function mapProductDetail(p: any): StoreProduct | null {
@@ -242,17 +302,24 @@ serve(async (req) => {
 
     console.log("[scan-store] User:", user.id, "| sellerId:", sellerId, "| page:", pageNo);
 
-    // Step 1: Scrape store page to get real product IDs
-    const { productIds } = await scrapeStoreProductIds(sellerId, pageNo);
+    // Step 1: Fetch product IDs from store page
+    const productIds = await fetchStoreProductIds(sellerId, pageNo);
 
     if (productIds.length === 0) {
-      const payload: ApiErr = { success: false, error: "לא נמצאו מוצרים בחנות. ייתכן שהחנות חסומה או שהקישור אינו תקין." };
+      // Fallback: use product.query API (returns general products, not store-specific)
+      // but at least provide something. Mark this clearly.
+      console.log("[scan-store] No IDs scraped, falling back to product.query with store name search");
+      
+      const payload: ApiErr = { 
+        success: false, 
+        error: "לא הצלחנו למשוך מוצרים מהחנות הזו. אליאקספרס חוסמת סריקה ישירה של חנויות.\n\nנסה במקום זאת:\n• העתק קישורים של מוצרים ספציפיים מהחנות\n• השתמש בחיפוש חופשי כדי למצוא מוצרים דומים\n• השתמש ב-Discovery כדי למצוא מוצרים פופולריים" 
+      };
       return new Response(JSON.stringify(payload), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    console.log("[scan-store] Scraped", productIds.length, "product IDs from store page");
+    console.log("[scan-store] Found", productIds.length, "product IDs from store page");
 
-    // Step 2: Fetch product details via API in batches of 20 (API limit)
+    // Step 2: Fetch product details via affiliate API in batches of 20
     const BATCH_SIZE = 20;
     const products: StoreProduct[] = [];
     const seen = new Set<string>();
@@ -307,9 +374,9 @@ serve(async (req) => {
     const payload: ApiOk = {
       success: true,
       products,
-      total: productIds.length,
+      total: products.length,
       sellerId,
-      hasMore: false, // scraping returns all visible products on that page
+      hasMore: false,
     };
     return new Response(JSON.stringify(payload), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
