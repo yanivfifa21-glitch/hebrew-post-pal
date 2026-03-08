@@ -141,6 +141,55 @@ const GroupListener = () => {
     }
   };
 
+  const openEditGroupDialog = (group: RelayGroup) => {
+    setEditingGroup(group);
+    setEditGroupName(group.group_name || "");
+    setEditGroupId(group.telegram_group_id || "");
+    setEditBotToken(group.bot_token || "");
+    setEditAutoApprove(Boolean(group.auto_approve));
+    setEditGroupActive(Boolean(group.is_active));
+    setEditPrepend(group.text_template_prepend || "");
+    setEditAppend(group.text_template_append || "");
+  };
+
+  const handleSaveGroupChanges = async () => {
+    if (!editingGroup) return;
+    if (!editGroupName.trim() || !editGroupId.trim()) {
+      toast({ title: "נא למלא שם וID של הקבוצה", variant: "destructive" });
+      return;
+    }
+
+    setIsUpdatingGroup(true);
+    try {
+      const payload = {
+        group_name: editGroupName.trim(),
+        telegram_group_id: editGroupId.trim(),
+        bot_token: editBotToken.trim() || null,
+        auto_approve: editAutoApprove,
+        is_active: editGroupActive,
+        text_template_prepend: editPrepend.trim() || null,
+        text_template_append: editAppend.trim() || null,
+      };
+
+      const { data, error } = await supabase
+        .from("relay_groups")
+        .update(payload)
+        .eq("id", editingGroup.id)
+        .select("*")
+        .single();
+
+      if (error) throw error;
+
+      setGroups((prev) => prev.map((g) => (g.id === editingGroup.id ? (data as unknown as RelayGroup) : g)));
+      setEditingGroup(null);
+      toast({ title: "✅ הקבוצה עודכנה" });
+    } catch {
+      toast({ title: "שגיאה בשמירת הקבוצה", variant: "destructive" });
+    } finally {
+      setIsUpdatingGroup(false);
+    }
+  };
+
   const handleDeleteGroup = async (id: string) => {
     try {
       await supabase.from("relay_groups").delete().eq("id", id);
