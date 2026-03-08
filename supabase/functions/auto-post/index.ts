@@ -272,9 +272,6 @@ serve(async (req) => {
   const supabasePublishableKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY")?.trim() || "";
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim() || "";
 
-  console.log(
-    `[auto-post] key availability anon=${Boolean(supabaseAnonKey)} publishable=${Boolean(supabasePublishableKey)} service=${Boolean(supabaseServiceKey)} auth=${Boolean(authHeader)} apikey=${Boolean(apiKeyHeader)}`
-  );
 
   if (!supabaseUrl || !supabaseServiceKey) {
     console.error("[auto-post] Missing backend configuration");
