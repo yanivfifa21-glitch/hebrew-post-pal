@@ -15,7 +15,7 @@ type ProductMeta = {
   rating: number;
 };
 
-type ApiOk = { success: true; data: ProductMeta; cleanUrl: string; productId?: string; raw?: unknown };
+type ApiOk = { success: true; data: ProductMeta; cleanUrl: string; productId?: string; eligible?: boolean; raw?: unknown };
 type ApiErr = { success: false; error: string; code?: string; request_id?: string; trace_id?: string; raw?: unknown };
 
 async function generateMd5Signature(params: Record<string, string>, appSecretRaw: string): Promise<string> {
