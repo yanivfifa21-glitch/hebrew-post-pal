@@ -155,7 +155,7 @@ async function fetchOrdersByStatus(
       params.tracking_id = trackingId;
     }
 
-    params.sign = await hmacSha256Sign(params, appSecret);
+    params.sign = await generateMd5Signature(params, appSecret);
 
     const qs = Object.entries(params)
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
