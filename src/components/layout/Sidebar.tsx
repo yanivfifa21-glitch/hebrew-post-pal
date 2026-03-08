@@ -39,6 +39,7 @@ const navItems = [
   { icon: MapPin, label: "אזורים", path: "/zones" },
   { icon: Ticket, label: "קופונים", path: "/coupons" },
   { icon: LayoutGrid, label: "יוצר קולאז׳", path: "/collage" },
+  { icon: Headphones, label: "האזנה לקבוצות", path: "/group-listener" },
   { icon: History, label: "היסטוריה", path: "/history" },
   { icon: Settings, label: "הגדרות", path: "/settings" },
 ];

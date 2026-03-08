@@ -44,6 +44,7 @@ const App = () => (
           <Route path="/zones" element={<AuthGuard><Zones /></AuthGuard>} />
           <Route path="/coupons" element={<AuthGuard><Coupons /></AuthGuard>} />
           <Route path="/collage" element={<AuthGuard><CollageGenerator /></AuthGuard>} />
+          <Route path="/group-listener" element={<AuthGuard><GroupListener /></AuthGuard>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
