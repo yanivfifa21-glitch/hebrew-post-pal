@@ -327,7 +327,9 @@ const GroupListener = () => {
 
   const fetchAccounts = async () => {
     const { data } = await supabase.rpc("get_my_messaging_accounts_safe");
-    setAccounts((data as unknown as MessagingAccountSafe[]) || []);
+    const accs = (data as unknown as MessagingAccountSafe[]) || [];
+    setAccounts(accs);
+    setSelectedAccounts(accs.filter(a => a.is_active).map(a => a.id));
   };
 
   const getPostFinalText = (post: CapturedPost) => {
