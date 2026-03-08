@@ -151,9 +151,7 @@ async function fetchOrdersByStatus(
       status,
     };
 
-    if (trackingId) {
-      params.tracking_id = trackingId;
-    }
+    // Do NOT pass tracking_id — fetch orders from ALL tracking IDs to match portal totals
 
     params.sign = await generateMd5Signature(params, appSecret);
 
