@@ -292,15 +292,127 @@ const Admin = () => {
                         {new Date(user.created_at).toLocaleDateString()}
                       </p>
                     </div>
-                    <Badge variant="secondary" className="bg-green-500/20 text-green-600">
-                      Approved
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="bg-green-500/20 text-green-600">
+                        Approved
+                      </Badge>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleSendPasswordReset(user.email)}>
+                            <KeyRound className="h-4 w-4 mr-2" />
+                            שלח איפוס סיסמה
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => setConfirmDialog({ open: true, type: "revoke", userId: user.id, email: user.email })}
+                            className="text-yellow-600"
+                          >
+                            <ShieldOff className="h-4 w-4 mr-2" />
+                            בטל גישה
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => setConfirmDialog({ open: true, type: "delete", userId: user.id, email: user.email })}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            מחק משתמש
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
           </CardContent>
         </Card>
+
+        {/* Revoked Users */}
+        {revoked.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldOff className="h-5 w-5 text-yellow-500" />
+                משתמשים חסומים ({revoked.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {revoked.map((user) => (
+                  <div
+                    key={user.id}
+                    className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                  >
+                    <div>
+                      <p className="font-medium">{user.email}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {new Date(user.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-600">
+                        Revoked
+                      </Badge>
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleApprove(user.id, user.email)}
+                          disabled={processingId === user.id}
+                        >
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => setConfirmDialog({ open: true, type: "delete", userId: user.id, email: user.email })}
+                          disabled={processingId === user.id}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Confirm Dialog */}
+        <AlertDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {confirmDialog.type === "delete" ? "מחיקת משתמש" : "ביטול גישה"}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {confirmDialog.type === "delete"
+                  ? `האם אתה בטוח שברצונך למחוק את ${confirmDialog.email}? פעולה זו לא ניתנת לביטול.`
+                  : `האם אתה בטוח שברצונך לבטל את הגישה של ${confirmDialog.email}?`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>ביטול</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (confirmDialog.type === "delete") {
+                    handleDeleteUser(confirmDialog.userId, confirmDialog.email);
+                  } else {
+                    handleRevokeAccess(confirmDialog.userId, confirmDialog.email);
+                  }
+                }}
+                className={confirmDialog.type === "delete" ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+              >
+                {confirmDialog.type === "delete" ? "מחק" : "בטל גישה"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </MainLayout>
   );
