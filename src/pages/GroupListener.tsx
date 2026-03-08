@@ -260,21 +260,6 @@ const GroupListener = () => {
     toast({ title: "✅ נשמר" });
   };
 
-  const handleSaveSettings = async () => {
-    setIsSavingSettings(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-      await supabase.from("app_settings").update({
-        affiliate_params: affiliateParams,
-      }).eq("user_id", user.id);
-      toast({ title: "✅ הגדרות נשמרו" });
-    } catch {
-      toast({ title: "שגיאה בשמירה", variant: "destructive" });
-    } finally {
-      setIsSavingSettings(false);
-    }
-  };
 
   const pendingCount = capturedPosts.filter((p) => p.status === "pending_review").length;
 
