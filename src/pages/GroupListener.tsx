@@ -66,11 +66,16 @@ const GroupListener = () => {
   // Send to groups state
   const [sendingPostId, setSendingPostId] = useState<string | null>(null);
   const [showSendDialog, setShowSendDialog] = useState(false);
-  const [sendPost, setSendPost] = useState<CapturedPost | null>(null);
+  const [sendPosts, setSendPosts] = useState<CapturedPost[]>([]);
   const [accounts, setAccounts] = useState<MessagingAccountSafe[]>([]);
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
   const [addToAutomation, setAddToAutomation] = useState(true);
+  // Per-post text choice: 'original' or 'rewrite'
+  const [textChoice, setTextChoice] = useState<Record<string, 'original' | 'rewrite'>>({});
+  // Bulk selection
+  const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
 
   useEffect(() => {
     fetchGroups();
