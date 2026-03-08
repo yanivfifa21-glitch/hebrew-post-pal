@@ -15,7 +15,8 @@ import {
   Search,
   Ticket,
   LayoutGrid,
-  Headphones
+  Headphones,
+  Store
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
