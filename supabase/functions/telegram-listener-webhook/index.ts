@@ -383,6 +383,24 @@ async function processMessage(supabase: any, supabaseUrl: string, message: any, 
     });
   }
 
+  // Duplicate detection: skip if same original_url was captured for this user in last 24h
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data: existingPost } = await supabase
+    .from("captured_posts")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("original_url", aliUrl)
+    .gte("captured_at", twentyFourHoursAgo)
+    .limit(1)
+    .maybeSingle();
+
+  if (existingPost) {
+    console.log(`[telegram-listener-webhook] Duplicate post detected, original_url=${aliUrl}, existing_id=${existingPost.id}`);
+    return new Response(JSON.stringify({ ok: true, skipped: "duplicate_post", existingId: existingPost.id }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   const status = relayGroup.auto_approve ? "approved" : "pending_review";
 
   // Create captured post
