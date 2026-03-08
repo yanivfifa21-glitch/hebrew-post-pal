@@ -175,6 +175,10 @@ const GroupListener = () => {
       toast({ title: "נא למלא שם וID של הקבוצה", variant: "destructive" });
       return;
     }
+    if (!isValidGroupId(editGroupId)) {
+      toast({ title: "מזהה הקבוצה לא תקין - יש להזין מספר (לדוגמה: -1001234567890). אל תכניס כאן טוקן בוט!", variant: "destructive" });
+      return;
+    }
 
     setIsUpdatingGroup(true);
     try {
