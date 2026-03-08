@@ -173,6 +173,7 @@ const GroupListener = () => {
         is_active: editGroupActive,
         text_template_prepend: editPrepend.trim() || null,
         text_template_append: editAppend.trim() || null,
+        rewrite_mode: editRewriteMode,
       };
 
       const { data, error } = await supabase
