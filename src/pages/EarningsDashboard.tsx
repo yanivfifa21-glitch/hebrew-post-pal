@@ -1,152 +1,101 @@
-import { useState, useCallback } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
+  Tooltip, TooltipContent, TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
-  DollarSign,
-  ShoppingCart,
-  CheckCircle2,
-  TrendingUp,
-  RefreshCw,
-  Calendar,
+  DollarSign, ShoppingCart, CheckCircle2, TrendingUp, RefreshCw,
+  Calendar, Package, AlertTriangle, Loader2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "@/hooks/use-toast";
 
-type TimeRange = "last_week" | "this_month" | "last_month";
+type Period = "last_week" | "current_month" | "last_month";
 
-type AffiliateOrder = {
-  order_id: string;
-  product_id: string;
+type OrderItem = {
+  order_number: string;
   product_title: string;
-  product_image: string;
-  order_status: string;
+  product_id: string;
   paid_amount: number;
-  estimated_commission: number;
-  created_at: string;
-  is_completed: boolean;
+  commission: number;
+  finished_commission: number;
+  status: string;
+  created_time: string;
+  item_count: number;
 };
 
-type EarningsSummary = {
-  paid_orders: number;
-  paid_earnings: number;
-  completed_orders: number;
-  completed_earnings: number;
-  orders: AffiliateOrder[];
-  daily_stats: Record<
-    string,
-    {
-      paid_orders: number;
-      paid_earnings: number;
-      completed_orders: number;
-      completed_earnings: number;
-    }
-  >;
-};
-
-function getTimeRange(range: TimeRange): { startTime: string; endTime: string } {
-  const now = new Date();
-  // Convert to PST (UTC-8)
-  const pstOffset = -8 * 60 * 60 * 1000;
-
-  let start: Date;
-  let end: Date;
-
-  if (range === "last_week") {
-    end = now;
-    start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  } else if (range === "this_month") {
-    end = now;
-    start = new Date(now.getFullYear(), now.getMonth(), 1);
-  } else {
-    // last_month
-    start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-  }
-
-  const formatPST = (d: Date) => {
-    const pst = new Date(d.getTime() + pstOffset - d.getTimezoneOffset() * 60 * 1000);
-    return pst.toISOString().replace("T", " ").replace(/\.\d+Z$/, "");
+type EarningsResponse = {
+  success: boolean;
+  error?: string;
+  summary: {
+    paid_orders: number;
+    paid_earnings: number;
+    completed_orders: number;
+    completed_earnings: number;
   };
+  orders: OrderItem[];
+  period: { start: string; end: string; label: string };
+};
 
-  return { startTime: formatPST(start), endTime: formatPST(end) };
-}
-
-const timeRangeLabels: Record<TimeRange, string> = {
-  last_week: "שבוע אחרון",
-  this_month: "חודש נוכחי",
+const periodLabels: Record<Period, string> = {
+  last_week: "7 ימים אחרונים",
+  current_month: "חודש נוכחי",
   last_month: "חודש שעבר",
 };
 
-const chartConfig = {
-  paid_orders: { label: "הזמנות ששולמו", color: "hsl(213, 94%, 50%)" },
-  paid_earnings: { label: "רווח (שולם)", color: "hsl(160, 84%, 39%)" },
-  completed_orders: { label: "הזמנות שהושלמו", color: "hsl(45, 93%, 47%)" },
-  completed_earnings: { label: "רווח (הושלם)", color: "hsl(24, 95%, 53%)" },
-};
+const COMPLETED_STATUSES = ["buyer confirmed receipt", "completed", "success"];
+const PAID_STATUSES = ["payment completed", "pay"];
+
+function getStatusBadge(status: string) {
+  const lower = status.toLowerCase();
+  if (COMPLETED_STATUSES.some((s) => lower.includes(s))) {
+    return <Badge variant="success">הושלם</Badge>;
+  }
+  if (PAID_STATUSES.some((s) => lower.includes(s))) {
+    return <Badge variant="default">שולם</Badge>;
+  }
+  return <Badge variant="warning">{status || "ממתין"}</Badge>;
+}
+
+function formatHebrewDate(dateStr: string): string {
+  if (!dateStr) return "-";
+  try {
+    const d = new Date(dateStr.replace(" ", "T"));
+    return d.toLocaleDateString("he-IL", { day: "numeric", month: "short", year: "numeric" });
+  } catch {
+    return dateStr.substring(0, 10);
+  }
+}
+
+async function fetchEarnings(period: Period): Promise<EarningsResponse> {
+  const { data, error } = await supabase.functions.invoke("get-affiliate-earnings", {
+    body: { period },
+  });
+  if (error) throw error;
+  if (!data?.success) throw new Error(data?.error || "Failed to fetch earnings");
+  return data;
+}
 
 const EarningsDashboard = () => {
-  const [timeRange, setTimeRange] = useState<TimeRange>("last_week");
-  const [data, setData] = useState<EarningsSummary | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [hasFetched, setHasFetched] = useState(false);
+  const [period, setPeriod] = useState<Period>("last_week");
 
-  const fetchEarnings = useCallback(
-    async (range: TimeRange) => {
-      setIsLoading(true);
-      try {
-        const { startTime, endTime } = getTimeRange(range);
-        const { data: result, error } = await supabase.functions.invoke(
-          "fetch-affiliate-orders",
-          { body: { startTime, endTime } }
-        );
-        if (error) throw error;
-        if (!result?.success) throw new Error(result?.error || "Failed to fetch");
-        setData(result.data);
-        setHasFetched(true);
-      } catch (err) {
-        toast({
-          title: "שגיאה בטעינת נתונים",
-          description: err instanceof Error ? err.message : "שגיאה לא ידועה",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    []
-  );
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
+    queryKey: ["affiliate-earnings", period],
+    queryFn: () => fetchEarnings(period),
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    enabled: true,
+  });
 
-  const handleTimeRangeChange = (range: TimeRange) => {
-    setTimeRange(range);
-    fetchEarnings(range);
-  };
-
-  // Prepare chart data
-  const chartData = data
-    ? Object.entries(data.daily_stats)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([date, stats]) => ({
-          date: date.substring(5), // MM-DD
-          ...stats,
-        }))
-    : [];
+  const summary = data?.summary;
+  const orders = data?.orders || [];
+  const spinning = isLoading || isFetching;
 
   return (
     <MainLayout>
@@ -157,52 +106,51 @@ const EarningsDashboard = () => {
             <h1 className="text-3xl font-bold text-foreground">
               <span className="gradient-text">דשבורד רווחים</span>
             </h1>
-            <p className="text-muted-foreground mt-1">
-              נתוני הכנסות מפורטל השיווק של AliExpress
+            <p className="text-muted-foreground mt-1 text-sm">
+              נתוני הרווחים שלך מפורטל השיווק של AliExpress (עיכוב של יומיים באזור זמן PST)
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {(Object.keys(timeRangeLabels) as TimeRange[]).map((range) => (
+            {(Object.keys(periodLabels) as Period[]).map((p) => (
               <Button
-                key={range}
-                variant={timeRange === range ? "default" : "outline"}
+                key={p}
+                variant={period === p ? "default" : "outline"}
                 size="sm"
-                onClick={() => handleTimeRangeChange(range)}
-                disabled={isLoading}
+                onClick={() => setPeriod(p)}
+                disabled={spinning}
                 className="gap-1.5"
               >
                 <Calendar className="h-3.5 w-3.5" />
-                {timeRangeLabels[range]}
+                {periodLabels[p]}
               </Button>
             ))}
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => fetchEarnings(timeRange)}
-              disabled={isLoading}
+              onClick={() => refetch()}
+              disabled={spinning}
             >
-              <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+              <RefreshCw className={`h-4 w-4 ${spinning ? "animate-spin" : ""}`} />
             </Button>
           </div>
         </div>
 
-        {/* Initial state */}
-        {!hasFetched && !isLoading && (
-          <Card className="border-dashed">
-            <CardContent className="flex flex-col items-center justify-center py-16 gap-4">
-              <DollarSign className="h-12 w-12 text-muted-foreground" />
-              <p className="text-muted-foreground text-center">
-                בחר טווח זמן כדי לטעון את נתוני הרווחים שלך
+        {/* Error State */}
+        {error && !isLoading && (
+          <Card className="border-destructive/50 bg-destructive/5">
+            <CardContent className="flex flex-col items-center justify-center py-10 gap-4">
+              <AlertTriangle className="h-10 w-10 text-destructive" />
+              <p className="text-destructive font-medium text-center">
+                {error instanceof Error ? error.message : "שגיאה בטעינת נתונים"}
               </p>
-              <Button onClick={() => fetchEarnings(timeRange)}>
-                <TrendingUp className="h-4 w-4 ml-2" />
-                טען נתונים
+              <Button variant="outline" onClick={() => refetch()}>
+                נסה שוב
               </Button>
             </CardContent>
           </Card>
         )}
 
-        {/* Loading */}
+        {/* Loading Skeleton */}
         {isLoading && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[...Array(4)].map((_, i) => (
@@ -219,104 +167,47 @@ const EarningsDashboard = () => {
           </div>
         )}
 
-        {/* Stats Cards */}
-        {data && !isLoading && (
+        {/* Summary Cards */}
+        {summary && !isLoading && (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <EarningsStatCard
-                title="הזמנות ששולמו"
-                value={data.paid_orders}
-                color="hsl(213, 94%, 50%)"
-                icon={ShoppingCart}
-              />
-              <EarningsStatCard
-                title="רווח להזמנות ששולמו (USD)"
-                value={`$${data.paid_earnings.toFixed(2)}`}
-                color="hsl(160, 84%, 39%)"
+              <StatCard title="הזמנות ששולמו" value={summary.paid_orders} icon={ShoppingCart} />
+              <StatCard
+                title="רווח משוער (USD)"
+                value={`$${summary.paid_earnings.toFixed(2)}`}
                 icon={DollarSign}
+                highlight
               />
-              <EarningsStatCard
-                title="הזמנות שהושלמו"
-                value={data.completed_orders}
-                color="hsl(45, 93%, 47%)"
-                icon={CheckCircle2}
-              />
-              <EarningsStatCard
-                title="רווח להזמנות שהושלמו (USD)"
-                value={`$${data.completed_earnings.toFixed(2)}`}
-                color="hsl(24, 95%, 53%)"
+              <StatCard title="הזמנות שהושלמו" value={summary.completed_orders} icon={CheckCircle2} />
+              <StatCard
+                title="רווח שהושלם (USD)"
+                value={`$${summary.completed_earnings.toFixed(2)}`}
                 icon={TrendingUp}
+                highlight
               />
             </div>
 
-            {/* Chart */}
-            {chartData.length > 1 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">גרף רווחים יומי</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ChartContainer config={chartConfig} className="h-[300px] w-full">
-                    <LineChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis dataKey="date" className="text-xs" />
-                      <YAxis className="text-xs" />
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                      <Legend />
-                      <Line
-                        type="monotone"
-                        dataKey="paid_orders"
-                        name="הזמנות ששולמו"
-                        stroke="hsl(213, 94%, 50%)"
-                        strokeWidth={2}
-                        dot={{ r: 3 }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="paid_earnings"
-                        name="רווח (שולם)"
-                        stroke="hsl(160, 84%, 39%)"
-                        strokeWidth={2}
-                        dot={{ r: 3 }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="completed_orders"
-                        name="הזמנות שהושלמו"
-                        stroke="hsl(45, 93%, 47%)"
-                        strokeWidth={2}
-                        dot={{ r: 3 }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="completed_earnings"
-                        name="רווח (הושלם)"
-                        stroke="hsl(24, 95%, 53%)"
-                        strokeWidth={2}
-                        dot={{ r: 3 }}
-                      />
-                    </LineChart>
-                  </ChartContainer>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Products Table */}
+            {/* Orders Table */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">מוצרים שנמכרו</CardTitle>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Package className="h-5 w-5" />
+                  מוצרים שנמכרו
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                {data.orders.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">
-                    אין הזמנות בטווח הזמן שנבחר
-                  </p>
+                {orders.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-3">
+                    <Package className="h-12 w-12 text-muted-foreground/30" />
+                    <p className="text-muted-foreground">לא נמצאו מכירות בתקופה שנבחרה</p>
+                  </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
                           <TableHead className="text-right">מוצר</TableHead>
+                          <TableHead className="text-right">מספר הזמנה</TableHead>
                           <TableHead className="text-right">סכום</TableHead>
                           <TableHead className="text-right">עמלה</TableHead>
                           <TableHead className="text-right">סטטוס</TableHead>
@@ -324,42 +215,34 @@ const EarningsDashboard = () => {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {data.orders.map((order, idx) => (
-                          <TableRow key={`${order.order_id}_${order.product_id || idx}`}>
+                        {orders.map((order, idx) => (
+                          <TableRow key={`${order.order_number}_${idx}`}>
+                            <TableCell className="max-w-[200px]">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="text-sm truncate block">
+                                    {order.product_title || `מוצר #${order.product_id}`}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="max-w-xs">
+                                  {order.product_title || order.product_id}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TableCell>
                             <TableCell>
-                              <div className="flex items-center gap-3">
-                                {order.product_image && (
-                                  <img
-                                    src={order.product_image}
-                                    alt=""
-                                    className="h-10 w-10 rounded-md object-cover flex-shrink-0"
-                                  />
-                                )}
-                                <span className="text-sm line-clamp-2 max-w-[200px]">
-                                  {order.product_title || `מוצר #${order.product_id}`}
-                                </span>
-                              </div>
+                              <span className="font-mono text-xs text-muted-foreground">
+                                {order.order_number}
+                              </span>
                             </TableCell>
                             <TableCell className="font-medium">
                               ${order.paid_amount.toFixed(2)}
                             </TableCell>
-                            <TableCell className="font-semibold text-primary">
-                              ${order.estimated_commission.toFixed(2)}
+                            <TableCell className="font-semibold text-success">
+                              ${order.commission.toFixed(2)}
                             </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={order.is_completed ? "default" : "secondary"}
-                                className={
-                                  order.is_completed
-                                    ? "bg-green-500/15 text-green-600 border-green-500/30"
-                                    : ""
-                                }
-                              >
-                                {order.is_completed ? "הושלם" : "שולם"}
-                              </Badge>
-                            </TableCell>
+                            <TableCell>{getStatusBadge(order.status)}</TableCell>
                             <TableCell className="text-muted-foreground text-sm">
-                              {order.created_at?.substring(0, 10) || "-"}
+                              {formatHebrewDate(order.created_time)}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -371,36 +254,40 @@ const EarningsDashboard = () => {
             </Card>
           </>
         )}
+
+        {/* Loading spinner for table during refetch */}
+        {isFetching && !isLoading && (
+          <div className="flex items-center justify-center py-4 gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="text-sm">טוען נתונים...</span>
+          </div>
+        )}
       </div>
     </MainLayout>
   );
 };
 
-function EarningsStatCard({
+function StatCard({
   title,
   value,
-  color,
   icon: Icon,
+  highlight,
 }: {
   title: string;
   value: string | number;
-  color: string;
   icon: React.ElementType;
+  highlight?: boolean;
 }) {
   return (
     <Card className="relative overflow-hidden">
-      <div
-        className="absolute bottom-0 left-0 right-0 h-1"
-        style={{ backgroundColor: color }}
-      />
       <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
-          {title}
-        </CardTitle>
+        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
         <Icon className="h-5 w-5 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <p className="text-3xl font-bold text-foreground">{value}</p>
+        <p className={`text-3xl font-bold ${highlight ? "text-primary" : "text-foreground"}`}>
+          {value}
+        </p>
       </CardContent>
     </Card>
   );
