@@ -195,7 +195,8 @@ const Admin = () => {
   }
 
   const pending = pendingUsers.filter(u => u.status === "pending");
-  const approved = pendingUsers.filter(u => u.status === "approved");
+  const approved = pendingUsers.filter(u => u.status === "approved" || u.status === "active");
+  const revoked = pendingUsers.filter(u => u.status === "revoked");
 
   return (
     <MainLayout>
