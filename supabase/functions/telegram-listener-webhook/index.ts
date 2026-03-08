@@ -375,6 +375,14 @@ async function processMessage(supabase: any, supabaseUrl: string, message: any, 
   // Use fetched image if we got one and no photo from message
   const finalImageUrl = imageUrl || fetchedImageUrl;
 
+  // Skip if no image available at all
+  if (!finalImageUrl) {
+    console.warn(`[telegram-listener-webhook] No image available (telegram photo + API fetch both failed) – skipping post`);
+    return new Response(JSON.stringify({ ok: true, skipped: "no_image_available" }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   const status = relayGroup.auto_approve ? "approved" : "pending_review";
 
   // Create captured post
