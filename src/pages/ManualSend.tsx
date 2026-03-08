@@ -1245,6 +1245,52 @@ export default function ManualSend() {
                   )}
                 </div>
 
+                {/* Watermark Toggle */}
+                <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/30">
+                  <div className="flex items-center gap-2">
+                    <Stamp className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <Label className="font-hebrew text-sm cursor-pointer">חותמת מים (לוגו)</Label>
+                      <p className="text-xs text-muted-foreground font-hebrew">הוסף לוגו בפינה הימנית התחתונה</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {watermarkPreview && (
+                      <img src={watermarkPreview} alt="Logo" className="h-6 w-6 rounded object-contain" />
+                    )}
+                    <Switch checked={addWatermark} onCheckedChange={(v) => {
+                      setAddWatermark(v);
+                      if (v && !watermarkPreview) {
+                        document.getElementById("watermark-input")?.click();
+                      }
+                    }} />
+                  </div>
+                </div>
+                {addWatermark && (
+                  <div className="flex items-center gap-2">
+                    <label className="cursor-pointer">
+                      <input id="watermark-input" type="file" accept="image/*" className="hidden" onChange={handleWatermarkFileChange} />
+                      <Button variant="outline" size="sm" asChild>
+                        <span className="flex items-center gap-2">
+                          <ImageIcon className="h-4 w-4" />
+                          <span className="font-hebrew">{watermarkPreview ? "החלף לוגו" : "בחר לוגו"}</span>
+                        </span>
+                      </Button>
+                    </label>
+                    {watermarkPreview && (
+                      <Button variant="ghost" size="sm" className="text-destructive text-xs" onClick={() => {
+                        setWatermarkPreview(null);
+                        setWatermarkFile(null);
+                        setAddWatermark(false);
+                        localStorage.removeItem("watermark_logo");
+                      }}>
+                        <X className="h-3 w-3 ml-1" />
+                        <span className="font-hebrew">הסר</span>
+                      </Button>
+                    )}
+                  </div>
+                )}
+
                 {/* Zone Selector */}
                 <ZoneSelector
                   selectedZones={selectedZones}
