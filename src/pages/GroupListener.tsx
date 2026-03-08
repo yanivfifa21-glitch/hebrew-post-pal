@@ -355,7 +355,7 @@ const GroupListener = () => {
         /(?:^|\/\/)(?:[^/]+\.)?aliexpress\.com\b/i.test(cleanUrl) ||
         /(?:^|\/\/)(?:[^/]+\.)?s\.click\.aliexpress\.com\b/i.test(cleanUrl);
 
-      const isOriginalUrl = normalizedOriginal && normalizedClean === normalizedOriginal;
+      const isOriginalUrl = !!normalizedOriginal && normalizedClean === normalizedOriginal;
 
       if (isAliExpressUrl || isOriginalUrl) {
         return `${post.modified_url}${trailing}`;
