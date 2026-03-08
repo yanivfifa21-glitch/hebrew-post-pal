@@ -1284,7 +1284,12 @@ export default function ManualSend() {
                       {effectiveMediaType === "video" ? (
                         <video src={effectiveMediaPreview} className="max-h-48 rounded-lg border border-border" controls />
                       ) : (
-                        <img src={effectiveMediaPreview} alt="Preview" className="max-h-48 rounded-lg border border-border" />
+                        <img src={displayMediaPreview || effectiveMediaPreview} alt="Preview" className="max-h-48 rounded-lg border border-border" />
+                      )}
+                      {addWatermark && watermarkedPreview && effectiveMediaType !== "video" && (
+                        <Badge variant="secondary" className="absolute top-2 left-2 text-xs font-hebrew">
+                          <Stamp className="h-3 w-3 mr-1" /> עם לוגו
+                        </Badge>
                       )}
                       <Button variant="destructive" size="icon-sm" className="absolute -top-2 -right-2" onClick={clearMedia}>
                         <X className="h-4 w-4" />
