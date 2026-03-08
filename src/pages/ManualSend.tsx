@@ -84,8 +84,114 @@ export default function ManualSend() {
   const [isRewritingWithAffiliate, setIsRewritingWithAffiliate] = useState(false);
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
   const [fetchedProductStats, setFetchedProductStats] = useState<{ orders_count?: number; rating?: number } | null>(null);
+  const [addWatermark, setAddWatermark] = useState(false);
+  const [watermarkFile, setWatermarkFile] = useState<File | null>(null);
+  const [watermarkPreview, setWatermarkPreview] = useState<string | null>(null);
+  const watermarkCanvasRef = useRef<HTMLCanvasElement>(null);
 
+  // Load saved watermark from localStorage
   useEffect(() => {
+    const saved = localStorage.getItem("watermark_logo");
+    if (saved) {
+      setWatermarkPreview(saved);
+      setAddWatermark(true);
+    }
+  }, []);
+
+  const handleWatermarkFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setWatermarkFile(file);
+      setWatermarkPreview(dataUrl);
+      localStorage.setItem("watermark_logo", dataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const applyWatermark = async (file: File): Promise<File> => {
+    if (!addWatermark || !watermarkPreview) return file;
+    
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const logo = new Image();
+      
+      img.onload = () => {
+        logo.onload = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext("2d")!;
+          ctx.drawImage(img, 0, 0);
+          
+          // Logo size: 12% of image width, maintain aspect ratio
+          const logoWidth = Math.round(img.width * 0.12);
+          const logoHeight = Math.round(logoWidth * (logo.height / logo.width));
+          const margin = Math.round(img.width * 0.02);
+          
+          // Bottom-right corner
+          const x = img.width - logoWidth - margin;
+          const y = img.height - logoHeight - margin;
+          
+          // Semi-transparent
+          ctx.globalAlpha = 0.7;
+          ctx.drawImage(logo, x, y, logoWidth, logoHeight);
+          ctx.globalAlpha = 1.0;
+          
+          canvas.toBlob((blob) => {
+            if (blob) {
+              resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.png'), { type: 'image/png' }));
+            } else {
+              resolve(file);
+            }
+          }, 'image/png', 0.95);
+        };
+        logo.onerror = () => resolve(file);
+        logo.src = watermarkPreview;
+      };
+      img.onerror = () => resolve(file);
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
+  // Apply watermark to a URL image (for fetched images)
+  const applyWatermarkToUrl = async (imageUrl: string): Promise<string> => {
+    if (!addWatermark || !watermarkPreview) return imageUrl;
+    
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      const logo = new Image();
+      
+      img.onload = () => {
+        logo.onload = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext("2d")!;
+          ctx.drawImage(img, 0, 0);
+          
+          const logoWidth = Math.round(img.width * 0.12);
+          const logoHeight = Math.round(logoWidth * (logo.height / logo.width));
+          const margin = Math.round(img.width * 0.02);
+          const x = img.width - logoWidth - margin;
+          const y = img.height - logoHeight - margin;
+          
+          ctx.globalAlpha = 0.7;
+          ctx.drawImage(logo, x, y, logoWidth, logoHeight);
+          ctx.globalAlpha = 1.0;
+          
+          resolve(canvas.toDataURL('image/png', 0.95));
+        };
+        logo.onerror = () => resolve(imageUrl);
+        logo.src = watermarkPreview;
+      };
+      img.onerror = () => resolve(imageUrl);
+      img.src = imageUrl;
+    });
+  };
     fetchAccounts();
     getCurrentUser();
   }, []);
