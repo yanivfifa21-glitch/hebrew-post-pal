@@ -265,6 +265,7 @@ const GroupListener = () => {
           original_url: post.original_url || "",
           affiliate_link: post.modified_url || null,
           image_url: post.image_url || null,
+          media_type: post.media_type || 'image',
           hebrew_description: post.modified_text || post.original_text || null,
           status: "Scheduled",
           sent_via: "auto",
@@ -439,7 +440,11 @@ const GroupListener = () => {
                     <div className="flex flex-col md:flex-row">
                       {post.image_url && (
                         <div className="w-full md:w-40 h-40 flex-shrink-0 overflow-hidden">
-                          <img src={post.image_url} alt="" className="w-full h-full object-cover" />
+                          {post.media_type === 'video' ? (
+                            <video src={post.image_url} className="w-full h-full object-cover" muted playsInline controls />
+                          ) : (
+                            <img src={post.image_url} alt="" className="w-full h-full object-cover" />
+                          )}
                         </div>
                       )}
                       <div className="flex-1 p-4 space-y-3">

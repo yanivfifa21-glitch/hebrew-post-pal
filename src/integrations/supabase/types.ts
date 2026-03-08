@@ -306,6 +306,7 @@ export type Database = {
           captured_at: string
           id: string
           image_url: string | null
+          media_type: string | null
           modified_text: string | null
           modified_url: string | null
           original_text: string | null
@@ -320,6 +321,7 @@ export type Database = {
           captured_at?: string
           id?: string
           image_url?: string | null
+          media_type?: string | null
           modified_text?: string | null
           modified_url?: string | null
           original_text?: string | null
@@ -334,6 +336,7 @@ export type Database = {
           captured_at?: string
           id?: string
           image_url?: string | null
+          media_type?: string | null
           modified_text?: string | null
           modified_url?: string | null
           original_text?: string | null

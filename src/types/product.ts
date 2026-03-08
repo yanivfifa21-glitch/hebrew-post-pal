@@ -50,6 +50,7 @@ export interface CapturedPost {
   original_url: string | null;
   modified_url: string | null;
   image_url: string | null;
+  media_type?: 'image' | 'video';
   status: 'pending_review' | 'approved' | 'rejected' | 'queued';
   product_id: string | null;
   captured_at: string;
