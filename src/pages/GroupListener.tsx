@@ -673,8 +673,15 @@ const GroupListener = () => {
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
                         <span>📊 נקלטו: {group.captured_count}</span>
+                        <Badge variant="outline" className="text-xs gap-1">
+                          {group.rewrite_mode === "full_rewrite" ? (
+                            <><Sparkles className="h-3 w-3" />ניסוח מחדש + קישור</>
+                          ) : (
+                            <><Link className="h-3 w-3" />קישור שותף בלבד</>
+                          )}
+                        </Badge>
                       </div>
                     </CardContent>
                   </Card>
