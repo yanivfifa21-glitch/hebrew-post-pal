@@ -56,8 +56,8 @@ serve(async (req) => {
       if (!products || products.length === 0) continue;
 
       for (const product of products) {
-        const checkUrl = product.original_url || product.affiliate_link;
-        if (!checkUrl || !isValidHttpUrl(checkUrl)) {
+        const checkUrl = resolveCheckUrl(product.original_url, product.affiliate_link);
+        if (!checkUrl) {
           await supabase
             .from("products")
             .update({
