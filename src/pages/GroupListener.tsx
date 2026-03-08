@@ -94,17 +94,25 @@ const GroupListener = () => {
   const fetchCapturedPosts = async () => {
     setIsLoadingPosts(true);
     try {
-      let query = supabase
-        .from("captured_posts")
-        .select("*, relay_groups(group_name)")
-        .order("captured_at", { ascending: false })
-        .limit(100);
-      if (postFilter !== "all") {
-        query = query.eq("status", postFilter);
+      let allData: any[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        let query = supabase
+          .from("captured_posts")
+          .select("*, relay_groups(group_name)")
+          .order("captured_at", { ascending: false })
+          .range(from, from + pageSize - 1);
+        if (postFilter !== "all") {
+          query = query.eq("status", postFilter);
+        }
+        const { data, error } = await query;
+        if (error) throw error;
+        allData = allData.concat(data || []);
+        if (!data || data.length < pageSize) break;
+        from += pageSize;
       }
-      const { data, error } = await query;
-      if (error) throw error;
-      setCapturedPosts((data || []) as unknown as CapturedPost[]);
+      setCapturedPosts(allData as unknown as CapturedPost[]);
     } catch (e) {
       console.error("Error fetching posts:", e);
     } finally {
