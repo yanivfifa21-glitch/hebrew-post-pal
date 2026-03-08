@@ -361,6 +361,7 @@ export default function ManualSend() {
     setMediaPreview(null);
     setMediaType(null);
     setImageUrlPreview(null);
+    setWatermarkedPreview(null);
   };
 
   const clearForm = () => {
