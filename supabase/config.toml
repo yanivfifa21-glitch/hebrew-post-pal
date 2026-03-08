@@ -47,3 +47,18 @@ verify_jwt = false
 
 [functions.setup-telegram-webhook]
 verify_jwt = false
+
+[functions.get-affiliate-earnings]
+verify_jwt = false
+
+[functions.fetch-affiliate-orders]
+verify_jwt = false
+
+[functions.start-publishing]
+verify_jwt = false
+
+[functions.init-encryption-key]
+verify_jwt = false
+
+[functions.scan-store]
+verify_jwt = false
