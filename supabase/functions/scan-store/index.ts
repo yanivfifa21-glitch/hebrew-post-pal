@@ -144,9 +144,41 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const sellerId = extractSellerId(storeUrl);
+    // Expand short URLs first (a.aliexpress.com, s.click.aliexpress.com)
+    const expandedUrl = await expandShortUrl(storeUrl);
+    console.log("[scan-store] Expanded URL:", expandedUrl);
+
+    let sellerId = extractSellerId(expandedUrl);
+    
+    // If still no seller ID, try to fetch the page and look for store ID in HTML
+    if (!sellerId && expandedUrl.includes("aliexpress.com")) {
+      try {
+        const pageResp = await fetch(expandedUrl, {
+          method: "GET",
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          },
+        });
+        const html = await pageResp.text();
+        // Look for store/seller ID in page HTML
+        const storePatterns = [
+          /storeNum[=:]["']?(\d+)/i,
+          /store\/(\d+)/i,
+          /sellerId[=:]["']?(\d+)/i,
+          /owner_member_id[=:]["']?(\d+)/i,
+          /shopId[=:]["']?(\d+)/i,
+        ];
+        for (const p of storePatterns) {
+          const m = html.match(p);
+          if (m?.[1]) { sellerId = m[1]; break; }
+        }
+      } catch (e) {
+        console.error("[scan-store] Failed to fetch page for store ID:", e);
+      }
+    }
+
     if (!sellerId) {
-      const payload: ApiErr = { success: false, error: "Could not extract seller ID from the URL. Use a store link like: aliexpress.com/store/123456" };
+      const payload: ApiErr = { success: false, error: "לא הצלחנו לזהות מזהה חנות מהקישור. השתמש בקישור ישיר לחנות כמו: aliexpress.com/store/123456" };
       return new Response(JSON.stringify(payload), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
