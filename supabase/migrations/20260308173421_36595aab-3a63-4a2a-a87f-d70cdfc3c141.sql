@@ -1,0 +1,1 @@
+ALTER TABLE public.captured_posts ADD COLUMN IF NOT EXISTS media_type text DEFAULT 'image';
