@@ -48,7 +48,6 @@ type EarningsSummary = {
   paid_earnings: number;
   completed_orders: number;
   completed_earnings: number;
-  clicks: number;
   orders: AffiliateOrder[];
   daily_stats: Record<
     string,
@@ -57,7 +56,6 @@ type EarningsSummary = {
       paid_earnings: number;
       completed_orders: number;
       completed_earnings: number;
-      clicks: number;
     }
   >;
 };
@@ -326,8 +324,8 @@ const EarningsDashboard = () => {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {data.orders.map((order) => (
-                          <TableRow key={order.order_id}>
+                        {data.orders.map((order, idx) => (
+                          <TableRow key={`${order.order_id}_${order.product_id || idx}`}>
                             <TableCell>
                               <div className="flex items-center gap-3">
                                 {order.product_image && (
