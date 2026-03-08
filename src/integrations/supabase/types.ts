@@ -218,18 +218,18 @@ export type Database = {
       encryption_config: {
         Row: {
           created_at: string | null
-          encrypted_key: string
           id: number
+          key_value: string | null
         }
         Insert: {
           created_at?: string | null
-          encrypted_key: string
           id?: number
+          key_value?: string | null
         }
         Update: {
           created_at?: string | null
-          encrypted_key?: string
           id?: number
+          key_value?: string | null
         }
         Relationships: []
       }
@@ -657,6 +657,7 @@ export type Database = {
       is_admin_email: { Args: never; Returns: boolean }
       is_email_authorized: { Args: { check_email: string }; Returns: boolean }
       is_me_authorized: { Args: never; Returns: boolean }
+      set_encryption_key: { Args: { p_key: string }; Returns: undefined }
       update_account_credentials: {
         Args: {
           p_account_id: string
@@ -679,10 +680,6 @@ export type Database = {
           p_telegram_chat_id?: string
         }
         Returns: Json
-      }
-      update_vault_encryption_key: {
-        Args: { p_key: string }
-        Returns: undefined
       }
     }
     Enums: {
