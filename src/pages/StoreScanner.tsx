@@ -380,12 +380,12 @@ const StoreScanner = () => {
                         )}
                         {product.rating > 0 && (
                           <span className="flex items-center gap-0.5">
-                            <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                            <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
                             {product.rating.toFixed(1)}
                           </span>
                         )}
                         {(product.commission_rate || 0) > 0 && (
-                          <span className="text-emerald-500 font-medium">
+                          <span className="text-primary font-medium">
                             {product.commission_rate}%
                           </span>
                         )}
