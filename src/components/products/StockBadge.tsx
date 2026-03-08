@@ -44,8 +44,14 @@ export const StockBadge = ({ product, onStockChecked, showCheckButton = true }: 
       if (error) throw error;
       onStockChecked?.(product.id, data.status);
       toast({
-        title: data.status === "available" ? "✅ במלאי" : data.status === "unavailable" ? "❌ אזל מהמלאי" : "⚠️ שגיאה בבדיקה",
-        description: data.reason || undefined,
+        title:
+          data.status === "available"
+            ? "✅ במלאי"
+            : data.status === "unavailable"
+              ? "❌ אזל מהמלאי"
+              : data.status === "unchecked"
+                ? "⚪ לא נבדק"
+                : "⚠️ שגיאה בבדיקה",
       });
     } catch {
       toast({ title: "שגיאה בבדיקת מלאי", variant: "destructive" });
