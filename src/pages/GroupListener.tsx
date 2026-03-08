@@ -268,12 +268,33 @@ const GroupListener = () => {
     }
   };
 
-  const handleApprovePost = async (post: CapturedPost) => {
+  const handleApprovePost = async (post: CapturedPost, useOriginalText = false) => {
     setIsApproving(post.id);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
-      const productTitle = (post.modified_text || post.original_text || "").substring(0, 100) || "Captured Product";
+
+      const chosenText = useOriginalText
+        ? post.original_text || ""
+        : (post.modified_text || post.original_text || "");
+
+      // If using original text, replace the original link with the affiliate link
+      let finalText = chosenText;
+      if (useOriginalText && post.original_url && post.modified_url) {
+        finalText = chosenText.replace(post.original_url, post.modified_url);
+        // Also try replacing short links that might differ
+        const shortLinkRegex = /https?:\/\/s\.click\.aliexpress\.com\/e\/[^\s\n"<>]+/gi;
+        if (!finalText.includes(post.modified_url)) {
+          finalText = finalText.replace(shortLinkRegex, post.modified_url);
+        }
+        // Also replace any aliexpress product links
+        const aliLinkRegex = /https?:\/\/[^\s\n"<>]*aliexpress\.com\/item\/[^\s\n"<>]+/gi;
+        if (!finalText.includes(post.modified_url)) {
+          finalText = finalText.replace(aliLinkRegex, post.modified_url);
+        }
+      }
+
+      const productTitle = finalText.substring(0, 100) || "Captured Product";
       const { data: product, error: productError } = await supabase
         .from("products")
         .insert({
@@ -283,7 +304,7 @@ const GroupListener = () => {
           affiliate_link: post.modified_url || null,
           image_url: post.image_url || null,
           media_type: post.media_type || 'image',
-          hebrew_description: post.modified_text || post.original_text || null,
+          hebrew_description: finalText || null,
           status: "Scheduled",
           sent_via: "auto",
         })
@@ -297,7 +318,7 @@ const GroupListener = () => {
       setCapturedPosts((prev) => prev.map((p) =>
         p.id === post.id ? { ...p, status: "queued" as const, product_id: product.id } : p
       ));
-      toast({ title: "✅ אושר והועבר לתור" });
+      toast({ title: useOriginalText ? "✅ אושר עם טקסט מקורי + קישור חדש" : "✅ אושר עם ניסוח מחדש" });
     } catch {
       toast({ title: "שגיאה באישור", variant: "destructive" });
     } finally {
@@ -504,9 +525,15 @@ const GroupListener = () => {
                         </div>
                         {post.status === "pending_review" && (
                           <div className="flex gap-2 flex-wrap">
-                            <Button variant="gradient" size="sm" onClick={() => handleApprovePost(post)} disabled={isApproving === post.id} className="gap-1">
-                              {isApproving === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                              אשר והוסף לתור
+                            {post.modified_text && post.modified_text !== post.original_text && (
+                              <Button variant="gradient" size="sm" onClick={() => handleApprovePost(post, false)} disabled={isApproving === post.id} className="gap-1">
+                                {isApproving === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                                אשר ניסוח מחדש
+                              </Button>
+                            )}
+                            <Button variant={post.modified_text && post.modified_text !== post.original_text ? "outline" : "gradient"} size="sm" onClick={() => handleApprovePost(post, true)} disabled={isApproving === post.id} className="gap-1">
+                              {isApproving === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Link className="h-3 w-3" />}
+                              {post.modified_text && post.modified_text !== post.original_text ? "מקורי + קישור חדש" : "אשר והוסף לתור"}
                             </Button>
                             <Button variant="outline" size="sm" onClick={() => { setEditingPost(post); setEditText(post.modified_text || post.original_text || ""); setEditUrl(post.modified_url || post.original_url || ""); }} className="gap-1">
                               <Edit className="h-3 w-3" />
