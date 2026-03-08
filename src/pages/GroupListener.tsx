@@ -653,14 +653,12 @@ const GroupListener = () => {
                             </Button>
                           </div>
                         )}
-                        {(post.status === "queued" || post.status === "approved") && (
-                          <div className="flex gap-2 flex-wrap">
-                            <Button variant="gradient" size="sm" onClick={() => openSendDialog(post)} disabled={sendingPostId === post.id} className="gap-1">
-                              {sendingPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                              שלח לקבוצות + הוסף לאוטומט
-                            </Button>
-                          </div>
-                        )}
+                        <div className="flex gap-2 flex-wrap">
+                          <Button variant="outline" size="sm" onClick={() => openSendDialog(post)} disabled={sendingPostId === post.id} className="gap-1">
+                            {sendingPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                            שלח והוסף לתור
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </Card>
