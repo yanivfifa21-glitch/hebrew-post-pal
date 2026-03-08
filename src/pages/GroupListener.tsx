@@ -478,18 +478,8 @@ const GroupListener = () => {
     }
   };
 
-  const handleBulkAddToQueue = async () => {
-    const posts = capturedPosts.filter(p => selectedPostIds.has(p.id));
-    if (posts.length === 0) return;
-    setIsBulkProcessing(true);
-    let count = 0;
-    for (const post of posts) {
-      try { await handleAddToQueue(post); count++; } catch {}
-    }
-    setIsBulkProcessing(false);
-    setSelectedPostIds(new Set());
-    toast({ title: `✅ ${count} פוסטים נוספו לתור` });
-  };
+
+
 
   const togglePostSelection = (postId: string) => {
     setSelectedPostIds(prev => {
