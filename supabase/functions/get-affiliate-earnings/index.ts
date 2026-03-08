@@ -137,7 +137,7 @@ async function fetchOrdersByStatus(
     const params: Record<string, string> = {
       method: "aliexpress.affiliate.order.list",
       app_key: appKey,
-      sign_method: "hmac-sha256",
+      sign_method: "md5",
       timestamp,
       format: "json",
       v: "2.0",
