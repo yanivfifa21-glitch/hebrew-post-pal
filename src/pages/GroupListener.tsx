@@ -50,7 +50,7 @@ const GroupListener = () => {
   const [editText, setEditText] = useState("");
   const [editUrl, setEditUrl] = useState("");
   const [isApproving, setIsApproving] = useState<string | null>(null);
-  const [isBulkApproving, setIsBulkApproving] = useState(false);
+  
   const [settingUpWebhook, setSettingUpWebhook] = useState<string | null>(null);
   const [showBotToken, setShowBotToken] = useState<Record<string, boolean>>({});
   const [editingGroup, setEditingGroup] = useState<RelayGroup | null>(null);
