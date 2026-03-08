@@ -209,12 +209,13 @@ async function processMessage(supabase: any, supabaseUrl: string, message: any, 
         const imgResp = await fetch(downloadUrl);
 
         if (imgResp.ok) {
-          const imgBlob = await imgResp.blob();
+          const imgArrayBuffer = await imgResp.arrayBuffer();
+          const imgUint8 = new Uint8Array(imgArrayBuffer);
           const filename = `captured/${crypto.randomUUID()}.jpg`;
 
           const { error: uploadError } = await supabase.storage
             .from("product-images")
-            .upload(filename, imgBlob, { contentType: "image/jpeg", upsert: true });
+            .upload(filename, imgUint8, { contentType: "image/jpeg", upsert: true });
 
           if (!uploadError) {
             const { data: urlData } = supabase.storage.from("product-images").getPublicUrl(filename);
