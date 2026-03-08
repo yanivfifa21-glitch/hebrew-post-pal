@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -24,7 +24,8 @@ import {
   Eye,
   AlertCircle,
   Sparkles,
-  MapPin
+  MapPin,
+  Stamp
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -83,7 +84,114 @@ export default function ManualSend() {
   const [isRewritingWithAffiliate, setIsRewritingWithAffiliate] = useState(false);
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
   const [fetchedProductStats, setFetchedProductStats] = useState<{ orders_count?: number; rating?: number } | null>(null);
+  const [addWatermark, setAddWatermark] = useState(false);
+  const [watermarkFile, setWatermarkFile] = useState<File | null>(null);
+  const [watermarkPreview, setWatermarkPreview] = useState<string | null>(null);
+  const watermarkCanvasRef = useRef<HTMLCanvasElement>(null);
 
+  // Load saved watermark from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("watermark_logo");
+    if (saved) {
+      setWatermarkPreview(saved);
+      setAddWatermark(true);
+    }
+  }, []);
+
+  const handleWatermarkFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setWatermarkFile(file);
+      setWatermarkPreview(dataUrl);
+      localStorage.setItem("watermark_logo", dataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const applyWatermark = async (file: File): Promise<File> => {
+    if (!addWatermark || !watermarkPreview) return file;
+    
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const logo = new Image();
+      
+      img.onload = () => {
+        logo.onload = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext("2d")!;
+          ctx.drawImage(img, 0, 0);
+          
+          // Logo size: 12% of image width, maintain aspect ratio
+          const logoWidth = Math.round(img.width * 0.12);
+          const logoHeight = Math.round(logoWidth * (logo.height / logo.width));
+          const margin = Math.round(img.width * 0.02);
+          
+          // Bottom-right corner
+          const x = img.width - logoWidth - margin;
+          const y = img.height - logoHeight - margin;
+          
+          // Semi-transparent
+          ctx.globalAlpha = 0.7;
+          ctx.drawImage(logo, x, y, logoWidth, logoHeight);
+          ctx.globalAlpha = 1.0;
+          
+          canvas.toBlob((blob) => {
+            if (blob) {
+              resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.png'), { type: 'image/png' }));
+            } else {
+              resolve(file);
+            }
+          }, 'image/png', 0.95);
+        };
+        logo.onerror = () => resolve(file);
+        logo.src = watermarkPreview;
+      };
+      img.onerror = () => resolve(file);
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
+  // Apply watermark to a URL image (for fetched images)
+  const applyWatermarkToUrl = async (imageUrl: string): Promise<string> => {
+    if (!addWatermark || !watermarkPreview) return imageUrl;
+    
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      const logo = new Image();
+      
+      img.onload = () => {
+        logo.onload = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext("2d")!;
+          ctx.drawImage(img, 0, 0);
+          
+          const logoWidth = Math.round(img.width * 0.12);
+          const logoHeight = Math.round(logoWidth * (logo.height / logo.width));
+          const margin = Math.round(img.width * 0.02);
+          const x = img.width - logoWidth - margin;
+          const y = img.height - logoHeight - margin;
+          
+          ctx.globalAlpha = 0.7;
+          ctx.drawImage(logo, x, y, logoWidth, logoHeight);
+          ctx.globalAlpha = 1.0;
+          
+          resolve(canvas.toDataURL('image/png', 0.95));
+        };
+        logo.onerror = () => resolve(imageUrl);
+        logo.src = watermarkPreview;
+      };
+      img.onerror = () => resolve(imageUrl);
+      img.src = imageUrl;
+    });
+  };
   useEffect(() => {
     fetchAccounts();
     getCurrentUser();
@@ -288,12 +396,18 @@ export default function ManualSend() {
 
   const uploadMediaToStorage = async (file: File): Promise<string | null> => {
     try {
-      const fileExt = file.name.split('.').pop();
+      // Apply watermark if enabled and file is an image
+      let fileToUpload = file;
+      if (file.type.startsWith("image/")) {
+        fileToUpload = await applyWatermark(file);
+      }
+      
+      const fileExt = fileToUpload.name.split('.').pop();
       const fileName = `manual-send/${userId}/${Date.now()}.${fileExt}`;
       
       const { error: uploadError } = await supabase.storage
         .from("product-images")
-        .upload(fileName, file, { upsert: true });
+        .upload(fileName, fileToUpload, { upsert: true });
 
       if (uploadError) throw uploadError;
 
@@ -381,10 +495,25 @@ export default function ManualSend() {
       return url;
     }
     if (imageUrlPreview) {
+      // Apply watermark to URL-based images
+      if (addWatermark && watermarkPreview) {
+        try {
+          const watermarkedDataUrl = await applyWatermarkToUrl(imageUrlPreview);
+          if (watermarkedDataUrl.startsWith("data:")) {
+            // Convert data URL to blob and upload
+            const res = await fetch(watermarkedDataUrl);
+            const blob = await res.blob();
+            const file = new File([blob], `watermarked-${Date.now()}.png`, { type: "image/png" });
+            const url = await uploadMediaToStorage(file);
+            return url || imageUrlPreview;
+          }
+        } catch (e) {
+          console.warn("Watermark failed for URL image, using original:", e);
+        }
+      }
       return imageUrlPreview;
     }
     if (mediaFiles.length > 0) {
-      // Return first image URL for single-image contexts
       const url = await uploadMediaToStorage(mediaFiles[0]);
       if (!url) throw new Error("Failed to upload media");
       return url;
@@ -1115,6 +1244,52 @@ export default function ManualSend() {
                     </div>
                   )}
                 </div>
+
+                {/* Watermark Toggle */}
+                <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/30">
+                  <div className="flex items-center gap-2">
+                    <Stamp className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <Label className="font-hebrew text-sm cursor-pointer">חותמת מים (לוגו)</Label>
+                      <p className="text-xs text-muted-foreground font-hebrew">הוסף לוגו בפינה הימנית התחתונה</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {watermarkPreview && (
+                      <img src={watermarkPreview} alt="Logo" className="h-6 w-6 rounded object-contain" />
+                    )}
+                    <Switch checked={addWatermark} onCheckedChange={(v) => {
+                      setAddWatermark(v);
+                      if (v && !watermarkPreview) {
+                        document.getElementById("watermark-input")?.click();
+                      }
+                    }} />
+                  </div>
+                </div>
+                {addWatermark && (
+                  <div className="flex items-center gap-2">
+                    <label className="cursor-pointer">
+                      <input id="watermark-input" type="file" accept="image/*" className="hidden" onChange={handleWatermarkFileChange} />
+                      <Button variant="outline" size="sm" asChild>
+                        <span className="flex items-center gap-2">
+                          <ImageIcon className="h-4 w-4" />
+                          <span className="font-hebrew">{watermarkPreview ? "החלף לוגו" : "בחר לוגו"}</span>
+                        </span>
+                      </Button>
+                    </label>
+                    {watermarkPreview && (
+                      <Button variant="ghost" size="sm" className="text-destructive text-xs" onClick={() => {
+                        setWatermarkPreview(null);
+                        setWatermarkFile(null);
+                        setAddWatermark(false);
+                        localStorage.removeItem("watermark_logo");
+                      }}>
+                        <X className="h-3 w-3 ml-1" />
+                        <span className="font-hebrew">הסר</span>
+                      </Button>
+                    )}
+                  </div>
+                )}
 
                 {/* Zone Selector */}
                 <ZoneSelector
