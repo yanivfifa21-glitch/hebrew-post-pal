@@ -110,7 +110,28 @@ async function processMessage(supabase: any, supabaseUrl: string, message: any, 
   // Extract text
   const text = message.caption || message.text || "";
   const urls = extractUrls(text);
-  const aliUrl = urls.find((u: string) => /aliexpress/i.test(u)) || urls[0] || null;
+
+  // Rule: exactly one link per post; skip posts with zero/multiple links
+  if (urls.length !== 1) {
+    return new Response(JSON.stringify({
+      ok: true,
+      skipped: urls.length === 0 ? "no_links_in_post" : "multiple_links_in_post",
+      urlCount: urls.length,
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const aliUrl = urls[0];
+  if (!isAliExpressUrl(aliUrl)) {
+    return new Response(JSON.stringify({
+      ok: true,
+      skipped: "link_is_not_aliexpress",
+      url: aliUrl,
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   // Download photo if present
   let imageUrl: string | null = null;
