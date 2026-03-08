@@ -720,6 +720,72 @@ export default function ManualSend() {
     }
   };
 
+  // Action: Send Now + Add to Automation Queue
+  const handleSendAndAddToAutomation = async () => {
+    if (!message.trim() && !hasMedia) {
+      toast({ title: "נא להזין הודעה או להעלות מדיה", variant: "destructive" });
+      return;
+    }
+    if (selectedAccounts.length === 0) {
+      toast({ title: "נא לבחור לפחות קבוצה אחת", variant: "destructive" });
+      return;
+    }
+    if (!userId) {
+      toast({ title: "לא מחובר", variant: "destructive" });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const mediaUrl = await resolveMediaUrl();
+      const albumUrls = await resolveAlbumUrls();
+
+      // 1. Send immediately to selected accounts
+      const results = await sendToAccounts(message, mediaUrl, selectedAccounts, albumUrls);
+
+      // 2. Add to automation queue (products table)
+      const { data: productData, error: productError } = await supabase.from("products").insert({
+        user_id: userId,
+        original_url: "manual-entry",
+        title: message.trim().substring(0, 100) || "פוסט ידני",
+        hebrew_description: message.trim() || null,
+        image_url: mediaUrl,
+        media_type: effectiveMediaType || "image",
+        status: "Scheduled",
+        sent_via: "manual",
+        ...(fetchedProductStats?.orders_count ? { orders_count: fetchedProductStats.orders_count } : {}),
+        ...(fetchedProductStats?.rating ? { rating: fetchedProductStats.rating } : {}),
+      }).select("id").single();
+
+      if (productError) throw productError;
+
+      // Assign to zones if selected
+      if (selectedZones.length > 0 && productData) {
+        const zoneInserts = selectedZones.map(zoneId => ({
+          zone_id: zoneId,
+          product_id: productData.id,
+          status: "Scheduled",
+        }));
+        await supabase.from("zone_products").insert(zoneInserts);
+      }
+
+      if (results.success > 0) {
+        toast({
+          title: `נשלח ל-${results.success} קבוצות + נוסף לאוטומט`,
+          description: results.failed > 0 ? `${results.failed} שליחות נכשלו` : undefined
+        });
+        clearForm();
+      } else {
+        toast({ title: "השליחה נכשלה, אך הפוסט נוסף לאוטומט", variant: "destructive" });
+      }
+    } catch (error) {
+      console.error("Error in send+automation:", error);
+      toast({ title: "שגיאה", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Action: Add to Zone Only (zone_products only, no general queue)
   const handleAddToZoneOnly = async () => {
     if (!message.trim() && !hasMedia) {
@@ -1318,10 +1384,21 @@ export default function ManualSend() {
                       <span className="font-hebrew">תצוגה מקדימה</span>
                     </Button>
                   </div>
+
+                  {/* Send + Add to Automation */}
+                  <Button
+                    variant="secondary"
+                    onClick={handleSendAndAddToAutomation}
+                    disabled={loading || (!message.trim() && !hasMedia) || selectedAccounts.length === 0}
+                    className="w-full"
+                  >
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Send className="h-4 w-4" /><Clock className="h-4 w-4" /></>}
+                    <span className="font-hebrew">שלח והוסף לאוטומט</span>
+                  </Button>
                   
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     <Button
-                      variant="secondary"
+                      variant="outline"
                       onClick={handleAddToManualQueue}
                       disabled={loading || (!message.trim() && !hasMedia)}
                       className="text-xs sm:text-sm"
