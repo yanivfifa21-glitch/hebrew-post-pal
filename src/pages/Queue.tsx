@@ -420,6 +420,19 @@ const Queue = () => {
               )}
               ✨ Enhance ({selectedProducts.size})
             </Button>
+            <Button
+              variant="outline"
+              onClick={handleCheckAllStock}
+              disabled={isCheckingAllStock || scheduledProducts.length === 0}
+              className="gap-2"
+            >
+              {isCheckingAllStock ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <PackageSearch className="h-4 w-4" />
+              )}
+              בדוק מלאי ({scheduledProducts.length})
+            </Button>
           </div>
         </div>
 
