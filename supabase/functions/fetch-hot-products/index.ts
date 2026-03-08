@@ -105,6 +105,9 @@ serve(async (req) => {
     const source: ProductSource = body?.source || "hot";
     // For smart_match, optional product IDs
     const matchProductIds = String(body?.matchProductIds || "").trim();
+    // For campaign_products: specific campaign name to fetch products for
+    const campaignName = String(body?.campaignName || "").trim();
+    const campaignDbId = String(body?.campaignId || "").trim();
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
