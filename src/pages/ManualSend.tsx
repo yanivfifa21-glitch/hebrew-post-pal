@@ -396,12 +396,18 @@ export default function ManualSend() {
 
   const uploadMediaToStorage = async (file: File): Promise<string | null> => {
     try {
-      const fileExt = file.name.split('.').pop();
+      // Apply watermark if enabled and file is an image
+      let fileToUpload = file;
+      if (file.type.startsWith("image/")) {
+        fileToUpload = await applyWatermark(file);
+      }
+      
+      const fileExt = fileToUpload.name.split('.').pop();
       const fileName = `manual-send/${userId}/${Date.now()}.${fileExt}`;
       
       const { error: uploadError } = await supabase.storage
         .from("product-images")
-        .upload(fileName, file, { upsert: true });
+        .upload(fileName, fileToUpload, { upsert: true });
 
       if (uploadError) throw uploadError;
 
