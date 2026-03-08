@@ -290,6 +290,7 @@ const Queue = () => {
     let checked = 0;
     let unavailable = 0;
     let skipped = 0;
+    let failed = 0;
 
     const isValidHttpUrl = (value: string | null | undefined) => {
       if (!value) return false;
@@ -301,45 +302,60 @@ const Queue = () => {
       }
     };
 
-    const validProducts = scheduledProducts.filter(p => isValidHttpUrl(p.affiliate_link || p.original_url));
-    skipped = scheduledProducts.length - validProducts.length;
-    setStockCheckTotal(validProducts.length);
-    setStockCheckProgress(0);
+    try {
+      const validProducts = scheduledProducts.filter((p) => isValidHttpUrl(p.affiliate_link || p.original_url));
+      skipped = scheduledProducts.length - validProducts.length;
+      setStockCheckTotal(validProducts.length);
+      setStockCheckProgress(0);
 
-    // Process in parallel batches of 5
-    const BATCH_SIZE = 5;
-    for (let i = 0; i < validProducts.length; i += BATCH_SIZE) {
-      const batch = validProducts.slice(i, i + BATCH_SIZE);
-      const results = await Promise.allSettled(
-        batch.map(async (product) => {
-          const checkUrl = product.affiliate_link || product.original_url;
-          const { data } = await supabase.functions.invoke("check-product-stock", {
-            body: { productId: product.id, url: checkUrl },
-          });
-          return { productId: product.id, data };
-        })
-      );
+      // Process in parallel batches of 5
+      const BATCH_SIZE = 5;
+      for (let i = 0; i < validProducts.length; i += BATCH_SIZE) {
+        const batch = validProducts.slice(i, i + BATCH_SIZE);
+        const results = await Promise.allSettled(
+          batch.map(async (product) => {
+            const checkUrl = product.affiliate_link || product.original_url;
+            const { data, error } = await supabase.functions.invoke("check-product-stock", {
+              body: { productId: product.id, url: checkUrl },
+            });
+            return { productId: product.id, data, error };
+          })
+        );
 
-      for (const result of results) {
-        if (result.status === "fulfilled" && result.value.data?.status) {
-          handleStockChecked(result.value.productId, result.value.data.status);
-          checked++;
-          if (result.value.data.status === "unavailable") unavailable++;
+        for (const result of results) {
+          if (result.status !== "fulfilled") {
+            failed++;
+            continue;
+          }
+
+          if (result.value.error) {
+            failed++;
+            continue;
+          }
+
+          if (result.value.data?.status) {
+            handleStockChecked(result.value.productId, result.value.data.status);
+            checked++;
+            if (result.value.data.status === "unavailable") unavailable++;
+          }
         }
-      }
-      setStockCheckProgress(Math.min(i + BATCH_SIZE, validProducts.length));
-    }
 
-    setIsCheckingAllStock(false);
-    setStockCheckProgress(0);
-    setStockCheckTotal(0);
-    toast({
-      title: `✅ נבדקו ${checked} מוצרים`,
-      description: [
-        unavailable > 0 ? `${unavailable} אזלו מהמלאי` : "",
-        skipped > 0 ? `${skipped} דולגו (קישור לא תקין)` : "",
-      ].filter(Boolean).join(" • ") || "הכל במלאי!",
-    });
+        setStockCheckProgress(Math.min(i + BATCH_SIZE, validProducts.length));
+      }
+
+      toast({
+        title: `✅ נבדקו ${checked} מוצרים`,
+        description: [
+          unavailable > 0 ? `${unavailable} אזלו מהמלאי` : "",
+          skipped > 0 ? `${skipped} דולגו (קישור לא תקין)` : "",
+          failed > 0 ? `${failed} נכשלו (שגיאת תקשורת)` : "",
+        ].filter(Boolean).join(" • ") || "הכל במלאי!",
+      });
+    } finally {
+      setIsCheckingAllStock(false);
+      setStockCheckProgress(0);
+      setStockCheckTotal(0);
+    }
   };
 
   const scheduledProducts = products.filter((p) => p.status === "Scheduled");
