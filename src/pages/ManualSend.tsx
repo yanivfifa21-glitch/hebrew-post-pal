@@ -1084,11 +1084,16 @@ export default function ManualSend() {
         <div className="space-y-4">
           {/* Media Preview */}
           {effectiveMediaPreview && (
-            <div className="rounded-lg overflow-hidden border border-border">
+            <div className="rounded-lg overflow-hidden border border-border relative">
               {effectiveMediaType === "video" ? (
                 <video src={effectiveMediaPreview} className="w-full max-h-64" controls />
               ) : (
-                <img src={effectiveMediaPreview} alt="Preview" className="w-full object-contain max-h-64" />
+                <img src={displayMediaPreview || effectiveMediaPreview} alt="Preview" className="w-full object-contain max-h-64" />
+              )}
+              {addWatermark && watermarkedPreview && effectiveMediaType !== "video" && (
+                <Badge variant="secondary" className="absolute top-2 left-2 text-xs font-hebrew">
+                  <Stamp className="h-3 w-3 mr-1" /> עם לוגו
+                </Badge>
               )}
             </div>
           )}
