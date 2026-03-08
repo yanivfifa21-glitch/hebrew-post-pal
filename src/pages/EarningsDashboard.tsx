@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,8 +13,9 @@ import {
 } from "@/components/ui/tooltip";
 import {
   DollarSign, ShoppingCart, CheckCircle2, TrendingUp, RefreshCw,
-  Calendar, Package, AlertTriangle, Loader2, Plus,
+  Calendar, Package, AlertTriangle, Loader2, Plus, Trophy,
 } from "lucide-react";
+
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { formatProductLink } from "@/lib/ctaUtils";
@@ -103,6 +104,31 @@ const EarningsDashboard = () => {
   const summary = data?.summary;
   const orders = data?.orders || [];
   const spinning = isLoading || isFetching;
+
+  // Aggregate top 5 best-selling products by total sales (item_count) across orders
+  const topProducts = useMemo(() => {
+    const map = new Map<string, { product_id: string; product_title: string; total_sales: number; total_commission: number; total_amount: number }>();
+    for (const o of orders) {
+      if (!o.product_id) continue;
+      const existing = map.get(o.product_id);
+      if (existing) {
+        existing.total_sales += o.item_count;
+        existing.total_commission += o.commission;
+        existing.total_amount += o.paid_amount;
+      } else {
+        map.set(o.product_id, {
+          product_id: o.product_id,
+          product_title: o.product_title,
+          total_sales: o.item_count,
+          total_commission: o.commission,
+          total_amount: o.paid_amount,
+        });
+      }
+    }
+    return Array.from(map.values())
+      .sort((a, b) => b.total_sales - a.total_sales)
+      .slice(0, 5);
+  }, [orders]);
 
   const handleAddToQueue = async (order: OrderItem) => {
     if (!order.product_id || addingProductIds.has(order.product_id)) return;
@@ -286,6 +312,82 @@ const EarningsDashboard = () => {
                 highlight
               />
             </div>
+
+            {/* Top 5 Best Sellers */}
+            {topProducts.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Trophy className="h-5 w-5 text-primary" />
+                    טופ 5 מוצרים הכי נמכרים
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                    {topProducts.map((tp, idx) => {
+                      const isAdding = addingProductIds.has(tp.product_id);
+                      const aliUrl = buildAliUrl(tp.product_id);
+                      const orderForQueue: OrderItem = {
+                        order_number: "",
+                        product_title: tp.product_title,
+                        product_id: tp.product_id,
+                        paid_amount: tp.total_amount,
+                        commission: tp.total_commission,
+                        finished_commission: 0,
+                        status: "",
+                        created_time: "",
+                        item_count: tp.total_sales,
+                      };
+
+                      return (
+                        <Card key={tp.product_id} className="relative overflow-hidden border-muted">
+                          <div className="absolute top-2 right-2 bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
+                            {idx + 1}
+                          </div>
+                          <CardContent className="pt-8 pb-3 px-3 space-y-2">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <a
+                                  href={aliUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs font-medium text-primary hover:underline line-clamp-2 block leading-tight"
+                                >
+                                  {tp.product_title || `מוצר #${tp.product_id}`}
+                                </a>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs text-xs">
+                                {tp.product_title}
+                              </TooltipContent>
+                            </Tooltip>
+
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                              <span>{tp.total_sales} מכירות</span>
+                              <span className="text-success font-semibold">${tp.total_commission.toFixed(2)}</span>
+                            </div>
+
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full h-7 text-xs gap-1"
+                              disabled={isAdding}
+                              onClick={() => handleAddToQueue(orderForQueue)}
+                            >
+                              {isAdding ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Plus className="h-3 w-3" />
+                              )}
+                              הוסף למחסנית
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Orders Table */}
             <Card>
