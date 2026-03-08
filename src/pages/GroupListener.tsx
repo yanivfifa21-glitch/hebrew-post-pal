@@ -334,32 +334,37 @@ const GroupListener = () => {
     const hasRewrite = !!(post.modified_text && post.modified_text !== post.original_text);
     const choice = textChoice[post.id] || (hasRewrite ? 'rewrite' : 'original');
 
-    // Rewrite mode: modified_text already contains the affiliate link — use as-is
     if (choice === 'rewrite') {
       return post.modified_text || post.original_text || "";
     }
 
-    // Original mode: replace ALL AliExpress links with the affiliate link
-    let finalText = post.original_text || "";
-    if (post.modified_url) {
-      // Match any AliExpress-related URL (short links, item links, general ali links)
-      const aliLinkRegex = /https?:\/\/[^\s\n"<>]*(?:aliexpress\.com|a\.aliexpress\.com|s\.click\.aliexpress\.com)[^\s\n"<>]*/gi;
-      // Replace ALL occurrences with the single affiliate link
-      let replaced = false;
-      finalText = finalText.replace(aliLinkRegex, (match) => {
-        if (!replaced) {
-          replaced = true;
-          return post.modified_url!;
-        }
-        // Remove duplicate links entirely
-        return post.modified_url!;
-      });
-      // If the original_url is a non-ali link that was tracked, replace it too
-      if (post.original_url && finalText.includes(post.original_url) && post.original_url !== post.modified_url) {
-        finalText = finalText.replace(post.original_url, post.modified_url);
+    const baseText = post.original_text || "";
+    if (!post.modified_url) return baseText;
+
+    const normalizedOriginal = (post.original_url || "")
+      .replace(/[),.!?;:]+$/g, "")
+      .toLowerCase();
+
+    const replacedText = baseText.replace(/https?:\/\/[^\s\n"'<>]+/gi, (rawUrl) => {
+      const trailingMatch = rawUrl.match(/[),.!?;:]+$/);
+      const trailing = trailingMatch ? trailingMatch[0] : "";
+      const cleanUrl = trailing ? rawUrl.slice(0, -trailing.length) : rawUrl;
+      const normalizedClean = cleanUrl.toLowerCase();
+
+      const isAliExpressUrl =
+        /(?:^|\/\/)(?:[^/]+\.)?aliexpress\.com\b/i.test(cleanUrl) ||
+        /(?:^|\/\/)(?:[^/]+\.)?s\.click\.aliexpress\.com\b/i.test(cleanUrl);
+
+      const isOriginalUrl = normalizedOriginal && normalizedClean === normalizedOriginal;
+
+      if (isAliExpressUrl || isOriginalUrl) {
+        return `${post.modified_url}${trailing}`;
       }
-    }
-    return finalText;
+
+      return rawUrl;
+    });
+
+    return replacedText;
   };
 
   const handleAddToQueue = async (posts: CapturedPost | CapturedPost[]) => {
