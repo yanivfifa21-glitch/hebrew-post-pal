@@ -5,7 +5,23 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Check, X, UserCheck, Clock } from "lucide-react";
+import { Loader2, Check, X, UserCheck, Clock, Trash2, ShieldOff, KeyRound, MoreVertical } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "@/hooks/use-toast";
 
 interface PendingUser {
@@ -21,6 +37,7 @@ const Admin = () => {
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; type: string; userId: string; email: string }>({ open: false, type: "", userId: "", email: "" });
 
   const checkIsAdmin = async (): Promise<boolean> => {
     const { data, error } = await supabase.rpc("is_admin");
@@ -121,6 +138,50 @@ const Admin = () => {
     setProcessingId(null);
   };
 
+  const handleRevokeAccess = async (userId: string, email: string) => {
+    setProcessingId(userId);
+    const { error } = await supabase
+      .from("authorized_users")
+      .update({ status: "revoked" })
+      .eq("id", userId);
+
+    if (error) {
+      toast({ title: "שגיאה", description: "לא ניתן לבטל גישה.", variant: "destructive" });
+    } else {
+      toast({ title: "הגישה בוטלה", description: `${email} כבר לא יכול להיכנס.` });
+      await fetchPendingUsers();
+    }
+    setProcessingId(null);
+  };
+
+  const handleDeleteUser = async (userId: string, email: string) => {
+    setProcessingId(userId);
+    const { error } = await supabase
+      .from("authorized_users")
+      .delete()
+      .eq("id", userId);
+
+    if (error) {
+      toast({ title: "שגיאה", description: "לא ניתן למחוק משתמש.", variant: "destructive" });
+    } else {
+      toast({ title: "משתמש נמחק", description: `${email} הוסר מהמערכת.` });
+      await fetchPendingUsers();
+    }
+    setProcessingId(null);
+  };
+
+  const handleSendPasswordReset = async (email: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+
+    if (error) {
+      toast({ title: "שגיאה", description: "לא ניתן לשלוח מייל איפוס.", variant: "destructive" });
+    } else {
+      toast({ title: "נשלח!", description: `מייל איפוס סיסמה נשלח ל-${email}` });
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -134,7 +195,8 @@ const Admin = () => {
   }
 
   const pending = pendingUsers.filter(u => u.status === "pending");
-  const approved = pendingUsers.filter(u => u.status === "approved");
+  const approved = pendingUsers.filter(u => u.status === "approved" || u.status === "active");
+  const revoked = pendingUsers.filter(u => u.status === "revoked");
 
   return (
     <MainLayout>
@@ -230,15 +292,127 @@ const Admin = () => {
                         {new Date(user.created_at).toLocaleDateString()}
                       </p>
                     </div>
-                    <Badge variant="secondary" className="bg-green-500/20 text-green-600">
-                      Approved
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="bg-green-500/20 text-green-600">
+                        Approved
+                      </Badge>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleSendPasswordReset(user.email)}>
+                            <KeyRound className="h-4 w-4 mr-2" />
+                            שלח איפוס סיסמה
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => setConfirmDialog({ open: true, type: "revoke", userId: user.id, email: user.email })}
+                            className="text-yellow-600"
+                          >
+                            <ShieldOff className="h-4 w-4 mr-2" />
+                            בטל גישה
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => setConfirmDialog({ open: true, type: "delete", userId: user.id, email: user.email })}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            מחק משתמש
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
           </CardContent>
         </Card>
+
+        {/* Revoked Users */}
+        {revoked.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldOff className="h-5 w-5 text-yellow-500" />
+                משתמשים חסומים ({revoked.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {revoked.map((user) => (
+                  <div
+                    key={user.id}
+                    className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                  >
+                    <div>
+                      <p className="font-medium">{user.email}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {new Date(user.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-600">
+                        Revoked
+                      </Badge>
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleApprove(user.id, user.email)}
+                          disabled={processingId === user.id}
+                        >
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => setConfirmDialog({ open: true, type: "delete", userId: user.id, email: user.email })}
+                          disabled={processingId === user.id}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Confirm Dialog */}
+        <AlertDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {confirmDialog.type === "delete" ? "מחיקת משתמש" : "ביטול גישה"}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {confirmDialog.type === "delete"
+                  ? `האם אתה בטוח שברצונך למחוק את ${confirmDialog.email}? פעולה זו לא ניתנת לביטול.`
+                  : `האם אתה בטוח שברצונך לבטל את הגישה של ${confirmDialog.email}?`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>ביטול</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (confirmDialog.type === "delete") {
+                    handleDeleteUser(confirmDialog.userId, confirmDialog.email);
+                  } else {
+                    handleRevokeAccess(confirmDialog.userId, confirmDialog.email);
+                  }
+                }}
+                className={confirmDialog.type === "delete" ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+              >
+                {confirmDialog.type === "delete" ? "מחק" : "בטל גישה"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </MainLayout>
   );
