@@ -45,7 +45,6 @@ const GroupListener = () => {
   useEffect(() => {
     fetchGroups();
     fetchCapturedPosts();
-    fetchSettings();
     const cleanup = setupRealtime();
     return cleanup;
   }, []);
