@@ -164,6 +164,7 @@ serve(async (req) => {
 async function processMessage(supabase: any, supabaseUrl: string, message: any, relayGroup: any) {
   const userId = relayGroup.user_id;
   const botToken = relayGroup.bot_token;
+  const rewriteMode: string = relayGroup.rewrite_mode || "link_only";
 
   // Extract text + URLs (supports plain URLs, text_link entities, and inline keyboard links)
   const text = message.caption || message.text || "";
@@ -200,12 +201,10 @@ async function processMessage(supabase: any, supabaseUrl: string, message: any, 
     const fileId = largestPhoto.file_id;
 
     try {
-      // Get file path from Telegram
       const fileResp = await fetch(`https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`);
       const fileData = await fileResp.json();
 
       if (fileData.ok && fileData.result?.file_path) {
-        // Download the file
         const downloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileData.result.file_path}`;
         const imgResp = await fetch(downloadUrl);
 
@@ -213,7 +212,6 @@ async function processMessage(supabase: any, supabaseUrl: string, message: any, 
           const imgBlob = await imgResp.blob();
           const filename = `captured/${crypto.randomUUID()}.jpg`;
 
-          // Upload to Supabase Storage
           const { error: uploadError } = await supabase.storage
             .from("product-images")
             .upload(filename, imgBlob, { contentType: "image/jpeg", upsert: true });
@@ -231,45 +229,156 @@ async function processMessage(supabase: any, supabaseUrl: string, message: any, 
     }
   }
 
-  // Get user's affiliate params
-  const { data: settings } = await supabase
-    .from("app_settings")
-    .select("affiliate_params, aliexpress_tracking_id")
-    .eq("user_id", userId)
-    .maybeSingle();
+  // ========== GENERATE REAL AFFILIATE LINK via API ==========
+  let modifiedUrl: string = aliUrl;
+  let fetchedImageUrl: string | null = null;
+  let modifiedText: string = text;
+  let ordersCount: number | null = null;
+  let rating: number | null = null;
 
-  const affiliateParams = (settings?.affiliate_params as Record<string, string>) || {};
-  const trackingId = settings?.aliexpress_tracking_id || "";
+  try {
+    // Get user's decrypted credentials for affiliate link generation
+    const { data: credentials } = await supabase
+      .rpc("get_decrypted_user_credentials", { p_user_id: userId });
 
-  // Process URL
-  let modifiedUrl = aliUrl || "";
-  if (aliUrl && /aliexpress/i.test(aliUrl)) {
-    const cleanUrl = stripAffiliateParams(aliUrl);
-    const params = { ...affiliateParams };
-    if (trackingId && !params.aff_id) params.aff_id = trackingId;
-    modifiedUrl = buildAffiliateUrl(cleanUrl, params);
+    const { data: settings } = await supabase
+      .from("app_settings")
+      .select("affiliate_params, aliexpress_tracking_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const appKey = credentials?.aliexpress_app_key?.trim();
+    const appSecret = credentials?.aliexpress_app_secret?.trim();
+    const trackingId = settings?.aliexpress_tracking_id?.trim() || "TELEGRAM";
+
+    if (appKey && appSecret) {
+      // Expand short URL and extract product ID
+      const expanded = await expandShortUrl(aliUrl);
+      const productId = parseProductId(expanded);
+
+      if (productId) {
+        const cleanUrl = `https://www.aliexpress.com/item/${productId}.html`;
+
+        // Generate affiliate link via AliExpress API
+        const affiliateLink = await generateAffiliateLink(appKey, appSecret, trackingId, cleanUrl);
+        if (affiliateLink) {
+          modifiedUrl = affiliateLink;
+          console.log(`[telegram-listener-webhook] Generated affiliate link for product ${productId}`);
+        } else {
+          console.warn(`[telegram-listener-webhook] Affiliate link generation failed, using fallback`);
+          // Fallback: append tracking params manually
+          const affiliateParams = (settings?.affiliate_params as Record<string, string>) || {};
+          const cleanedUrl = stripAffiliateParams(aliUrl);
+          const params = { ...affiliateParams };
+          if (trackingId && !params.aff_id) params.aff_id = trackingId;
+          modifiedUrl = buildAffiliateUrl(cleanedUrl, params);
+        }
+
+        // For full_rewrite mode: also fetch product data and rewrite text
+        if (rewriteMode === "full_rewrite") {
+          console.log(`[telegram-listener-webhook] Full rewrite mode: fetching product data + AI rewrite`);
+
+          // Fetch product data for image + stats
+          try {
+            const fetchResp = await fetch(`${supabaseUrl}/functions/v1/fetch-ali-product`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+              },
+              body: JSON.stringify({ productUrl: aliUrl }),
+            });
+            const fetchData = await fetchResp.json();
+
+            if (fetchData?.success && fetchData?.data) {
+              if (fetchData.data.image_url) fetchedImageUrl = fetchData.data.image_url;
+              if (fetchData.data.orders_count) ordersCount = Number(fetchData.data.orders_count);
+              if (fetchData.data.rating) rating = Number(fetchData.data.rating);
+            }
+          } catch (e) {
+            console.error("[telegram-listener-webhook] fetch-ali-product failed:", e);
+          }
+
+          // AI rewrite
+          try {
+            const textForAi = text.replace(/https?:\/\/(?:s\.click\.aliexpress\.com|a\.aliexpress\.com|www\.aliexpress\.com|aliexpress\.com)\S+/gi, "").trim();
+            const rewriteResp = await fetch(`${supabaseUrl}/functions/v1/generate-hebrew-post`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+              },
+              body: JSON.stringify({ title: textForAi, manualRewrite: true }),
+            });
+            const rewriteData = await rewriteResp.json();
+
+            if (rewriteData?.success && rewriteData?.hebrewDescription) {
+              modifiedText = rewriteData.hebrewDescription.trim();
+
+              // Add stats
+              const statsLines: string[] = [];
+              const hasOrdersStat = /מעל\s+[\d,]+\s+הזמנות|📦\s.*הזמנות|👥\s.*הזמנות/.test(modifiedText);
+              const hasRatingStat = /דירוג[:\s]+[\d.]+\s+מתוך|⭐\s.*דירוג/.test(modifiedText);
+
+              if (ordersCount && ordersCount > 0 && !hasOrdersStat) {
+                const rounded = Math.ceil(ordersCount / 100) * 100;
+                statsLines.push(`👥 מעל ${rounded.toLocaleString()} הזמנות`);
+              }
+              if (rating && rating > 0 && !hasRatingStat) {
+                let r = rating;
+                if (r > 5) r = r / 20;
+                statsLines.push(`⭐ דירוג: ${r.toFixed(1)} מתוך 5`);
+              }
+
+              if (statsLines.length > 0) {
+                modifiedText = modifiedText + "\n\n" + statsLines.join("\n");
+              }
+
+              // Add CTA with affiliate link
+              const ctaOptions = ["לרכישה", "להזמנה", "להזמנה מאליאקספרס"];
+              const randomCta = ctaOptions[Math.floor(Math.random() * ctaOptions.length)];
+              modifiedText = modifiedText + `\n\n👇 ${randomCta}\n${modifiedUrl}`;
+
+              console.log(`[telegram-listener-webhook] AI rewrite completed`);
+            } else {
+              console.warn("[telegram-listener-webhook] AI rewrite failed, falling back to link replacement");
+              modifiedText = replaceLinksInText(text, aliUrl, modifiedUrl, relayGroup);
+            }
+          } catch (e) {
+            console.error("[telegram-listener-webhook] AI rewrite error:", e);
+            modifiedText = replaceLinksInText(text, aliUrl, modifiedUrl, relayGroup);
+          }
+        } else {
+          // link_only mode: just replace the link in existing text
+          modifiedText = replaceLinksInText(text, aliUrl, modifiedUrl, relayGroup);
+        }
+      } else {
+        console.warn(`[telegram-listener-webhook] Could not extract product ID, using param-based affiliate`);
+        const affiliateParams = (settings?.affiliate_params as Record<string, string>) || {};
+        const cleanedUrl = stripAffiliateParams(aliUrl);
+        const params = { ...affiliateParams };
+        if (trackingId && !params.aff_id) params.aff_id = trackingId;
+        modifiedUrl = buildAffiliateUrl(cleanedUrl, params);
+        modifiedText = replaceLinksInText(text, aliUrl, modifiedUrl, relayGroup);
+      }
+    } else {
+      console.warn(`[telegram-listener-webhook] No AliExpress API credentials, using param-based affiliate`);
+      const affiliateParams = (settings?.affiliate_params as Record<string, string>) || {};
+      const cleanedUrl = stripAffiliateParams(aliUrl);
+      const params = { ...affiliateParams };
+      const trackingId2 = settings?.aliexpress_tracking_id || "";
+      if (trackingId2 && !params.aff_id) params.aff_id = trackingId2;
+      modifiedUrl = buildAffiliateUrl(cleanedUrl, params);
+      modifiedText = replaceLinksInText(text, aliUrl, modifiedUrl, relayGroup);
+    }
+  } catch (e) {
+    console.error("[telegram-listener-webhook] Affiliate/rewrite processing error:", e);
+    // Fallback: just do simple param replacement
+    modifiedText = replaceLinksInText(text, aliUrl, modifiedUrl, relayGroup);
   }
 
-  // Process text
-  let modifiedText = text;
-  if (relayGroup.text_template_prepend) {
-    modifiedText = relayGroup.text_template_prepend + "\n" + modifiedText;
-  }
-  if (relayGroup.text_template_append) {
-    modifiedText = modifiedText + "\n" + relayGroup.text_template_append;
-  }
-  // Replace AliExpress links in text
-  if (aliUrl && modifiedUrl && aliUrl !== modifiedUrl) {
-    modifiedText = modifiedText.replace(
-      new RegExp(aliUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
-      modifiedUrl
-    );
-    // Also replace any other aliexpress URLs
-    modifiedText = modifiedText.replace(
-      /https?:\/\/[^\s]*aliexpress[^\s]*/gi,
-      modifiedUrl
-    );
-  }
+  // Use fetched image if we got one and no photo from message
+  const finalImageUrl = imageUrl || fetchedImageUrl;
 
   const status = relayGroup.auto_approve ? "approved" : "pending_review";
 
@@ -283,7 +392,7 @@ async function processMessage(supabase: any, supabaseUrl: string, message: any, 
       modified_text: modifiedText,
       original_url: aliUrl,
       modified_url: modifiedUrl || null,
-      image_url: imageUrl,
+      image_url: finalImageUrl,
       status,
     })
     .select()
@@ -300,19 +409,23 @@ async function processMessage(supabase: any, supabaseUrl: string, message: any, 
   // If auto-approved, create product
   let productId = null;
   if (relayGroup.auto_approve) {
-    const productTitle = (text || "").substring(0, 100) || "Captured Product";
+    const productTitle = (rewriteMode === "full_rewrite" ? modifiedText : text || "").substring(0, 100) || "Captured Product";
+    const insertData: Record<string, any> = {
+      user_id: userId,
+      title: productTitle,
+      original_url: aliUrl || "",
+      affiliate_link: modifiedUrl || null,
+      image_url: finalImageUrl,
+      hebrew_description: modifiedText || null,
+      status: "Scheduled",
+      sent_via: "auto",
+    };
+    if (ordersCount) insertData.orders_count = ordersCount;
+    if (rating) insertData.rating = rating;
+
     const { data: product, error: productError } = await supabase
       .from("products")
-      .insert({
-        user_id: userId,
-        title: productTitle,
-        original_url: aliUrl || "",
-        affiliate_link: modifiedUrl || null,
-        image_url: imageUrl,
-        hebrew_description: modifiedText || null,
-        status: "Scheduled",
-        sent_via: "auto",
-      })
+      .insert(insertData)
       .select()
       .single();
 
@@ -325,14 +438,124 @@ async function processMessage(supabase: any, supabaseUrl: string, message: any, 
     }
   }
 
-  console.log(`[telegram-listener-webhook] Captured post from group ${relayGroup.group_name}, status=${status}`);
+  console.log(`[telegram-listener-webhook] Captured post from group ${relayGroup.group_name}, mode=${rewriteMode}, status=${status}`);
 
   return new Response(JSON.stringify({
     ok: true,
     capturedPostId: capturedPost.id,
     productId,
     status,
+    rewriteMode,
   }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+// Helper: replace links in text with template processing
+function replaceLinksInText(text: string, aliUrl: string, modifiedUrl: string, relayGroup: any): string {
+  let result = text;
+  if (relayGroup.text_template_prepend) {
+    result = relayGroup.text_template_prepend + "\n" + result;
+  }
+  if (relayGroup.text_template_append) {
+    result = result + "\n" + relayGroup.text_template_append;
+  }
+  if (aliUrl && modifiedUrl && aliUrl !== modifiedUrl) {
+    result = result.replace(
+      new RegExp(aliUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
+      modifiedUrl
+    );
+    result = result.replace(
+      /https?:\/\/[^\s]*aliexpress[^\s]*/gi,
+      modifiedUrl
+    );
+  }
+  return result;
+}
+
+// Helper: expand short AliExpress URLs
+async function expandShortUrl(url: string): Promise<string> {
+  const u = url.trim();
+  if (!u) return u;
+  if (!u.includes("a.aliexpress.com") && !u.includes("s.click.aliexpress.com")) return u;
+  try {
+    const resp = await fetch(u, { method: "HEAD", redirect: "follow" });
+    return resp.url || u;
+  } catch { return u; }
+}
+
+// Helper: extract product ID from URL
+function parseProductId(url: string): string | undefined {
+  const patterns = [
+    /\/item\/(\d+)\.html/i,
+    /\/(\d{10,})\.html/i,
+    /productId[=:](\d+)/i,
+    /product\/(\d+)/i,
+    /item\/(\d+)/i,
+    /\/(\d{10,})/,
+  ];
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return undefined;
+}
+
+// Helper: generate affiliate link via AliExpress API
+async function generateAffiliateLink(appKey: string, appSecret: string, trackingId: string, cleanUrl: string): Promise<string | null> {
+  try {
+    const params: Record<string, string> = {
+      app_key: appKey,
+      method: "aliexpress.affiliate.link.generate",
+      timestamp: Date.now().toString(),
+      v: "2.0",
+      sign_method: "md5",
+      tracking_id: trackingId,
+      promotion_link_type: "0",
+      source_values: cleanUrl,
+    };
+
+    const sign = await generateMd5Signature(params, appSecret);
+    const qs = Object.entries({ ...params, sign })
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join("&");
+
+    const apiUrl = `https://api-sg.aliexpress.com/sync?${qs}`;
+    const resp = await fetch(apiUrl, { method: "GET" });
+    const data = await resp.json().catch(() => ({}));
+
+    const result = data?.aliexpress_affiliate_link_generate_response?.resp_result;
+    const promotionLinks = result?.result?.promotion_links;
+    let promotionLink: string | undefined;
+
+    if (promotionLinks) {
+      if (promotionLinks?.promotion_link?.[0]?.promotion_link) {
+        promotionLink = promotionLinks.promotion_link[0].promotion_link;
+      } else if (Array.isArray(promotionLinks) && promotionLinks[0]?.promotion_link) {
+        promotionLink = promotionLinks[0].promotion_link;
+      } else if (promotionLinks?.promotion_link?.promotion_link) {
+        promotionLink = promotionLinks.promotion_link.promotion_link;
+      }
+    }
+
+    if (result?.resp_code === 200 && promotionLink) {
+      return promotionLink;
+    }
+    return null;
+  } catch (e) {
+    console.error("[telegram-listener-webhook] generateAffiliateLink error:", e);
+    return null;
+  }
+}
+
+// Helper: MD5 signature for AliExpress API
+async function generateMd5Signature(params: Record<string, string>, appSecret: string): Promise<string> {
+  const secret = appSecret.trim();
+  const sortedKeys = Object.keys(params).sort();
+  let signStr = secret;
+  for (const key of sortedKeys) { signStr += key + params[key]; }
+  signStr += secret;
+  const encoder = new TextEncoder();
+  const hashBuffer = await crypto.subtle.digest("MD5", encoder.encode(signStr));
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("").toUpperCase();
 }
