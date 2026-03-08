@@ -323,10 +323,6 @@ const GroupListener = () => {
               קבוצות ממסר
               <span className="bg-primary/20 text-primary text-xs font-bold px-2 py-0.5 rounded-full">{groups.length}</span>
             </TabsTrigger>
-            <TabsTrigger value="settings" className="gap-2 rounded-lg">
-              <Settings className="h-4 w-4" />
-              הגדרות
-            </TabsTrigger>
           </TabsList>
 
           {/* CAPTURED POSTS TAB */}
