@@ -495,10 +495,25 @@ export default function ManualSend() {
       return url;
     }
     if (imageUrlPreview) {
+      // Apply watermark to URL-based images
+      if (addWatermark && watermarkPreview) {
+        try {
+          const watermarkedDataUrl = await applyWatermarkToUrl(imageUrlPreview);
+          if (watermarkedDataUrl.startsWith("data:")) {
+            // Convert data URL to blob and upload
+            const res = await fetch(watermarkedDataUrl);
+            const blob = await res.blob();
+            const file = new File([blob], `watermarked-${Date.now()}.png`, { type: "image/png" });
+            const url = await uploadMediaToStorage(file);
+            return url || imageUrlPreview;
+          }
+        } catch (e) {
+          console.warn("Watermark failed for URL image, using original:", e);
+        }
+      }
       return imageUrlPreview;
     }
     if (mediaFiles.length > 0) {
-      // Return first image URL for single-image contexts
       const url = await uploadMediaToStorage(mediaFiles[0]);
       if (!url) throw new Error("Failed to upload media");
       return url;
