@@ -34,6 +34,28 @@ async function generateMd5Signature(params: Record<string, string>, appSecret: s
 }
 
 /**
+ * Expand short AliExpress URLs (a.aliexpress.com, s.click.aliexpress.com)
+ */
+async function expandShortUrl(url: string): Promise<string> {
+  if (/^https?:\/\/(a\.aliexpress|s\.click\.aliexpress)/.test(url)) {
+    try {
+      const resp = await fetch(url, { method: "GET", redirect: "follow" });
+      const finalUrl = resp.url || url;
+      // Also check for meta refresh in the HTML
+      if (finalUrl === url || finalUrl.includes("login")) {
+        const html = await resp.text();
+        const metaMatch = html.match(/url=["']?(https?:\/\/[^"'\s>]+)/i);
+        if (metaMatch?.[1]) return metaMatch[1];
+      }
+      return finalUrl;
+    } catch {
+      return url;
+    }
+  }
+  return url;
+}
+
+/**
  * Extract seller/store ID from various AliExpress store URL formats:
  * - https://www.aliexpress.com/store/1234567
  * - https://www.aliexpress.com/store/1234567?...
@@ -52,6 +74,8 @@ function extractSellerId(input: string): string | null {
     /aliexpress\.com\/store\/(\d+)/i,
     /aliexpress\.com\/store\/group\/[^/]+\/(\d+)/i,
     /seller\/(\d+)/i,
+    /owner_member_id[=:](\d+)/i,
+    /shopId[=:](\d+)/i,
   ];
 
   for (const pattern of patterns) {
