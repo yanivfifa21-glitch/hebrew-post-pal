@@ -302,10 +302,17 @@ const Queue = () => {
       }
     };
 
+    const extractUrlFromText = (text: string | null | undefined): string | null => {
+      if (!text) return null;
+      const match = text.match(/https?:\/\/[^\s\n"<>]+aliexpress[^\s\n"<>]*/i)
+        || text.match(/https?:\/\/s\.click\.aliexpress\.com\/e\/[^\s\n"<>]+/i);
+      return match ? match[0] : null;
+    };
+
     const resolveCheckUrl = (product: Product): string | null => {
       if (isValidHttpUrl(product.original_url)) return product.original_url;
       if (isValidHttpUrl(product.affiliate_link)) return product.affiliate_link as string;
-      return null;
+      return extractUrlFromText(product.hebrew_description) || extractUrlFromText(product.title) || null;
     };
 
     try {
