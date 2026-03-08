@@ -68,29 +68,32 @@ serve(async (req) => {
       });
     }
 
-    // Find matching relay group
+    // Normalize chat ID variants for matching
+    const rawId = chatId.replace(/^-100/, "");
+    const candidateIds = [
+      chatId,                    // as-is from Telegram (e.g. -1005192177865)
+      `-100${rawId}`,            // with -100 prefix
+      `-${rawId}`,               // short negative (e.g. -5192177865)
+      rawId,                     // bare positive
+    ];
+    // Deduplicate
+    const uniqueIds = [...new Set(candidateIds)];
+
+    console.log(`[telegram-listener-webhook] chatId=${chatId}, trying IDs: ${uniqueIds.join(", ")}`);
+
+    // Find matching relay group using any variant
     const { data: relayGroup } = await supabase
       .from("relay_groups")
       .select("*")
-      .eq("telegram_group_id", chatId)
+      .in("telegram_group_id", uniqueIds)
       .eq("is_active", true)
+      .limit(1)
       .maybeSingle();
 
     if (!relayGroup) {
-      // Try negative format
-      const { data: relayGroup2 } = await supabase
-        .from("relay_groups")
-        .select("*")
-        .eq("telegram_group_id", `-100${chatId.replace(/^-100/, "")}`)
-        .eq("is_active", true)
-        .maybeSingle();
-      if (!relayGroup2) {
-        return new Response(JSON.stringify({ ok: true, skipped: "group not configured" }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      // Use relayGroup2
-      return await processMessage(supabase, supabaseUrl, message, relayGroup2);
+      return new Response(JSON.stringify({ ok: true, skipped: "group not configured", tried: uniqueIds }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     return await processMessage(supabase, supabaseUrl, message, relayGroup);
