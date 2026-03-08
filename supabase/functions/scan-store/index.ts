@@ -33,15 +33,11 @@ async function generateMd5Signature(params: Record<string, string>, appSecret: s
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
 }
 
-/**
- * Expand short AliExpress URLs (a.aliexpress.com, s.click.aliexpress.com)
- */
 async function expandShortUrl(url: string): Promise<string> {
   if (/^https?:\/\/(a\.aliexpress|s\.click\.aliexpress)/.test(url)) {
     try {
       const resp = await fetch(url, { method: "GET", redirect: "follow" });
       const finalUrl = resp.url || url;
-      // Also check for meta refresh in the HTML
       if (finalUrl === url || finalUrl.includes("login")) {
         const html = await resp.text();
         const metaMatch = html.match(/url=["']?(https?:\/\/[^"'\s>]+)/i);
@@ -55,21 +51,9 @@ async function expandShortUrl(url: string): Promise<string> {
   return url;
 }
 
-/**
- * Extract seller/store ID from various AliExpress store URL formats:
- * - https://www.aliexpress.com/store/1234567
- * - https://www.aliexpress.com/store/1234567?...
- * - https://he.aliexpress.com/store/1102345678
- * - https://www.aliexpress.com/store/group/..../1234567_...
- * - Direct numeric ID
- */
 function extractSellerId(input: string): string | null {
   const trimmed = input.trim();
-
-  // Direct numeric ID
   if (/^\d{5,}$/.test(trimmed)) return trimmed;
-
-  // Store URL patterns
   const patterns = [
     /aliexpress\.com\/store\/(\d+)/i,
     /aliexpress\.com\/store\/group\/[^/]+\/(\d+)/i,
@@ -77,23 +61,77 @@ function extractSellerId(input: string): string | null {
     /owner_member_id[=:](\d+)/i,
     /shopId[=:](\d+)/i,
   ];
-
   for (const pattern of patterns) {
     const match = trimmed.match(pattern);
     if (match?.[1]) return match[1];
   }
-
   return null;
 }
 
-function mapProduct(p: any): StoreProduct | null {
+/**
+ * Scrape the AliExpress store page to extract product IDs.
+ * Tries multiple URL formats and HTML patterns.
+ */
+async function scrapeStoreProductIds(sellerId: string, pageNo: number): Promise<{ productIds: string[]; totalEstimate: number }> {
+  const urls = [
+    `https://www.aliexpress.com/store/${sellerId}/search/${pageNo}.html?SortType=orders_desc`,
+    `https://www.aliexpress.com/store/${sellerId}/search.html?SortType=orders_desc&page=${pageNo}`,
+    `https://www.aliexpress.com/store/${sellerId}`,
+  ];
+
+  const headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+  };
+
+  const allProductIds = new Set<string>();
+
+  for (const url of urls) {
+    try {
+      console.log("[scan-store] Scraping:", url);
+      const resp = await fetch(url, { headers, redirect: "follow" });
+      const html = await resp.text();
+
+      // Multiple patterns to find product IDs in the HTML
+      const patterns = [
+        /\/item\/(\d{8,15})\.html/g,
+        /productId["\s:=]+["']?(\d{8,15})/gi,
+        /product_id["\s:=]+["']?(\d{8,15})/gi,
+        /"itemId"\s*:\s*"?(\d{8,15})/g,
+        /data-product-id="(\d{8,15})"/g,
+        /\/(\d{8,15})\.html/g,
+      ];
+
+      for (const pattern of patterns) {
+        let match;
+        while ((match = pattern.exec(html)) !== null) {
+          if (match[1] && match[1].length >= 8) {
+            allProductIds.add(match[1]);
+          }
+        }
+      }
+
+      console.log(`[scan-store] Found ${allProductIds.size} product IDs from ${url}`);
+
+      // If we found products, no need to try other URL formats
+      if (allProductIds.size > 0) break;
+    } catch (e) {
+      console.error("[scan-store] Scrape error for", url, e);
+    }
+  }
+
+  return { productIds: Array.from(allProductIds), totalEstimate: allProductIds.size };
+}
+
+function mapProductDetail(p: any): StoreProduct | null {
   const productId = String(p.product_id || "").trim();
   const title = String(p.product_title || "").trim();
-  const imageUrl = String(p.product_main_image_url || p.product_main_image || "").trim();
+  const imageUrl = String(p.product_main_image_url || "").trim();
 
   const price = parseFloat(p.target_sale_price || p.target_original_price || p.app_sale_price || p.original_price || "0") || 0;
   const originalPrice = parseFloat(p.target_original_price || p.original_price || "0") || price;
-  const salesCount = parseInt(p.lastest_volume || p.volume || p.total_sold || "0") || 0;
+  const salesCount = parseInt(p.lastest_volume || p.volume || "0") || 0;
   const ratingPercent = parseFloat(p.evaluate_rate || "0") || 0;
   const ratingStars = (ratingPercent / 100) * 5;
   const commissionRate = parseFloat(p.commission_rate || "0") || 0;
@@ -144,23 +182,18 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Expand short URLs first (a.aliexpress.com, s.click.aliexpress.com)
     const expandedUrl = await expandShortUrl(storeUrl);
     console.log("[scan-store] Expanded URL:", expandedUrl);
 
     let sellerId = extractSellerId(expandedUrl);
-    
-    // If still no seller ID, try to fetch the page and look for store ID in HTML
+
     if (!sellerId && expandedUrl.includes("aliexpress.com")) {
       try {
         const pageResp = await fetch(expandedUrl, {
           method: "GET",
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          },
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
         });
         const html = await pageResp.text();
-        // Look for store/seller ID in page HTML
         const storePatterns = [
           /storeNum[=:]["']?(\d+)/i,
           /store\/(\d+)/i,
@@ -209,60 +242,75 @@ serve(async (req) => {
 
     console.log("[scan-store] User:", user.id, "| sellerId:", sellerId, "| page:", pageNo);
 
-    // Use product.query with seller_ids filter to get store products
-    const params: Record<string, string> = {
-      app_key: appKey,
-      method: "aliexpress.affiliate.product.query",
-      timestamp: Date.now().toString(),
-      v: "2.0",
-      sign_method: "md5",
-      tracking_id: trackingId,
-      target_language: "EN",
-      target_currency: "ILS",
-      ship_to_country: "IL",
-      page_no: pageNo.toString(),
-      page_size: "50",
-      sort: "LAST_VOLUME_DESC",
-    };
+    // Step 1: Scrape store page to get real product IDs
+    const { productIds } = await scrapeStoreProductIds(sellerId, pageNo);
 
-    // Try with seller_ids parameter (works for affiliate product.query)
-    params.seller_ids = sellerId;
-
-    const sign = await generateMd5Signature(params, appSecret);
-    const qs = Object.entries({ ...params, sign })
-      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-      .join("&");
-
-    const apiUrl = `https://api-sg.aliexpress.com/sync?${qs}`;
-    console.log("[scan-store] Calling API for seller:", sellerId);
-
-    const resp = await fetch(apiUrl, { method: "GET" });
-    const data = await resp.json().catch(() => ({}));
-
-    const rr = data?.aliexpress_affiliate_product_query_response?.resp_result;
-    if (rr?.resp_code !== 200) {
-      console.error("[scan-store] API error:", JSON.stringify(rr || data));
-      const payload: ApiErr = { success: false, error: `API error: ${rr?.resp_msg || "Unknown error"}` };
-      return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (productIds.length === 0) {
+      const payload: ApiErr = { success: false, error: "לא נמצאו מוצרים בחנות. ייתכן שהחנות חסומה או שהקישור אינו תקין." };
+      return new Response(JSON.stringify(payload), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const rawProducts = rr?.result?.products?.product || [];
-    const totalResults = parseInt(rr?.result?.total_record_count || "0");
-    console.log("[scan-store] Got", rawProducts.length, "products, total:", totalResults);
+    console.log("[scan-store] Scraped", productIds.length, "product IDs from store page");
 
+    // Step 2: Fetch product details via API in batches of 20 (API limit)
+    const BATCH_SIZE = 20;
     const products: StoreProduct[] = [];
     const seen = new Set<string>();
 
-    for (const p of rawProducts) {
-      const mapped = mapProduct(p);
-      if (!mapped || seen.has(mapped.product_id)) continue;
-      seen.add(mapped.product_id);
-      products.push(mapped);
+    for (let i = 0; i < productIds.length; i += BATCH_SIZE) {
+      const batch = productIds.slice(i, i + BATCH_SIZE);
+      const batchIds = batch.join(",");
+
+      const params: Record<string, string> = {
+        app_key: appKey,
+        method: "aliexpress.affiliate.productdetail.get",
+        timestamp: Date.now().toString(),
+        v: "2.0",
+        sign_method: "md5",
+        tracking_id: trackingId,
+        target_language: "EN",
+        target_currency: "ILS",
+        ship_to_country: "IL",
+        product_ids: batchIds,
+      };
+
+      const sign = await generateMd5Signature(params, appSecret);
+      const qs = Object.entries({ ...params, sign })
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join("&");
+
+      const apiUrl = `https://api-sg.aliexpress.com/sync?${qs}`;
+
+      try {
+        const resp = await fetch(apiUrl, { method: "GET" });
+        const data = await resp.json().catch(() => ({}));
+
+        const rr = data?.aliexpress_affiliate_productdetail_get_response?.resp_result;
+        if (rr?.resp_code === 200) {
+          const rawProducts = rr?.result?.products?.product || [];
+          for (const p of rawProducts) {
+            const mapped = mapProductDetail(p);
+            if (!mapped || seen.has(mapped.product_id)) continue;
+            seen.add(mapped.product_id);
+            products.push(mapped);
+          }
+        } else {
+          console.error("[scan-store] Batch API error:", JSON.stringify(rr));
+        }
+      } catch (e) {
+        console.error("[scan-store] Batch fetch error:", e);
+      }
     }
 
-    const hasMore = pageNo * 50 < totalResults;
+    console.log("[scan-store] Got", products.length, "valid products from", productIds.length, "scraped IDs");
 
-    const payload: ApiOk = { success: true, products, total: totalResults, sellerId, hasMore };
+    const payload: ApiOk = {
+      success: true,
+      products,
+      total: productIds.length,
+      sellerId,
+      hasMore: false, // scraping returns all visible products on that page
+    };
     return new Response(JSON.stringify(payload), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
