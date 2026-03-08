@@ -13,12 +13,13 @@ import {
   TrendingUp,
   Sparkles,
   Shield,
-    Search,
-    Send,
-    Ticket,
-    LayoutGrid,
-    Headphones,
-    Store
+  Search,
+  Send,
+  Ticket,
+  LayoutGrid,
+  Headphones,
+  Store,
+  DollarSign
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
