@@ -313,6 +313,82 @@ const EarningsDashboard = () => {
               />
             </div>
 
+            {/* Top 5 Best Sellers */}
+            {topProducts.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Trophy className="h-5 w-5 text-yellow-500" />
+                    טופ 5 מוצרים הכי נמכרים
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                    {topProducts.map((tp, idx) => {
+                      const isAdding = addingProductIds.has(tp.product_id);
+                      const aliUrl = buildAliUrl(tp.product_id);
+                      const orderForQueue: OrderItem = {
+                        order_number: "",
+                        product_title: tp.product_title,
+                        product_id: tp.product_id,
+                        paid_amount: tp.total_amount,
+                        commission: tp.total_commission,
+                        finished_commission: 0,
+                        status: "",
+                        created_time: "",
+                        item_count: tp.total_sales,
+                      };
+
+                      return (
+                        <Card key={tp.product_id} className="relative overflow-hidden border-muted">
+                          <div className="absolute top-2 right-2 bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
+                            {idx + 1}
+                          </div>
+                          <CardContent className="pt-8 pb-3 px-3 space-y-2">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <a
+                                  href={aliUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs font-medium text-primary hover:underline line-clamp-2 block leading-tight"
+                                >
+                                  {tp.product_title || `מוצר #${tp.product_id}`}
+                                </a>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs text-xs">
+                                {tp.product_title}
+                              </TooltipContent>
+                            </Tooltip>
+
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                              <span>{tp.total_sales} מכירות</span>
+                              <span className="text-success font-semibold">${tp.total_commission.toFixed(2)}</span>
+                            </div>
+
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full h-7 text-xs gap-1"
+                              disabled={isAdding}
+                              onClick={() => handleAddToQueue(orderForQueue)}
+                            >
+                              {isAdding ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Plus className="h-3 w-3" />
+                              )}
+                              הוסף למחסנית
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Orders Table */}
             <Card>
               <CardHeader>
