@@ -14,6 +14,128 @@ export type Database = {
   }
   public: {
     Tables: {
+      ad_center_products: {
+        Row: {
+          affiliate_link: string | null
+          campaign_id: string | null
+          category: string | null
+          commission_rate: number | null
+          created_at: string | null
+          discount_percent: number | null
+          fetched_at: string | null
+          id: string
+          image_url: string | null
+          original_price: number | null
+          price: number | null
+          product_id: string
+          product_url: string | null
+          rating: number | null
+          sales_count: number | null
+          source: string | null
+          title: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          affiliate_link?: string | null
+          campaign_id?: string | null
+          category?: string | null
+          commission_rate?: number | null
+          created_at?: string | null
+          discount_percent?: number | null
+          fetched_at?: string | null
+          id?: string
+          image_url?: string | null
+          original_price?: number | null
+          price?: number | null
+          product_id: string
+          product_url?: string | null
+          rating?: number | null
+          sales_count?: number | null
+          source?: string | null
+          title: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          affiliate_link?: string | null
+          campaign_id?: string | null
+          category?: string | null
+          commission_rate?: number | null
+          created_at?: string | null
+          discount_percent?: number | null
+          fetched_at?: string | null
+          id?: string
+          image_url?: string | null
+          original_price?: number | null
+          price?: number | null
+          product_id?: string
+          product_url?: string | null
+          rating?: number | null
+          sales_count?: number | null
+          source?: string | null
+          title?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_center_products_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      affiliate_campaigns: {
+        Row: {
+          banner_url: string | null
+          campaign_id: string | null
+          campaign_name: string
+          commission_rate: number | null
+          created_at: string | null
+          fetched_at: string | null
+          id: string
+          is_active: boolean | null
+          landing_page_url: string | null
+          promo_desc: string | null
+          source: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          banner_url?: string | null
+          campaign_id?: string | null
+          campaign_name: string
+          commission_rate?: number | null
+          created_at?: string | null
+          fetched_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          landing_page_url?: string | null
+          promo_desc?: string | null
+          source?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          banner_url?: string | null
+          campaign_id?: string | null
+          campaign_name?: string
+          commission_rate?: number | null
+          created_at?: string | null
+          fetched_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          landing_page_url?: string | null
+          promo_desc?: string | null
+          source?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       app_settings: {
         Row: {
           ai_rewrite_template: string | null
