@@ -301,64 +301,6 @@ const GroupListener = () => {
     }
   };
 
-  const handleApprovePost = async (post: CapturedPost, useOriginalText = false) => {
-    setIsApproving(post.id);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const chosenText = useOriginalText
-        ? post.original_text || ""
-        : (post.modified_text || post.original_text || "");
-
-      // If using original text, replace the original link with the affiliate link
-      let finalText = chosenText;
-      if (useOriginalText && post.original_url && post.modified_url) {
-        finalText = chosenText.replace(post.original_url, post.modified_url);
-        // Also try replacing short links that might differ
-        const shortLinkRegex = /https?:\/\/s\.click\.aliexpress\.com\/e\/[^\s\n"<>]+/gi;
-        if (!finalText.includes(post.modified_url)) {
-          finalText = finalText.replace(shortLinkRegex, post.modified_url);
-        }
-        // Also replace any aliexpress product links
-        const aliLinkRegex = /https?:\/\/[^\s\n"<>]*aliexpress\.com\/item\/[^\s\n"<>]+/gi;
-        if (!finalText.includes(post.modified_url)) {
-          finalText = finalText.replace(aliLinkRegex, post.modified_url);
-        }
-      }
-
-      const productTitle = finalText.substring(0, 100) || "Captured Product";
-      const { data: product, error: productError } = await supabase
-        .from("products")
-        .insert({
-          user_id: user.id,
-          title: productTitle,
-          original_url: post.original_url || "",
-          affiliate_link: post.modified_url || null,
-          image_url: post.image_url || null,
-          media_type: post.media_type || 'image',
-          hebrew_description: finalText || null,
-          status: "Scheduled",
-          sent_via: "auto",
-        })
-        .select()
-        .single();
-      if (productError) throw productError;
-      await supabase
-        .from("captured_posts")
-        .update({ status: "queued", product_id: product.id, reviewed_at: new Date().toISOString() })
-        .eq("id", post.id);
-      setCapturedPosts((prev) => prev.map((p) =>
-        p.id === post.id ? { ...p, status: "queued" as const, product_id: product.id } : p
-      ));
-      toast({ title: useOriginalText ? "✅ אושר עם טקסט מקורי + קישור חדש" : "✅ אושר עם ניסוח מחדש" });
-    } catch {
-      toast({ title: "שגיאה באישור", variant: "destructive" });
-    } finally {
-      setIsApproving(null);
-    }
-  };
-
   const handleRejectPost = async (postId: string) => {
     await supabase
       .from("captured_posts")
@@ -369,15 +311,6 @@ const GroupListener = () => {
     ));
     toast({ title: "נדחה" });
   };
-
-  const handleBulkApprove = async () => {
-    const pendingPosts = capturedPosts.filter((p) => p.status === "pending_review");
-    if (pendingPosts.length === 0) return;
-    setIsBulkApproving(true);
-    let count = 0;
-    for (const post of pendingPosts) {
-      try { await handleApprovePost(post); count++; } catch {}
-    }
     setIsBulkApproving(false);
     toast({ title: `✅ אושרו ${count} פוסטים` });
   };
