@@ -215,6 +215,24 @@ export type Database = {
         }
         Relationships: []
       }
+      encryption_config: {
+        Row: {
+          created_at: string | null
+          id: number
+          key_value: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: number
+          key_value?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: number
+          key_value?: string | null
+        }
+        Relationships: []
+      }
       gold_posts: {
         Row: {
           created_at: string
@@ -609,6 +627,7 @@ export type Database = {
         Args: { p_user_id: string }
         Returns: Json
       }
+      get_encryption_key: { Args: never; Returns: string }
       get_my_access_status: { Args: never; Returns: string }
       get_my_credentials_status: { Args: never; Returns: Json }
       get_my_messaging_accounts_safe: {
@@ -638,6 +657,7 @@ export type Database = {
       is_admin_email: { Args: never; Returns: boolean }
       is_email_authorized: { Args: { check_email: string }; Returns: boolean }
       is_me_authorized: { Args: never; Returns: boolean }
+      set_encryption_key: { Args: { p_key: string }; Returns: undefined }
       update_account_credentials: {
         Args: {
           p_account_id: string
