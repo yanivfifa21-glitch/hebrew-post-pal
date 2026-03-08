@@ -17,6 +17,7 @@ import Coupons from "./pages/Coupons";
 import CollageGenerator from "./pages/CollageGenerator";
 import GroupListener from "./pages/GroupListener";
 import StoreScanner from "./pages/StoreScanner";
+import EarningsDashboard from "./pages/EarningsDashboard";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import Admin from "./pages/Admin";
