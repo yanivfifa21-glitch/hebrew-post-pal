@@ -584,7 +584,7 @@ const GroupListener = () => {
                   בטל בחירה
                 </Button>
               </div>
-            )
+            )}
             </div>
 
             {isLoadingPosts ? (
