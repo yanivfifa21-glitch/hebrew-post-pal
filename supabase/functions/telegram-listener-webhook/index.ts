@@ -551,14 +551,15 @@ async function generateAffiliateLink(appKey: string, appSecret: string, tracking
   }
 }
 
-// Helper: MD5 signature for AliExpress API
+// Helper: MD5 signature for AliExpress API (Deno-compatible)
 async function generateMd5Signature(params: Record<string, string>, appSecret: string): Promise<string> {
+  const { crypto: stdCrypto } = await import("https://deno.land/std@0.168.0/crypto/mod.ts");
   const secret = appSecret.trim();
   const sortedKeys = Object.keys(params).sort();
   let signStr = secret;
   for (const key of sortedKeys) { signStr += key + params[key]; }
   signStr += secret;
   const encoder = new TextEncoder();
-  const hashBuffer = await crypto.subtle.digest("MD5", encoder.encode(signStr));
+  const hashBuffer = await stdCrypto.subtle.digest("MD5", encoder.encode(signStr));
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("").toUpperCase();
 }
