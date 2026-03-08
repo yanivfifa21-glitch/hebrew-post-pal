@@ -267,8 +267,18 @@ const UNAVAILABLE_PATTERNS = [
 
 async function checkProductStock(url: string): Promise<string> {
   if (!url) return "error";
+
+  let normalizedUrl: string;
   try {
-    const response = await fetch(url, {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "unchecked";
+    normalizedUrl = parsed.toString();
+  } catch {
+    return "unchecked";
+  }
+
+  try {
+    const response = await fetch(normalizedUrl, {
       method: "GET",
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",

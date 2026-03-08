@@ -6,6 +6,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const isValidHttpUrl = (value: string | null | undefined): boolean => {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -41,7 +51,17 @@ serve(async (req) => {
 
       for (const product of products) {
         const checkUrl = product.affiliate_link || product.original_url;
-        if (!checkUrl) continue;
+        if (!checkUrl || !isValidHttpUrl(checkUrl)) {
+          await supabase
+            .from("products")
+            .update({
+              stock_status: "unchecked",
+              last_stock_check: new Date().toISOString(),
+              auto_disabled: false,
+            })
+            .eq("id", product.id);
+          continue;
+        }
 
         try {
           // Call check-product-stock function inline (same logic)

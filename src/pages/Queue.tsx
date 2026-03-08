@@ -284,24 +284,51 @@ const Queue = () => {
   const handleCheckAllStock = async () => {
     if (scheduledProducts.length === 0) return;
     setIsCheckingAllStock(true);
+
     let checked = 0;
     let unavailable = 0;
+    let skipped = 0;
+
+    const isValidHttpUrl = (value: string | null | undefined) => {
+      if (!value) return false;
+      try {
+        const parsed = new URL(value);
+        return parsed.protocol === "http:" || parsed.protocol === "https:";
+      } catch {
+        return false;
+      }
+    };
+
     for (const product of scheduledProducts) {
       const checkUrl = product.affiliate_link || product.original_url;
-      if (!checkUrl) continue;
+      if (!isValidHttpUrl(checkUrl)) {
+        skipped++;
+        continue;
+      }
+
       try {
         const { data } = await supabase.functions.invoke("check-product-stock", {
           body: { productId: product.id, url: checkUrl },
         });
+
         if (data?.status) {
           handleStockChecked(product.id, data.status);
           checked++;
           if (data.status === "unavailable") unavailable++;
         }
-      } catch {}
+      } catch {
+        // continue
+      }
     }
+
     setIsCheckingAllStock(false);
-    toast({ title: `✅ נבדקו ${checked} מוצרים`, description: unavailable > 0 ? `${unavailable} אזלו מהמלאי` : "הכל במלאי!" });
+    toast({
+      title: `✅ נבדקו ${checked} מוצרים`,
+      description: [
+        unavailable > 0 ? `${unavailable} אזלו מהמלאי` : "",
+        skipped > 0 ? `${skipped} דולגו (קישור לא תקין)` : "",
+      ].filter(Boolean).join(" • ") || "הכל במלאי!",
+    });
   };
 
   const scheduledProducts = products.filter((p) => p.status === "Scheduled");

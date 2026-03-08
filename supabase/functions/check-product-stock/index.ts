@@ -32,8 +32,19 @@ const HOMEPAGE_PATTERNS = [
 async function checkProductAvailability(url: string): Promise<{ status: string; reason?: string }> {
   if (!url) return { status: "error", reason: "No URL provided" };
 
+  let normalizedUrl: string;
   try {
-    const response = await fetch(url, {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return { status: "unchecked", reason: "URL must be HTTP/HTTPS" };
+    }
+    normalizedUrl = parsed.toString();
+  } catch {
+    return { status: "unchecked", reason: "Invalid URL format" };
+  }
+
+  try {
+    const response = await fetch(normalizedUrl, {
       method: "GET",
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
