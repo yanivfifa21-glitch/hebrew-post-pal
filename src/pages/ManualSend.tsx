@@ -1384,10 +1384,21 @@ export default function ManualSend() {
                       <span className="font-hebrew">תצוגה מקדימה</span>
                     </Button>
                   </div>
+
+                  {/* Send + Add to Automation */}
+                  <Button
+                    variant="secondary"
+                    onClick={handleSendAndAddToAutomation}
+                    disabled={loading || (!message.trim() && !hasMedia) || selectedAccounts.length === 0}
+                    className="w-full"
+                  >
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Send className="h-4 w-4" /><Clock className="h-4 w-4" /></>}
+                    <span className="font-hebrew">שלח והוסף לאוטומט</span>
+                  </Button>
                   
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     <Button
-                      variant="secondary"
+                      variant="outline"
                       onClick={handleAddToManualQueue}
                       disabled={loading || (!message.trim() && !hasMedia)}
                       className="text-xs sm:text-sm"
