@@ -63,9 +63,9 @@ const GroupListener = () => {
   const [editAppend, setEditAppend] = useState("");
   const [editRewriteMode, setEditRewriteMode] = useState<'link_only' | 'full_rewrite'>("link_only");
   const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
-  // Send to groups state
-  
+  // Send/Queue dialog state
   const [showSendDialog, setShowSendDialog] = useState(false);
+  const [dialogMode, setDialogMode] = useState<'send' | 'queue'>('send');
   const [sendPosts, setSendPosts] = useState<CapturedPost[]>([]);
   const [accounts, setAccounts] = useState<MessagingAccountSafe[]>([]);
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
@@ -344,41 +344,65 @@ const GroupListener = () => {
     return finalText;
   };
 
-  const handleAddToQueue = async (post: CapturedPost) => {
-    setIsApproving(post.id);
+  const handleAddToQueue = async (posts: CapturedPost | CapturedPost[]) => {
+    const arr = Array.isArray(posts) ? posts : [posts];
+    setIsBulkProcessing(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
-      const finalText = getPostFinalText(post);
-      const productTitle = finalText.substring(0, 100) || "Captured Product";
-      const { data: product, error: productError } = await supabase
-        .from("products")
-        .insert({
-          user_id: user.id, title: productTitle, original_url: post.original_url || "",
-          affiliate_link: post.modified_url || null, image_url: post.image_url || null,
-          media_type: post.media_type || 'image', hebrew_description: finalText || null,
-          status: "Scheduled", sent_via: "auto",
-        })
-        .select().single();
-      if (productError) throw productError;
-      await supabase.from("captured_posts")
-        .update({ status: "queued", product_id: product.id, reviewed_at: new Date().toISOString() })
-        .eq("id", post.id);
-      setCapturedPosts((prev) => prev.map((p) =>
-        p.id === post.id ? { ...p, status: "queued" as const, product_id: product.id } : p
-      ));
-      toast({ title: "✅ נוסף לתור" });
+      let count = 0;
+      for (const post of arr) {
+        const finalText = getPostFinalText(post);
+        const productTitle = finalText.substring(0, 100) || "Captured Product";
+        const { data: product, error: productError } = await supabase
+          .from("products")
+          .insert({
+            user_id: user.id, title: productTitle, original_url: post.original_url || "",
+            affiliate_link: post.modified_url || null, image_url: post.image_url || null,
+            media_type: post.media_type || 'image', hebrew_description: finalText || null,
+            status: "Scheduled", sent_via: "auto",
+          })
+          .select().single();
+        if (productError) continue;
+        if (product && selectedZones.length > 0) {
+          await supabase.from("zone_products").insert(
+            selectedZones.map(zoneId => ({ zone_id: zoneId, product_id: product.id }))
+          );
+        }
+        await supabase.from("captured_posts")
+          .update({ status: "queued", product_id: product.id, reviewed_at: new Date().toISOString() })
+          .eq("id", post.id);
+        setCapturedPosts((prev) => prev.map((p) =>
+          p.id === post.id ? { ...p, status: "queued" as const, product_id: product.id } : p
+        ));
+        count++;
+      }
+      toast({ title: `✅ ${count} פוסטים נוספו לתור` });
+      setShowSendDialog(false);
+      setSendPosts([]);
+      setSelectedPostIds(new Set());
     } catch {
       toast({ title: "שגיאה בהוספה לתור", variant: "destructive" });
     } finally {
-      setIsApproving(null);
+      setIsBulkProcessing(false);
     }
   };
 
   const openSendDialog = (posts: CapturedPost | CapturedPost[]) => {
     const arr = Array.isArray(posts) ? posts : [posts];
     setSendPosts(arr);
+    setDialogMode('send');
     setSelectedAccounts(accounts.filter(a => a.is_active).map(a => a.id));
+    setSelectedZones([]);
+    setAddToAutomation(true);
+    setShowSendDialog(true);
+  };
+
+  const openQueueDialog = (posts: CapturedPost | CapturedPost[]) => {
+    const arr = Array.isArray(posts) ? posts : [posts];
+    setSendPosts(arr);
+    setDialogMode('queue');
+    setSelectedAccounts([]);
     setSelectedZones([]);
     setAddToAutomation(true);
     setShowSendDialog(true);
@@ -454,18 +478,8 @@ const GroupListener = () => {
     }
   };
 
-  const handleBulkAddToQueue = async () => {
-    const posts = capturedPosts.filter(p => selectedPostIds.has(p.id));
-    if (posts.length === 0) return;
-    setIsBulkProcessing(true);
-    let count = 0;
-    for (const post of posts) {
-      try { await handleAddToQueue(post); count++; } catch {}
-    }
-    setIsBulkProcessing(false);
-    setSelectedPostIds(new Set());
-    toast({ title: `✅ ${count} פוסטים נוספו לתור` });
-  };
+
+
 
   const togglePostSelection = (postId: string) => {
     setSelectedPostIds(prev => {
@@ -571,7 +585,7 @@ const GroupListener = () => {
             {selectedPostIds.size > 0 && (
               <div className="flex gap-2 flex-wrap items-center bg-primary/5 border border-primary/20 rounded-xl p-3">
                 <Badge variant="outline" className="text-xs">{selectedPostIds.size} נבחרו</Badge>
-                <Button variant="gradient" size="sm" onClick={handleBulkAddToQueue} disabled={isBulkProcessing} className="gap-1">
+                <Button variant="gradient" size="sm" onClick={() => openQueueDialog(capturedPosts.filter(p => selectedPostIds.has(p.id)))} disabled={isBulkProcessing} className="gap-1">
                   {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <ListPlus className="h-3 w-3" />}
                   הוסף נבחרים לתור
                 </Button>
@@ -654,26 +668,38 @@ const GroupListener = () => {
                         {hasRewrite ? (
                           <div className="space-y-2">
                             <label
-                              className={`block rounded-lg p-3 text-sm cursor-pointer border transition-all ${choice === 'original' ? 'border-primary bg-primary/5' : 'border-border bg-muted/30 text-muted-foreground'}`}
+                              className={`block rounded-lg p-3 text-sm cursor-pointer border-2 transition-all ${choice === 'original' ? 'border-primary bg-primary/10 ring-1 ring-primary/30' : 'border-border bg-muted/30 text-muted-foreground hover:border-muted-foreground/40'}`}
                               onClick={() => setTextChoice(prev => ({ ...prev, [post.id]: 'original' }))}
                               dir="rtl"
                             >
                               <div className="flex items-center gap-2 mb-1">
-                                <div className={`h-3 w-3 rounded-full border-2 ${choice === 'original' ? 'border-primary bg-primary' : 'border-muted-foreground'}`} />
-                                <span className="text-xs font-medium">מקורי + קישור חדש</span>
+                                {choice === 'original' ? (
+                                  <div className="h-5 w-5 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                                    <Check className="h-3 w-3 text-primary-foreground" />
+                                  </div>
+                                ) : (
+                                  <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/40 flex-shrink-0" />
+                                )}
+                                <span className="text-xs font-semibold">מקורי + קישור חדש</span>
                               </div>
-                              <p className="line-clamp-2 text-xs">{post.original_text}</p>
+                              <p className="line-clamp-2 text-xs mr-7">{post.original_text}</p>
                             </label>
                             <label
-                              className={`block rounded-lg p-3 text-sm cursor-pointer border transition-all ${choice === 'rewrite' ? 'border-primary bg-primary/5' : 'border-border bg-muted/30 text-muted-foreground'}`}
+                              className={`block rounded-lg p-3 text-sm cursor-pointer border-2 transition-all ${choice === 'rewrite' ? 'border-primary bg-primary/10 ring-1 ring-primary/30' : 'border-border bg-muted/30 text-muted-foreground hover:border-muted-foreground/40'}`}
                               onClick={() => setTextChoice(prev => ({ ...prev, [post.id]: 'rewrite' }))}
                               dir="rtl"
                             >
                               <div className="flex items-center gap-2 mb-1">
-                                <div className={`h-3 w-3 rounded-full border-2 ${choice === 'rewrite' ? 'border-primary bg-primary' : 'border-muted-foreground'}`} />
-                                <span className="text-xs font-medium">✨ מנוסח מחדש</span>
+                                {choice === 'rewrite' ? (
+                                  <div className="h-5 w-5 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                                    <Check className="h-3 w-3 text-primary-foreground" />
+                                  </div>
+                                ) : (
+                                  <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/40 flex-shrink-0" />
+                                )}
+                                <span className="text-xs font-semibold">✨ מנוסח מחדש</span>
                               </div>
-                              <p className="line-clamp-2 text-xs">{post.modified_text}</p>
+                              <p className="line-clamp-2 text-xs mr-7">{post.modified_text}</p>
                             </label>
                           </div>
                         ) : post.original_text ? (
@@ -696,8 +722,8 @@ const GroupListener = () => {
 
                         {/* Action buttons */}
                         <div className="flex gap-2 flex-wrap">
-                          <Button variant="gradient" size="sm" onClick={() => handleAddToQueue(post)} disabled={isApproving === post.id || post.status === "queued"} className="gap-1">
-                            {isApproving === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <ListPlus className="h-3 w-3" />}
+                          <Button variant="gradient" size="sm" onClick={() => openQueueDialog(post)} disabled={isBulkProcessing || post.status === "queued"} className="gap-1">
+                            <ListPlus className="h-3 w-3" />
                             הוסף לתור
                           </Button>
                           <Button variant="outline" size="sm" onClick={() => openSendDialog(post)} disabled={isBulkProcessing} className="gap-1">
@@ -1017,11 +1043,11 @@ const GroupListener = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Send to Groups Dialog */}
+        {/* Send/Queue Dialog */}
         <Dialog open={showSendDialog} onOpenChange={(open) => { if (!open) { setShowSendDialog(false); setSendPosts([]); } }}>
           <DialogContent className="sm:max-w-md" dir="rtl">
             <DialogHeader>
-              <DialogTitle>שלח לקבוצות {sendPosts.length > 1 ? `(${sendPosts.length} פוסטים)` : ""}</DialogTitle>
+              <DialogTitle>{dialogMode === 'send' ? 'שלח והוסף לתור' : 'הוסף לתור'} {sendPosts.length > 1 ? `(${sendPosts.length} פוסטים)` : ""}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               {sendPosts.length === 1 && sendPosts[0]?.image_url && (
@@ -1034,46 +1060,57 @@ const GroupListener = () => {
               )}
               {sendPosts.length > 1 && (
                 <div className="text-sm text-muted-foreground bg-muted/30 rounded-lg p-3">
-                  {sendPosts.length} פוסטים נבחרים לשליחה
+                  {sendPosts.length} פוסטים נבחרים
                 </div>
               )}
 
-              {/* Account selection */}
-              <div className="space-y-2">
-                <Label className="font-hebrew text-sm font-medium">בחר חשבונות לשליחה</Label>
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {accounts.map((acc) => (
-                    <label key={acc.id} className={`flex items-center gap-2 text-sm cursor-pointer ${!acc.is_active ? "opacity-50" : ""}`}>
-                      <Checkbox
-                        checked={selectedAccounts.includes(acc.id)}
-                        onCheckedChange={(checked) => {
-                          setSelectedAccounts(prev =>
-                            checked ? [...prev, acc.id] : prev.filter(id => id !== acc.id)
-                          );
-                        }}
-                      />
-                      <span>{acc.account_name}</span>
-                      <Badge variant="outline" className="text-xs">{acc.account_type === "telegram" ? "📱 Telegram" : "💬 WhatsApp"}</Badge>
-                      {!acc.is_active && <Badge variant="secondary" className="text-xs">לא פעיל</Badge>}
-                    </label>
-                  ))}
+              {/* Account selection - show in send mode, or optionally in queue mode */}
+              {dialogMode === 'send' && (
+                <div className="space-y-2">
+                  <Label className="font-hebrew text-sm font-medium">בחר חשבונות לשליחה</Label>
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {accounts.map((acc) => (
+                      <label key={acc.id} className={`flex items-center gap-2 text-sm cursor-pointer ${!acc.is_active ? "opacity-50" : ""}`}>
+                        <Checkbox
+                          checked={selectedAccounts.includes(acc.id)}
+                          onCheckedChange={(checked) => {
+                            setSelectedAccounts(prev =>
+                              checked ? [...prev, acc.id] : prev.filter(id => id !== acc.id)
+                            );
+                          }}
+                        />
+                        <span>{acc.account_name}</span>
+                        <Badge variant="outline" className="text-xs">{acc.account_type === "telegram" ? "📱 Telegram" : "💬 WhatsApp"}</Badge>
+                        {!acc.is_active && <Badge variant="secondary" className="text-xs">לא פעיל</Badge>}
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Zone selection */}
               <ZoneSelector selectedZones={selectedZones} onSelectionChange={setSelectedZones} />
 
-              {/* Add to automation toggle */}
-              <div className="flex items-center gap-3">
-                <Switch checked={addToAutomation} onCheckedChange={setAddToAutomation} />
-                <Label className="font-hebrew text-sm">הוסף גם לתור האוטומציה</Label>
-              </div>
+              {/* Add to automation toggle - only in send mode */}
+              {dialogMode === 'send' && (
+                <div className="flex items-center gap-3">
+                  <Switch checked={addToAutomation} onCheckedChange={setAddToAutomation} />
+                  <Label className="font-hebrew text-sm">הוסף גם לתור האוטומציה</Label>
+                </div>
+              )}
 
               <div className="flex gap-2">
-                <Button variant="gradient" className="flex-1 gap-2" onClick={handleSendAndQueue} disabled={isBulkProcessing}>
-                  {isBulkProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  שלח {selectedAccounts.length > 0 ? `(${selectedAccounts.length})` : ""} {addToAutomation ? "+ תור" : ""}
-                </Button>
+                {dialogMode === 'send' ? (
+                  <Button variant="gradient" className="flex-1 gap-2" onClick={handleSendAndQueue} disabled={isBulkProcessing}>
+                    {isBulkProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    שלח {selectedAccounts.length > 0 ? `(${selectedAccounts.length})` : ""} {addToAutomation ? "+ תור" : ""}
+                  </Button>
+                ) : (
+                  <Button variant="gradient" className="flex-1 gap-2" onClick={() => handleAddToQueue(sendPosts)} disabled={isBulkProcessing}>
+                    {isBulkProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListPlus className="h-4 w-4" />}
+                    הוסף לתור {selectedZones.length > 0 ? `(${selectedZones.length} אזורים)` : ""}
+                  </Button>
+                )}
                 <Button variant="outline" onClick={() => { setShowSendDialog(false); setSendPosts([]); }}>ביטול</Button>
               </div>
             </div>
