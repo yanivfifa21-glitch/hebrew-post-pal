@@ -205,7 +205,7 @@ serve(async (req) => {
       target_currency: "USD",
     };
 
-    console.log("[fetch-ali-product] API params for user:", user.id);
+    console.log("[fetch-ali-product] API params for user:", resolvedUserId);
 
     const sign = await generateMd5Signature(params, appSecret);
 
