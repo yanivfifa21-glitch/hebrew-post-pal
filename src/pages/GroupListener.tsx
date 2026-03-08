@@ -961,6 +961,62 @@ const GroupListener = () => {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Send to Groups Dialog */}
+        <Dialog open={showSendDialog} onOpenChange={(open) => { if (!open) { setShowSendDialog(false); setSendPost(null); } }}>
+          <DialogContent className="sm:max-w-md" dir="rtl">
+            <DialogHeader>
+              <DialogTitle>שלח לקבוצות והוסף לאוטומט</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              {sendPost?.image_url && (
+                <img src={sendPost.image_url} alt="" className="w-full h-32 object-cover rounded-lg" />
+              )}
+              <div className="text-sm text-muted-foreground line-clamp-3 bg-muted/30 rounded-lg p-3" dir="rtl">
+                {sendPost?.modified_text || sendPost?.original_text || "אין טקסט"}
+              </div>
+
+              {/* Account selection */}
+              <div className="space-y-2">
+                <Label className="font-hebrew text-sm font-medium">בחר חשבונות לשליחה</Label>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {accounts.map((acc) => (
+                    <label key={acc.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={selectedAccounts.includes(acc.id)}
+                        onCheckedChange={(checked) => {
+                          setSelectedAccounts(prev =>
+                            checked ? [...prev, acc.id] : prev.filter(id => id !== acc.id)
+                          );
+                        }}
+                      />
+                      <span>{acc.account_name}</span>
+                      <Badge variant="outline" className="text-xs">{acc.account_type === "telegram" ? "📱 Telegram" : "💬 WhatsApp"}</Badge>
+                      {!acc.is_active && <Badge variant="secondary" className="text-xs">לא פעיל</Badge>}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Zone selection */}
+              <ZoneSelector selectedZones={selectedZones} onSelectionChange={setSelectedZones} />
+
+              {/* Add to automation toggle */}
+              <div className="flex items-center gap-3">
+                <Switch checked={addToAutomation} onCheckedChange={setAddToAutomation} />
+                <Label className="font-hebrew text-sm">הוסף גם לתור האוטומציה</Label>
+              </div>
+
+              <div className="flex gap-2">
+                <Button variant="gradient" className="flex-1 gap-2" onClick={handleSendAndQueue} disabled={sendingPostId !== null}>
+                  {sendingPostId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  שלח {selectedAccounts.length > 0 ? `(${selectedAccounts.length})` : ""} {addToAutomation ? "+ אוטומט" : ""}
+                </Button>
+                <Button variant="outline" onClick={() => { setShowSendDialog(false); setSendPost(null); }}>ביטול</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </MainLayout>
   );
