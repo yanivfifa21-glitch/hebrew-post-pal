@@ -333,14 +333,31 @@ const GroupListener = () => {
   const getPostFinalText = (post: CapturedPost) => {
     const hasRewrite = !!(post.modified_text && post.modified_text !== post.original_text);
     const choice = textChoice[post.id] || (hasRewrite ? 'rewrite' : 'original');
-    const chosenText = choice === 'original' ? (post.original_text || "") : (post.modified_text || post.original_text || "");
-    let finalText = chosenText;
-    if (choice === 'original' && post.original_url && post.modified_url) {
-      finalText = chosenText.replace(post.original_url, post.modified_url);
-      const shortLinkRegex = /https?:\/\/s\.click\.aliexpress\.com\/e\/[^\s\n"<>]+/gi;
-      if (!finalText.includes(post.modified_url)) finalText = finalText.replace(shortLinkRegex, post.modified_url);
-      const aliLinkRegex = /https?:\/\/[^\s\n"<>]*aliexpress\.com\/item\/[^\s\n"<>]+/gi;
-      if (!finalText.includes(post.modified_url)) finalText = finalText.replace(aliLinkRegex, post.modified_url);
+
+    // Rewrite mode: modified_text already contains the affiliate link — use as-is
+    if (choice === 'rewrite') {
+      return post.modified_text || post.original_text || "";
+    }
+
+    // Original mode: replace ALL AliExpress links with the affiliate link
+    let finalText = post.original_text || "";
+    if (post.modified_url) {
+      // Match any AliExpress-related URL (short links, item links, general ali links)
+      const aliLinkRegex = /https?:\/\/[^\s\n"<>]*(?:aliexpress\.com|a\.aliexpress\.com|s\.click\.aliexpress\.com)[^\s\n"<>]*/gi;
+      // Replace ALL occurrences with the single affiliate link
+      let replaced = false;
+      finalText = finalText.replace(aliLinkRegex, (match) => {
+        if (!replaced) {
+          replaced = true;
+          return post.modified_url!;
+        }
+        // Remove duplicate links entirely
+        return post.modified_url!;
+      });
+      // If the original_url is a non-ali link that was tracked, replace it too
+      if (post.original_url && finalText.includes(post.original_url) && post.original_url !== post.modified_url) {
+        finalText = finalText.replace(post.original_url, post.modified_url);
+      }
     }
     return finalText;
   };
@@ -768,12 +785,20 @@ const GroupListener = () => {
                           </div>
                         ) : null}
 
-                        {/* URLs */}
+                        {/* URLs - old vs new */}
                         <div className="flex flex-col gap-1 text-xs">
+                          {post.original_url && (
+                            <div className="flex items-center gap-1 text-destructive/70 truncate" dir="ltr">
+                              <XCircle className="h-3 w-3 flex-shrink-0" />
+                              <span className="text-muted-foreground text-[10px] font-medium">ישן:</span>
+                              <span className="truncate line-through opacity-60">{post.original_url}</span>
+                            </div>
+                          )}
                           {post.modified_url && (
                             <div className="flex items-center gap-1 text-success truncate" dir="ltr">
                               <CheckCircle className="h-3 w-3 flex-shrink-0" />
-                              <a href={post.modified_url} target="_blank" rel="noopener noreferrer" className="truncate hover:underline">
+                              <span className="text-muted-foreground text-[10px] font-medium">חדש:</span>
+                              <a href={post.modified_url} target="_blank" rel="noopener noreferrer" className="truncate hover:underline font-medium">
                                 {post.modified_url}
                               </a>
                             </div>
