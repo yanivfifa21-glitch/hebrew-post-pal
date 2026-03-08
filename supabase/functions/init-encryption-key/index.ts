@@ -19,95 +19,23 @@ Deno.serve(async (req) => {
       );
     }
 
-    const dbUrl = Deno.env.get("SUPABASE_DB_URL");
-    if (!dbUrl) {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, serviceKey);
+
+    // Set the encryption key in the config table via service_role RPC
+    const { error } = await supabase.rpc("set_encryption_key", { p_key: encryptionKey });
+    if (error) {
       return new Response(
-        JSON.stringify({ error: "SUPABASE_DB_URL not configured" }),
+        JSON.stringify({ error: `Failed to set key: ${error.message}` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const { default: postgres } = await import("https://deno.land/x/postgresjs@v3.4.5/mod.js");
-    const sql = postgres(dbUrl);
-    
-    try {
-      const oldKey = 'lovable_secure_key_v1';
-      const safeNewKey = encryptionKey.replace(/'/g, "''");
-
-      // Re-encrypt user_credentials
-      await sql.unsafe(`
-        UPDATE public.user_credentials SET
-          encrypted_telegram_bot_token = CASE 
-            WHEN encrypted_telegram_bot_token IS NOT NULL 
-            THEN extensions.pgp_sym_encrypt(
-              extensions.pgp_sym_decrypt(encrypted_telegram_bot_token, '${oldKey}'), 
-              '${safeNewKey}'
-            ) ELSE NULL END,
-          encrypted_greenapi_api_token = CASE 
-            WHEN encrypted_greenapi_api_token IS NOT NULL 
-            THEN extensions.pgp_sym_encrypt(
-              extensions.pgp_sym_decrypt(encrypted_greenapi_api_token, '${oldKey}'), 
-              '${safeNewKey}'
-            ) ELSE NULL END,
-          encrypted_aliexpress_app_secret = CASE 
-            WHEN encrypted_aliexpress_app_secret IS NOT NULL 
-            THEN extensions.pgp_sym_encrypt(
-              extensions.pgp_sym_decrypt(encrypted_aliexpress_app_secret, '${oldKey}'), 
-              '${safeNewKey}'
-            ) ELSE NULL END,
-          encrypted_aliexpress_app_key = CASE 
-            WHEN encrypted_aliexpress_app_key IS NOT NULL 
-            THEN extensions.pgp_sym_encrypt(
-              extensions.pgp_sym_decrypt(encrypted_aliexpress_app_key, '${oldKey}'), 
-              '${safeNewKey}'
-            ) ELSE NULL END,
-          updated_at = now()
-      `);
-
-      // Re-encrypt messaging_accounts
-      await sql.unsafe(`
-        UPDATE public.messaging_accounts SET
-          encrypted_bot_token = CASE 
-            WHEN encrypted_bot_token IS NOT NULL 
-            THEN extensions.pgp_sym_encrypt(
-              extensions.pgp_sym_decrypt(encrypted_bot_token, '${oldKey}'), 
-              '${safeNewKey}'
-            ) ELSE NULL END,
-          encrypted_api_token = CASE 
-            WHEN encrypted_api_token IS NOT NULL 
-            THEN extensions.pgp_sym_encrypt(
-              extensions.pgp_sym_decrypt(encrypted_api_token, '${oldKey}'), 
-              '${safeNewKey}'
-            ) ELSE NULL END,
-          encrypted_instance_id = CASE 
-            WHEN encrypted_instance_id IS NOT NULL 
-            THEN extensions.pgp_sym_encrypt(
-              extensions.pgp_sym_decrypt(encrypted_instance_id, '${oldKey}'), 
-              '${safeNewKey}'
-            ) ELSE NULL END,
-          updated_at = now()
-      `);
-
-      // Update vault secret
-      try {
-        await sql.unsafe(`UPDATE vault.secrets SET secret = '${safeNewKey}' WHERE name = 'encryption_key'`);
-      } catch (_e) {
-        // vault update optional
-      }
-
-      await sql.end();
-      
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: "All credentials re-encrypted with new key" 
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    } catch (dbErr) {
-      await sql.end();
-      throw dbErr;
-    }
+    return new Response(
+      JSON.stringify({ success: true, message: "Encryption key configured in database" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   } catch (err) {
     return new Response(
       JSON.stringify({ error: err.message }),
