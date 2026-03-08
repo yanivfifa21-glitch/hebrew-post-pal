@@ -976,18 +976,25 @@ const GroupListener = () => {
         </Dialog>
 
         {/* Send to Groups Dialog */}
-        <Dialog open={showSendDialog} onOpenChange={(open) => { if (!open) { setShowSendDialog(false); setSendPost(null); } }}>
+        <Dialog open={showSendDialog} onOpenChange={(open) => { if (!open) { setShowSendDialog(false); setSendPosts([]); } }}>
           <DialogContent className="sm:max-w-md" dir="rtl">
             <DialogHeader>
-              <DialogTitle>שלח לקבוצות והוסף לאוטומט</DialogTitle>
+              <DialogTitle>שלח לקבוצות {sendPosts.length > 1 ? `(${sendPosts.length} פוסטים)` : ""}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              {sendPost?.image_url && (
-                <img src={sendPost.image_url} alt="" className="w-full h-32 object-cover rounded-lg" />
+              {sendPosts.length === 1 && sendPosts[0]?.image_url && (
+                <img src={sendPosts[0].image_url} alt="" className="w-full h-32 object-cover rounded-lg" />
               )}
-              <div className="text-sm text-muted-foreground line-clamp-3 bg-muted/30 rounded-lg p-3" dir="rtl">
-                {sendPost?.modified_text || sendPost?.original_text || "אין טקסט"}
-              </div>
+              {sendPosts.length === 1 && (
+                <div className="text-sm text-muted-foreground line-clamp-3 bg-muted/30 rounded-lg p-3" dir="rtl">
+                  {getPostFinalText(sendPosts[0]).substring(0, 200)}...
+                </div>
+              )}
+              {sendPosts.length > 1 && (
+                <div className="text-sm text-muted-foreground bg-muted/30 rounded-lg p-3">
+                  {sendPosts.length} פוסטים נבחרים לשליחה
+                </div>
+              )}
 
               {/* Account selection */}
               <div className="space-y-2">
@@ -1021,11 +1028,11 @@ const GroupListener = () => {
               </div>
 
               <div className="flex gap-2">
-                <Button variant="gradient" className="flex-1 gap-2" onClick={handleSendAndQueue} disabled={sendingPostId !== null}>
-                  {sendingPostId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  שלח {selectedAccounts.length > 0 ? `(${selectedAccounts.length})` : ""} {addToAutomation ? "+ אוטומט" : ""}
+                <Button variant="gradient" className="flex-1 gap-2" onClick={handleSendAndQueue} disabled={isBulkProcessing}>
+                  {isBulkProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  שלח {selectedAccounts.length > 0 ? `(${selectedAccounts.length})` : ""} {addToAutomation ? "+ תור" : ""}
                 </Button>
-                <Button variant="outline" onClick={() => { setShowSendDialog(false); setSendPost(null); }}>ביטול</Button>
+                <Button variant="outline" onClick={() => { setShowSendDialog(false); setSendPosts([]); }}>ביטול</Button>
               </div>
             </div>
           </DialogContent>
