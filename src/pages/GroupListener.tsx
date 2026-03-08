@@ -330,9 +330,9 @@ const GroupListener = () => {
     setSelectedAccounts(accs.filter(a => a.is_active).map(a => a.id));
   };
 
-  const getPostFinalText = (post: CapturedPost) => {
+  const getPostFinalText = (post: CapturedPost, forcedChoice?: 'original' | 'rewrite') => {
     const hasRewrite = !!(post.modified_text && post.modified_text !== post.original_text);
-    const choice = textChoice[post.id] || (hasRewrite ? 'rewrite' : 'original');
+    const choice = forcedChoice || textChoice[post.id] || (hasRewrite ? 'rewrite' : 'original');
 
     if (choice === 'rewrite') {
       return post.modified_text || post.original_text || "";
