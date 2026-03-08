@@ -20,7 +20,7 @@ const CATEGORY_IDS: Record<string, string> = {
 };
 
 // AD CENTER + Incentive product sources
-type ProductSource = "hot" | "hot_deals" | "high_commission" | "featured" | "campaigns" | "search" | "smart_match" | "incentive";
+type ProductSource = "hot" | "hot_deals" | "high_commission" | "featured" | "campaigns" | "campaign_products" | "search" | "smart_match" | "incentive";
 
 const ALL_CATEGORY_IDS = ["509", "15", "66", "200000297", "34", "200003482", "7", "44"];
 
@@ -105,6 +105,9 @@ serve(async (req) => {
     const source: ProductSource = body?.source || "hot";
     // For smart_match, optional product IDs
     const matchProductIds = String(body?.matchProductIds || "").trim();
+    // For campaign_products: specific campaign name to fetch products for
+    const campaignName = String(body?.campaignName || "").trim();
+    const campaignDbId = String(body?.campaignId || "").trim();
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -391,6 +394,24 @@ serve(async (req) => {
           }
         }
       }
+    } else if (source === "campaign_products" && campaignName) {
+      // Fetch products for a specific campaign/promotion by name
+      console.log("[fetch-hot-products] Fetching products for campaign:", campaignName);
+      const data = await callFeaturedPromoProducts(campaignName, pageNo);
+      const rr = data?.aliexpress_affiliate_featuredpromo_products_get_response?.resp_result;
+      if (rr?.resp_code === 200) {
+        const rawProducts = rr?.result?.products?.product || [];
+        console.log("[fetch-hot-products] Campaign", campaignName, "returned", rawProducts.length, "products");
+        for (const p of rawProducts) {
+          if (products.length >= desiredCount) break;
+          const mapped = mapProduct(p, `campaign:${campaignName}`);
+          if (!mapped || seen.has(mapped.product_id)) continue;
+          seen.add(mapped.product_id);
+          products.push(mapped);
+        }
+      } else {
+        console.warn("[fetch-hot-products] Campaign products fetch failed for:", campaignName, rr);
+      }
     } else if (source === "campaigns" || source === "incentive") {
       // Campaigns + Incentive: get all available promotions and their products
       const promoData = await callGetPromotions();
@@ -619,6 +640,10 @@ serve(async (req) => {
         const productRows = products.map((p) => {
           // Extract campaign name from source label like "campaign:PromoName"
           const campName = p.source?.startsWith("campaign:") ? p.source.replace("campaign:", "") : null;
+          // For campaign_products source, use the campaignDbId directly
+          const resolvedCampaignId = source === "campaign_products" && campaignDbId
+            ? campaignDbId
+            : (campName ? (campaignMap.get(campName) || null) : null);
           return {
             user_id: user.id,
             product_id: p.product_id,
@@ -627,8 +652,8 @@ serve(async (req) => {
             price: p.price,
             original_price: p.original_price,
             product_url: p.product_url,
-            source: source,
-            campaign_id: campName ? (campaignMap.get(campName) || null) : null,
+            source: source === "campaign_products" ? "campaigns" : source,
+            campaign_id: resolvedCampaignId,
             sales_count: p.sales_count,
             rating: p.rating,
             commission_rate: p.commission_rate || 0,
