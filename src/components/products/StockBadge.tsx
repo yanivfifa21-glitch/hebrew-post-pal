@@ -20,7 +20,7 @@ export const StockBadge = ({ product, onStockChecked, showCheckButton = true }: 
   const handleCheckStock = async (e: React.MouseEvent) => {
     e.stopPropagation();
 
-    const checkUrl = product.affiliate_link || product.original_url;
+    const checkUrl = product.original_url || product.affiliate_link;
     const isValidHttpUrl = (() => {
       if (!checkUrl) return false;
       try {

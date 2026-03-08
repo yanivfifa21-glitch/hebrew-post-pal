@@ -303,7 +303,7 @@ const Queue = () => {
     };
 
     try {
-      const validProducts = scheduledProducts.filter((p) => isValidHttpUrl(p.affiliate_link || p.original_url));
+      const validProducts = scheduledProducts.filter((p) => isValidHttpUrl(p.original_url || p.affiliate_link));
       skipped = scheduledProducts.length - validProducts.length;
       setStockCheckTotal(validProducts.length);
       setStockCheckProgress(0);
