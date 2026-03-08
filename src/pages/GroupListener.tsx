@@ -331,7 +331,8 @@ const GroupListener = () => {
   };
 
   const getPostFinalText = (post: CapturedPost) => {
-    const choice = textChoice[post.id] || (post.modified_text && post.modified_text !== post.original_text ? 'rewrite' : 'original');
+    const hasRewrite = !!(post.modified_text && post.modified_text !== post.original_text);
+    const choice = textChoice[post.id] || (hasRewrite ? 'rewrite' : 'original');
     const chosenText = choice === 'original' ? (post.original_text || "") : (post.modified_text || post.original_text || "");
     let finalText = chosenText;
     if (choice === 'original' && post.original_url && post.modified_url) {
