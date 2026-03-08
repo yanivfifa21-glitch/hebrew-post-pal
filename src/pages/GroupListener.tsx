@@ -400,8 +400,54 @@ const GroupListener = () => {
     setAccounts((data as unknown as MessagingAccountSafe[]) || []);
   };
 
-  const openSendDialog = (post: CapturedPost) => {
-    setSendPost(post);
+  const getPostFinalText = (post: CapturedPost) => {
+    const choice = textChoice[post.id] || (post.modified_text && post.modified_text !== post.original_text ? 'rewrite' : 'original');
+    const chosenText = choice === 'original' ? (post.original_text || "") : (post.modified_text || post.original_text || "");
+    let finalText = chosenText;
+    if (choice === 'original' && post.original_url && post.modified_url) {
+      finalText = chosenText.replace(post.original_url, post.modified_url);
+      const shortLinkRegex = /https?:\/\/s\.click\.aliexpress\.com\/e\/[^\s\n"<>]+/gi;
+      if (!finalText.includes(post.modified_url)) finalText = finalText.replace(shortLinkRegex, post.modified_url);
+      const aliLinkRegex = /https?:\/\/[^\s\n"<>]*aliexpress\.com\/item\/[^\s\n"<>]+/gi;
+      if (!finalText.includes(post.modified_url)) finalText = finalText.replace(aliLinkRegex, post.modified_url);
+    }
+    return finalText;
+  };
+
+  const handleAddToQueue = async (post: CapturedPost) => {
+    setIsApproving(post.id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+      const finalText = getPostFinalText(post);
+      const productTitle = finalText.substring(0, 100) || "Captured Product";
+      const { data: product, error: productError } = await supabase
+        .from("products")
+        .insert({
+          user_id: user.id, title: productTitle, original_url: post.original_url || "",
+          affiliate_link: post.modified_url || null, image_url: post.image_url || null,
+          media_type: post.media_type || 'image', hebrew_description: finalText || null,
+          status: "Scheduled", sent_via: "auto",
+        })
+        .select().single();
+      if (productError) throw productError;
+      await supabase.from("captured_posts")
+        .update({ status: "queued", product_id: product.id, reviewed_at: new Date().toISOString() })
+        .eq("id", post.id);
+      setCapturedPosts((prev) => prev.map((p) =>
+        p.id === post.id ? { ...p, status: "queued" as const, product_id: product.id } : p
+      ));
+      toast({ title: "✅ נוסף לתור" });
+    } catch {
+      toast({ title: "שגיאה בהוספה לתור", variant: "destructive" });
+    } finally {
+      setIsApproving(null);
+    }
+  };
+
+  const openSendDialog = (posts: CapturedPost | CapturedPost[]) => {
+    const arr = Array.isArray(posts) ? posts : [posts];
+    setSendPosts(arr);
     setSelectedAccounts(accounts.filter(a => a.is_active).map(a => a.id));
     setSelectedZones([]);
     setAddToAutomation(true);
@@ -409,70 +455,103 @@ const GroupListener = () => {
   };
 
   const handleSendAndQueue = async () => {
-    if (!sendPost) return;
-    setSendingPostId(sendPost.id);
+    if (sendPosts.length === 0) return;
+    setIsBulkProcessing(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const text = sendPost.modified_text || sendPost.original_text || "";
-      const mediaUrl = sendPost.image_url || null;
-      const mediaType = sendPost.media_type || "image";
+      for (const post of sendPosts) {
+        const text = getPostFinalText(post);
+        const mediaUrl = post.image_url || null;
+        const mediaType = post.media_type || "image";
 
-      // Send to selected accounts
-      if (selectedAccounts.length > 0) {
-        const results = await Promise.allSettled(
-          selectedAccounts.map(async (accountId) => {
-            const acc = accounts.find(a => a.id === accountId);
-            if (!acc) return;
-            if (acc.account_type === "telegram") {
-              await supabase.functions.invoke("send-telegram", {
-                body: { message: text, imageUrl: mediaUrl, mediaType, accountId, userId: user.id },
-              });
-            } else if (acc.account_type === "whatsapp") {
-              await supabase.functions.invoke("send-whatsapp", {
-                body: { message: text, imageUrl: mediaUrl, mediaType, accountId, userId: user.id },
-              });
-            }
-          })
-        );
-        const sent = results.filter(r => r.status === "fulfilled").length;
-        toast({ title: `📤 נשלח ל-${sent} חשבונות` });
-      }
-
-      // Add to automation queue if checked
-      if (addToAutomation) {
-        const productTitle = text.substring(0, 100) || "Captured Product";
-        const { data: product } = await supabase
-          .from("products")
-          .insert({
-            user_id: user.id,
-            title: productTitle,
-            original_url: sendPost.original_url || "",
-            affiliate_link: sendPost.modified_url || null,
-            image_url: mediaUrl,
-            media_type: mediaType,
-            hebrew_description: text,
-            status: "Scheduled",
-            sent_via: "manual",
-          })
-          .select()
-          .single();
-
-        if (product && selectedZones.length > 0) {
-          await supabase.from("zone_products").insert(
-            selectedZones.map(zoneId => ({ zone_id: zoneId, product_id: product.id }))
+        // Send to selected accounts
+        if (selectedAccounts.length > 0) {
+          await Promise.allSettled(
+            selectedAccounts.map(async (accountId) => {
+              const acc = accounts.find(a => a.id === accountId);
+              if (!acc) return;
+              if (acc.account_type === "telegram") {
+                await supabase.functions.invoke("send-telegram", {
+                  body: { message: text, imageUrl: mediaUrl, mediaType, accountId, userId: user.id },
+                });
+              } else if (acc.account_type === "whatsapp") {
+                await supabase.functions.invoke("send-whatsapp", {
+                  body: { message: text, imageUrl: mediaUrl, mediaType, accountId, userId: user.id },
+                });
+              }
+            })
           );
         }
-        toast({ title: "✅ נוסף לתור האוטומציה" });
+
+        // Add to automation queue if checked
+        if (addToAutomation) {
+          const productTitle = text.substring(0, 100) || "Captured Product";
+          const { data: product } = await supabase
+            .from("products")
+            .insert({
+              user_id: user.id, title: productTitle, original_url: post.original_url || "",
+              affiliate_link: post.modified_url || null, image_url: mediaUrl,
+              media_type: mediaType, hebrew_description: text,
+              status: "Scheduled", sent_via: "manual",
+            })
+            .select().single();
+          if (product && selectedZones.length > 0) {
+            await supabase.from("zone_products").insert(
+              selectedZones.map(zoneId => ({ zone_id: zoneId, product_id: product.id }))
+            );
+          }
+        }
+
+        // Mark as queued
+        await supabase.from("captured_posts")
+          .update({ status: "queued", reviewed_at: new Date().toISOString() })
+          .eq("id", post.id);
+        setCapturedPosts((prev) => prev.map((p) =>
+          p.id === post.id ? { ...p, status: "queued" as const } : p
+        ));
       }
 
+      toast({ title: `✅ ${sendPosts.length} פוסטים נשלחו${addToAutomation ? " ונוספו לתור" : ""}` });
       setShowSendDialog(false);
-      setSendPost(null);
+      setSendPosts([]);
+      setSelectedPostIds(new Set());
     } catch (err) {
       toast({ title: "שגיאה בשליחה", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     } finally {
-      setSendingPostId(null);
+      setIsBulkProcessing(false);
+    }
+  };
+
+  const handleBulkAddToQueue = async () => {
+    const posts = capturedPosts.filter(p => selectedPostIds.has(p.id));
+    if (posts.length === 0) return;
+    setIsBulkProcessing(true);
+    let count = 0;
+    for (const post of posts) {
+      try { await handleAddToQueue(post); count++; } catch {}
+    }
+    setIsBulkProcessing(false);
+    setSelectedPostIds(new Set());
+    toast({ title: `✅ ${count} פוסטים נוספו לתור` });
+  };
+
+  const togglePostSelection = (postId: string) => {
+    setSelectedPostIds(prev => {
+      const next = new Set(prev);
+      if (next.has(postId)) next.delete(postId); else next.add(postId);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedPostIds.size === capturedPosts.length) {
+      setSelectedPostIds(new Set());
+    } else {
+      setSelectedPostIds(new Set(capturedPosts.map(p => p.id)));
+    }
+  };
     }
   };
 
