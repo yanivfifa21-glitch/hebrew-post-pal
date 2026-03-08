@@ -574,9 +574,14 @@ const GroupListener = () => {
                             <Badge variant="outline" className="gap-1 text-muted-foreground"><WifiOff className="h-3 w-3" />לא מחובר</Badge>
                           )}
                         </div>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteGroup(group.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditGroupDialog(group)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteGroup(group.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                       <CardDescription dir="ltr" className="text-xs">{group.telegram_group_id}</CardDescription>
                     </CardHeader>
