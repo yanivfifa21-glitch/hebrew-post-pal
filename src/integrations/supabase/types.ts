@@ -215,6 +215,24 @@ export type Database = {
         }
         Relationships: []
       }
+      encryption_config: {
+        Row: {
+          created_at: string | null
+          encrypted_key: string
+          id: number
+        }
+        Insert: {
+          created_at?: string | null
+          encrypted_key: string
+          id?: number
+        }
+        Update: {
+          created_at?: string | null
+          encrypted_key?: string
+          id?: number
+        }
+        Relationships: []
+      }
       gold_posts: {
         Row: {
           created_at: string
