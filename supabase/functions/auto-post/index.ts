@@ -259,6 +259,72 @@ async function sendProductToAccounts(
   return { success: sendSuccess, sentTo, errors };
 }
 
+// --- STOCK CHECK LOGIC ---
+const UNAVAILABLE_PATTERNS = [
+  "no longer available", "this item has been removed", "oops",
+  "page not found", "currently unavailable", "out of stock", "0 in stock",
+];
+
+async function checkProductStock(url: string): Promise<string> {
+  if (!url) return "error";
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "text/html",
+      },
+      redirect: "follow",
+    });
+    const finalUrl = response.url;
+    if (/^https?:\/\/(www\.)?aliexpress\.(com|us|ru)\/?(\?.*)?$/i.test(finalUrl)) return "unavailable";
+    if (response.status === 404 || response.status >= 500) return "unavailable";
+    if (!response.ok) return "error";
+    const html = (await response.text()).toLowerCase();
+    for (const p of UNAVAILABLE_PATTERNS) {
+      if (html.includes(p)) return "unavailable";
+    }
+    return "available";
+  } catch {
+    return "error";
+  }
+}
+
+async function prePublishStockCheck(
+  supabase: any, product: any, stockCheckEnabled: boolean
+): Promise<boolean> {
+  if (!stockCheckEnabled) return true;
+  const checkUrl = product.affiliate_link || product.original_url;
+  if (!checkUrl) return true;
+
+  const status = await checkProductStock(checkUrl);
+  await supabase.from("products").update({
+    stock_status: status,
+    last_stock_check: new Date().toISOString(),
+  }).eq("id", product.id);
+
+  if (status === "unavailable") {
+    await supabase.from("products").update({ auto_disabled: true }).eq("id", product.id);
+    console.log(`[auto-post] Product ${product.id}: OUT OF STOCK - skipping`);
+    return false;
+  }
+  if (status === "error") {
+    // Retry once
+    const retryStatus = await checkProductStock(checkUrl);
+    await supabase.from("products").update({ stock_status: retryStatus }).eq("id", product.id);
+    if (retryStatus === "unavailable") {
+      await supabase.from("products").update({ auto_disabled: true }).eq("id", product.id);
+      console.log(`[auto-post] Product ${product.id}: OUT OF STOCK on retry - skipping`);
+      return false;
+    }
+    if (retryStatus === "error") {
+      console.log(`[auto-post] Product ${product.id}: Stock check error, skipping`);
+      return false;
+    }
+  }
+  return true;
+}
+
 // ============ MAIN ============
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -396,6 +462,7 @@ serve(async (req) => {
       const shabbatEnabled: boolean = userSettings.shabbat_mode_enabled || false;
       const shabbatStartTime: string = userSettings.shabbat_start_time || '14:00';
       const shabbatEndTime: string = userSettings.shabbat_end_time || '20:00';
+      const stockCheckEnabled: boolean = userSettings.stock_check_before_publish !== false; // default true
 
       // Step A: Check Shabbat mode first (global)
       if (isInShabbatMode(currentDayOfWeek, currentTimeStr, shabbatEnabled, shabbatStartTime, shabbatEndTime)) {
@@ -485,6 +552,13 @@ serve(async (req) => {
               .update({ status: "processing" })
               .eq("id", zoneProduct.id)
               .eq("status", "Scheduled");
+
+            // Stock check before publish
+            const stockOk = await prePublishStockCheck(supabase, product, stockCheckEnabled);
+            if (!stockOk) {
+              await supabase.from("zone_products").update({ status: "Scheduled" }).eq("id", zoneProduct.id);
+              continue;
+            }
 
             const message = buildMessage(product);
             const { success, sentTo, errors } = await sendProductToAccounts(supabase, userId, product, message, targetAccountIds);
@@ -650,6 +724,13 @@ serve(async (req) => {
             .eq("id", product.id)
             .eq("status", "Scheduled");
 
+          // Stock check before publish
+          const stockOk2 = await prePublishStockCheck(supabase, product, stockCheckEnabled);
+          if (!stockOk2) {
+            await supabase.from("products").update({ status: "Scheduled" }).eq("id", product.id);
+            continue;
+          }
+
           const message = buildMessage(product);
           const { success, sentTo, errors } = await sendProductToAccounts(
             supabase, userId, product, message, allAccounts.map((a: any) => a.id)
@@ -765,6 +846,13 @@ serve(async (req) => {
             .update({ status: "processing" })
             .eq("id", product.id)
             .eq("status", "Scheduled");
+
+          // Stock check before publish
+          const stockOk3 = await prePublishStockCheck(supabase, product, stockCheckEnabled);
+          if (!stockOk3) {
+            await supabase.from("products").update({ status: "Scheduled" }).eq("id", product.id);
+            continue;
+          }
 
           const message = buildMessage(product);
           const { success, sentTo, errors } = await sendProductToAccounts(

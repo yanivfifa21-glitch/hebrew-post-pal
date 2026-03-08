@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { StockBadge } from "@/components/products/StockBadge";
 import { Rocket, Trash2, Loader2, ExternalLink, Star, ShoppingCart, Copy, Check, Clock, RotateCcw, Edit, Save, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -19,9 +20,10 @@ interface QueueCardProps {
   isSelected?: boolean;
   onSelectionChange?: (productId: string, selected: boolean) => void;
   showCheckbox?: boolean;
+  onStockChecked?: (productId: string, status: string) => void;
 }
 
-export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelected = false, onSelectionChange, showCheckbox = false }: QueueCardProps) => {
+export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelected = false, onSelectionChange, showCheckbox = false, onStockChecked }: QueueCardProps) => {
   const [hebrewDescription, setHebrewDescription] = useState(product.hebrew_description || "");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -349,6 +351,9 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelec
               </>
             )}
           </div>
+
+          {/* Stock Status Badge */}
+          <StockBadge product={product} onStockChecked={onStockChecked} />
 
           {/* Editable Hebrew Description */}
           <div className="relative">

@@ -14,7 +14,8 @@ import {
   MapPin,
   Search,
   Ticket,
-  LayoutGrid
+  LayoutGrid,
+  Headphones
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ const navItems = [
   { icon: MapPin, label: "אזורים", path: "/zones" },
   { icon: Ticket, label: "קופונים", path: "/coupons" },
   { icon: LayoutGrid, label: "יוצר קולאז׳", path: "/collage" },
+  { icon: Headphones, label: "האזנה לקבוצות", path: "/group-listener" },
   { icon: History, label: "היסטוריה", path: "/history" },
   { icon: Settings, label: "הגדרות", path: "/settings" },
 ];

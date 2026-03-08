@@ -15,6 +15,7 @@ import ManualSend from "./pages/ManualSend";
 import Zones from "./pages/Zones";
 import Coupons from "./pages/Coupons";
 import CollageGenerator from "./pages/CollageGenerator";
+import GroupListener from "./pages/GroupListener";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import Admin from "./pages/Admin";
@@ -43,6 +44,7 @@ const App = () => (
           <Route path="/zones" element={<AuthGuard><Zones /></AuthGuard>} />
           <Route path="/coupons" element={<AuthGuard><Coupons /></AuthGuard>} />
           <Route path="/collage" element={<AuthGuard><CollageGenerator /></AuthGuard>} />
+          <Route path="/group-listener" element={<AuthGuard><GroupListener /></AuthGuard>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
