@@ -301,6 +301,29 @@ async function processMessage(supabase: any, supabaseUrl: string, message: any, 
 
     const cleanUrl = `https://www.aliexpress.com/item/${productId}.html`;
 
+    // Check product eligibility for affiliate program via product detail API
+    try {
+      const eligibilityResp = await fetch(`${supabaseUrl}/functions/v1/fetch-ali-product`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        },
+        body: JSON.stringify({ productUrl: cleanUrl, userId }),
+      });
+      const eligibilityData = await eligibilityResp.json();
+      
+      if (eligibilityData?.success && eligibilityData?.eligible === false) {
+        console.warn(`[telegram-listener-webhook] Product ${productId} not eligible for affiliate program – skipping`);
+        return new Response(JSON.stringify({ ok: true, skipped: "not_affiliate_eligible", productId }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } catch (e) {
+      console.error("[telegram-listener-webhook] Eligibility check error:", e);
+      // Continue – don't block on eligibility check failure
+    }
+
     // Generate affiliate link via AliExpress API (MUST succeed)
     const affiliateLink = await generateAffiliateLink(appKey, appSecret, trackingId, cleanUrl);
     if (!affiliateLink) {
