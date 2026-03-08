@@ -234,15 +234,26 @@ serve(async (req) => {
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
-    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
-    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(
-      authHeader.replace("Bearer ", "")
-    );
+    // Check if this is a service-role call (internal function-to-function)
+    const token = authHeader.replace("Bearer ", "");
+    const isServiceRole = token === supabaseServiceKey;
+    
+    let user: { id: string; email?: string } | null = null;
+    
+    if (isServiceRole) {
+      console.log("[generate-hebrew-post] Service-role internal call accepted");
+      // For service-role calls, create a minimal user object
+      user = { id: "service-role", email: "internal" };
+    } else {
+      const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
+      const { data: { user: authUser }, error: authError } = await supabaseAuth.auth.getUser(token);
 
-    if (authError || !user) {
-      console.error("[generate-hebrew-post] Auth verification failed:", authError);
-      const payload: ApiErr = { success: false, error: "Unauthorized" };
-      return new Response(JSON.stringify(payload), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (authError || !authUser) {
+        console.error("[generate-hebrew-post] Auth verification failed:", authError);
+        const payload: ApiErr = { success: false, error: "Unauthorized" };
+        return new Response(JSON.stringify(payload), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      user = authUser;
     }
 
     const body = await req.json();
