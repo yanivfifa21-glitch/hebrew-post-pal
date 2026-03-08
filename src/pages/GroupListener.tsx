@@ -41,6 +41,15 @@ const GroupListener = () => {
   const [isBulkApproving, setIsBulkApproving] = useState(false);
   const [settingUpWebhook, setSettingUpWebhook] = useState<string | null>(null);
   const [showBotToken, setShowBotToken] = useState<Record<string, boolean>>({});
+  const [editingGroup, setEditingGroup] = useState<RelayGroup | null>(null);
+  const [editGroupName, setEditGroupName] = useState("");
+  const [editGroupId, setEditGroupId] = useState("");
+  const [editBotToken, setEditBotToken] = useState("");
+  const [editAutoApprove, setEditAutoApprove] = useState(false);
+  const [editGroupActive, setEditGroupActive] = useState(true);
+  const [editPrepend, setEditPrepend] = useState("");
+  const [editAppend, setEditAppend] = useState("");
+  const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
 
   useEffect(() => {
     fetchGroups();
