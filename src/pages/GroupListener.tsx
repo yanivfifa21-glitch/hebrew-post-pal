@@ -585,7 +585,6 @@ const GroupListener = () => {
                 </Button>
               </div>
             )}
-            </div>
 
             {isLoadingPosts ? (
               <div className="flex items-center justify-center py-12">
