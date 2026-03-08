@@ -628,7 +628,7 @@ const GroupListener = () => {
 
                 {capturedPosts.map((post) => {
                   const hasRewrite = !!(post.modified_text && post.modified_text !== post.original_text);
-                  const choice = textChoice[post.id] || (hasRewrite ? 'rewrite' : 'original');
+                  const choice = textChoice[post.id]; // undefined = nothing selected yet
                   return (
                   <Card key={post.id} className={`glass-card overflow-hidden transition-all ${selectedPostIds.has(post.id) ? "ring-2 ring-primary/40" : ""}`}>
                     <div className="flex flex-col md:flex-row">
@@ -669,7 +669,10 @@ const GroupListener = () => {
                           <div className="space-y-2">
                             <label
                               className={`block rounded-lg p-3 text-sm cursor-pointer border-2 transition-all ${choice === 'original' ? 'border-primary bg-primary/10 ring-1 ring-primary/30' : 'border-border bg-muted/30 text-muted-foreground hover:border-muted-foreground/40'}`}
-                              onClick={() => setTextChoice(prev => ({ ...prev, [post.id]: 'original' }))}
+                              onClick={() => {
+                                setTextChoice(prev => ({ ...prev, [post.id]: 'original' }));
+                                setSelectedPostIds(prev => new Set(prev).add(post.id));
+                              }}
                               dir="rtl"
                             >
                               <div className="flex items-center gap-2 mb-1">
@@ -682,11 +685,14 @@ const GroupListener = () => {
                                 )}
                                 <span className="text-xs font-semibold">מקורי + קישור חדש</span>
                               </div>
-                              <p className="line-clamp-2 text-xs mr-7">{post.original_text}</p>
+                              <p className="text-xs mr-7 whitespace-pre-wrap">{post.original_text}</p>
                             </label>
                             <label
                               className={`block rounded-lg p-3 text-sm cursor-pointer border-2 transition-all ${choice === 'rewrite' ? 'border-primary bg-primary/10 ring-1 ring-primary/30' : 'border-border bg-muted/30 text-muted-foreground hover:border-muted-foreground/40'}`}
-                              onClick={() => setTextChoice(prev => ({ ...prev, [post.id]: 'rewrite' }))}
+                              onClick={() => {
+                                setTextChoice(prev => ({ ...prev, [post.id]: 'rewrite' }));
+                                setSelectedPostIds(prev => new Set(prev).add(post.id));
+                              }}
                               dir="rtl"
                             >
                               <div className="flex items-center gap-2 mb-1">
@@ -699,12 +705,12 @@ const GroupListener = () => {
                                 )}
                                 <span className="text-xs font-semibold">✨ מנוסח מחדש</span>
                               </div>
-                              <p className="line-clamp-2 text-xs mr-7">{post.modified_text}</p>
+                              <p className="text-xs mr-7 whitespace-pre-wrap">{post.modified_text}</p>
                             </label>
                           </div>
                         ) : post.original_text ? (
                           <div className="bg-muted/30 rounded-lg p-3 text-sm text-muted-foreground" dir="rtl">
-                            <p className="line-clamp-3">{post.original_text}</p>
+                            <p className="whitespace-pre-wrap">{post.original_text}</p>
                           </div>
                         ) : null}
 
