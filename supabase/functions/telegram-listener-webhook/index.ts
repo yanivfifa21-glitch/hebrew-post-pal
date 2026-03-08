@@ -166,16 +166,18 @@ async function processMessage(supabase: any, supabaseUrl: string, message: any, 
   const userId = relayGroup.user_id;
   const botToken = relayGroup.bot_token;
 
-  // Extract text
+  // Extract text + URLs (supports plain URLs, text_link entities, and inline keyboard links)
   const text = message.caption || message.text || "";
-  const urls = extractUrls(text);
+  const urls = collectMessageUrls(message);
 
   // Rule: exactly one link per post; skip posts with zero/multiple links
   if (urls.length !== 1) {
+    console.log(`[telegram-listener-webhook] skipped=${urls.length === 0 ? "no_links_in_post" : "multiple_links_in_post"}, urlCount=${urls.length}, urls=${JSON.stringify(urls)}`);
     return new Response(JSON.stringify({
       ok: true,
       skipped: urls.length === 0 ? "no_links_in_post" : "multiple_links_in_post",
       urlCount: urls.length,
+      urls,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
