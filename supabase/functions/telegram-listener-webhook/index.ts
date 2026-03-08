@@ -6,8 +6,25 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+function normalizeExtractedUrl(rawUrl: string): string {
+  return rawUrl.replace(/[),.;!?]+$/g, "").trim();
+}
+
 function extractUrls(text: string): string[] {
-  return (text.match(/(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/gi) || []);
+  const matches = text.match(/(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/gi) || [];
+  const normalized = matches
+    .map((url) => normalizeExtractedUrl(url))
+    .filter((url) => url.length > 0);
+  return [...new Set(normalized)];
+}
+
+function isAliExpressUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return hostname.includes("aliexpress.");
+  } catch {
+    return /aliexpress/i.test(url);
+  }
 }
 
 function stripAffiliateParams(url: string): string {
