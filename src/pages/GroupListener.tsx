@@ -63,6 +63,14 @@ const GroupListener = () => {
   const [editAppend, setEditAppend] = useState("");
   const [editRewriteMode, setEditRewriteMode] = useState<'link_only' | 'full_rewrite'>("link_only");
   const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
+  // Send to groups state
+  const [sendingPostId, setSendingPostId] = useState<string | null>(null);
+  const [showSendDialog, setShowSendDialog] = useState(false);
+  const [sendPost, setSendPost] = useState<CapturedPost | null>(null);
+  const [accounts, setAccounts] = useState<MessagingAccountSafe[]>([]);
+  const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
+  const [selectedZones, setSelectedZones] = useState<string[]>([]);
+  const [addToAutomation, setAddToAutomation] = useState(true);
 
   useEffect(() => {
     fetchGroups();
