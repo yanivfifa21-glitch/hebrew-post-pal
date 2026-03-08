@@ -272,7 +272,7 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    if (userId && userId !== user.id) {
+    if (userId && !isServiceRole && userId !== user!.id) {
       console.error("[generate-hebrew-post] User ID mismatch - potential attack");
       const payload: ApiErr = { success: false, error: "Forbidden: Cannot access other users' data" };
       return new Response(JSON.stringify(payload), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
