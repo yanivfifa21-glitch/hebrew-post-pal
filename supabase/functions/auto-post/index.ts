@@ -845,6 +845,13 @@ serve(async (req) => {
             .eq("id", product.id)
             .eq("status", "Scheduled");
 
+          // Stock check before publish
+          const stockOk3 = await prePublishStockCheck(supabase, product, stockCheckEnabled);
+          if (!stockOk3) {
+            await supabase.from("products").update({ status: "Scheduled" }).eq("id", product.id);
+            continue;
+          }
+
           const message = buildMessage(product);
           const { success, sentTo, errors } = await sendProductToAccounts(
             supabase, userId, product, message, accounts.map((a: any) => a.id)
