@@ -352,6 +352,9 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelec
             )}
           </div>
 
+          {/* Stock Status Badge */}
+          <StockBadge product={product} onStockChecked={onStockChecked} />
+
           {/* Editable Hebrew Description */}
           <div className="relative">
             <Textarea
