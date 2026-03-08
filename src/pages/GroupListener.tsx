@@ -1186,20 +1186,15 @@ const GroupListener = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Send/Queue Dialog */}
+        {/* Queue Dialog (zone selection) */}
         <Dialog open={showSendDialog} onOpenChange={(open) => { if (!open) { setShowSendDialog(false); setSendPosts([]); } }}>
           <DialogContent className="sm:max-w-md" dir="rtl">
             <DialogHeader>
-              <DialogTitle>{dialogMode === 'send' ? 'שלח והוסף לתור' : 'הוסף לתור'} {sendPosts.length > 1 ? `(${sendPosts.length} פוסטים)` : ""}</DialogTitle>
+              <DialogTitle>הוסף לתור {sendPosts.length > 1 ? `(${sendPosts.length} פוסטים)` : ""}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               {sendPosts.length === 1 && sendPosts[0]?.image_url && (
                 <img src={sendPosts[0].image_url} alt="" className="w-full h-32 object-cover rounded-lg" />
-              )}
-              {sendPosts.length === 1 && (
-                <div className="text-sm text-muted-foreground line-clamp-3 bg-muted/30 rounded-lg p-3" dir="rtl">
-                  {getPostFinalText(sendPosts[0]).substring(0, 200)}...
-                </div>
               )}
               {sendPosts.length > 1 && (
                 <div className="text-sm text-muted-foreground bg-muted/30 rounded-lg p-3">
@@ -1207,53 +1202,14 @@ const GroupListener = () => {
                 </div>
               )}
 
-              {/* Account selection - show in send mode, or optionally in queue mode */}
-              {dialogMode === 'send' && (
-                <div className="space-y-2">
-                  <Label className="font-hebrew text-sm font-medium">בחר חשבונות לשליחה</Label>
-                  <div className="space-y-2 max-h-40 overflow-y-auto">
-                    {accounts.map((acc) => (
-                      <label key={acc.id} className={`flex items-center gap-2 text-sm cursor-pointer ${!acc.is_active ? "opacity-50" : ""}`}>
-                        <Checkbox
-                          checked={selectedAccounts.includes(acc.id)}
-                          onCheckedChange={(checked) => {
-                            setSelectedAccounts(prev =>
-                              checked ? [...prev, acc.id] : prev.filter(id => id !== acc.id)
-                            );
-                          }}
-                        />
-                        <span>{acc.account_name}</span>
-                        <Badge variant="outline" className="text-xs">{acc.account_type === "telegram" ? "📱 Telegram" : "💬 WhatsApp"}</Badge>
-                        {!acc.is_active && <Badge variant="secondary" className="text-xs">לא פעיל</Badge>}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Zone selection */}
               <ZoneSelector selectedZones={selectedZones} onSelectionChange={setSelectedZones} />
 
-              {/* Add to automation toggle - only in send mode */}
-              {dialogMode === 'send' && (
-                <div className="flex items-center gap-3">
-                  <Switch checked={addToAutomation} onCheckedChange={setAddToAutomation} />
-                  <Label className="font-hebrew text-sm">הוסף גם לתור האוטומציה</Label>
-                </div>
-              )}
-
               <div className="flex gap-2">
-                {dialogMode === 'send' ? (
-                  <Button variant="gradient" className="flex-1 gap-2" onClick={handleSendAndQueue} disabled={isBulkProcessing}>
-                    {isBulkProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    שלח {selectedAccounts.length > 0 ? `(${selectedAccounts.length})` : ""} {addToAutomation ? "+ תור" : ""}
-                  </Button>
-                ) : (
-                  <Button variant="gradient" className="flex-1 gap-2" onClick={() => handleAddToQueue(sendPosts)} disabled={isBulkProcessing}>
-                    {isBulkProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListPlus className="h-4 w-4" />}
-                    הוסף לתור {selectedZones.length > 0 ? `(${selectedZones.length} אזורים)` : ""}
-                  </Button>
-                )}
+                <Button variant="gradient" className="flex-1 gap-2" onClick={() => handleAddToQueue(sendPosts)} disabled={isBulkProcessing}>
+                  {isBulkProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListPlus className="h-4 w-4" />}
+                  הוסף לתור {selectedZones.length > 0 ? `(${selectedZones.length} אזורים)` : ""}
+                </Button>
                 <Button variant="outline" onClick={() => { setShowSendDialog(false); setSendPosts([]); }}>ביטול</Button>
               </div>
             </div>
