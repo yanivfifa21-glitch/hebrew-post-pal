@@ -113,9 +113,22 @@ const GroupListener = () => {
   };
 
 
+  const isValidGroupId = (id: string) => {
+    const trimmed = id.trim();
+    // Must be numeric (with optional leading minus), not a bot token (contains ':')
+    if (trimmed.includes(':') || trimmed.includes('AAF') || trimmed.includes('AAG') || trimmed.includes('AAH')) {
+      return false;
+    }
+    return /^-?\d{5,}$/.test(trimmed);
+  };
+
   const handleAddGroup = async () => {
     if (!newGroupName || !newGroupId) {
       toast({ title: "נא למלא שם וID של הקבוצה", variant: "destructive" });
+      return;
+    }
+    if (!isValidGroupId(newGroupId)) {
+      toast({ title: "מזהה הקבוצה לא תקין - יש להזין מספר (לדוגמה: -1001234567890). אל תכניס כאן טוקן בוט!", variant: "destructive" });
       return;
     }
     setIsSavingGroup(true);
@@ -160,6 +173,10 @@ const GroupListener = () => {
     if (!editingGroup) return;
     if (!editGroupName.trim() || !editGroupId.trim()) {
       toast({ title: "נא למלא שם וID של הקבוצה", variant: "destructive" });
+      return;
+    }
+    if (!isValidGroupId(editGroupId)) {
+      toast({ title: "מזהה הקבוצה לא תקין - יש להזין מספר (לדוגמה: -1001234567890). אל תכניס כאן טוקן בוט!", variant: "destructive" });
       return;
     }
 
