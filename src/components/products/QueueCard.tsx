@@ -20,6 +20,7 @@ interface QueueCardProps {
   isSelected?: boolean;
   onSelectionChange?: (productId: string, selected: boolean) => void;
   showCheckbox?: boolean;
+  onStockChecked?: (productId: string, status: string) => void;
 }
 
 export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelected = false, onSelectionChange, showCheckbox = false }: QueueCardProps) => {
