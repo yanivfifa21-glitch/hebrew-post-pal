@@ -785,12 +785,20 @@ const GroupListener = () => {
                           </div>
                         ) : null}
 
-                        {/* URLs */}
+                        {/* URLs - old vs new */}
                         <div className="flex flex-col gap-1 text-xs">
+                          {post.original_url && (
+                            <div className="flex items-center gap-1 text-destructive/70 truncate" dir="ltr">
+                              <XCircle className="h-3 w-3 flex-shrink-0" />
+                              <span className="text-muted-foreground text-[10px] font-medium">ישן:</span>
+                              <span className="truncate line-through opacity-60">{post.original_url}</span>
+                            </div>
+                          )}
                           {post.modified_url && (
                             <div className="flex items-center gap-1 text-success truncate" dir="ltr">
                               <CheckCircle className="h-3 w-3 flex-shrink-0" />
-                              <a href={post.modified_url} target="_blank" rel="noopener noreferrer" className="truncate hover:underline">
+                              <span className="text-muted-foreground text-[10px] font-medium">חדש:</span>
+                              <a href={post.modified_url} target="_blank" rel="noopener noreferrer" className="truncate hover:underline font-medium">
                                 {post.modified_url}
                               </a>
                             </div>
