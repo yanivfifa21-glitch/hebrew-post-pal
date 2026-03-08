@@ -45,17 +45,18 @@ function parseOrder(o: any): AffiliateOrder {
   const rawPaid = parseFloat(o.paid_amount || o.order_amount || "0");
   const rawCommission = parseFloat(o.estimated_paid_commission || o.estimated_commission || o.new_buyer_bonus_commission || "0");
   
-  // If values look like cents (> 100 for a typical order), divide by 100
-  // Actually AliExpress API returns values in USD as-is (e.g. "14.68")
-  // But some fields are returned without decimal. Let's use as-is since the API docs say USD.
+  // AliExpress API returns amounts in cents (integer). Convert to dollars.
+  const paidUsd = rawPaid / 100;
+  const commissionUsd = rawCommission / 100;
+
   return {
     order_id: String(o.order_id || o.order_number || ""),
     product_id: String(o.product_id || ""),
     product_title: o.product_title || o.sub_order_title || "",
     product_image: o.product_main_image_url || o.product_image || "",
     order_status: o.order_status || "unknown",
-    paid_amount: rawPaid,
-    estimated_commission: rawCommission,
+    paid_amount: paidUsd,
+    estimated_commission: commissionUsd,
     created_at: o.created_time || o.order_create_time || "",
     is_completed: isCompleted,
   };
