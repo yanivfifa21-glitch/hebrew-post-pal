@@ -104,27 +104,22 @@ serve(async (req) => {
       const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
       const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-      const updateData: Record<string, unknown> = {
-        stock_status: result.status,
-        last_stock_check: new Date().toISOString(),
-        stock_check_count: undefined, // will use raw SQL increment
-      };
+      // Get current count first
+      const { data: currentProduct } = await supabase
+        .from("products")
+        .select("stock_check_count")
+        .eq("id", productId)
+        .single();
 
-      if (result.status === "unavailable") {
-        updateData.auto_disabled = true;
-      } else if (result.status === "available") {
-        updateData.auto_disabled = false;
-      }
+      const newCount = ((currentProduct?.stock_check_count as number) || 0) + 1;
 
-      // First increment count, then update status
-      await supabase.rpc("increment_stock_check_count" as any, { p_product_id: productId }).catch(() => {});
-      
       const { error } = await supabase
         .from("products")
         .update({
           stock_status: result.status,
           last_stock_check: new Date().toISOString(),
           auto_disabled: result.status === "unavailable",
+          stock_check_count: newCount,
         })
         .eq("id", productId);
 
