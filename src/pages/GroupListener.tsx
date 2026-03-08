@@ -135,7 +135,7 @@ const GroupListener = () => {
       if (error) throw error;
       toast({ title: "✅ קבוצת ממסר נוספה בהצלחה" });
       setShowAddGroup(false);
-      setNewGroupName(""); setNewGroupId(""); setNewBotToken(""); setNewAutoApprove(false); setNewPrepend(""); setNewAppend("");
+      setNewGroupName(""); setNewGroupId(""); setNewBotToken(""); setNewAutoApprove(false); setNewPrepend(""); setNewAppend(""); setNewRewriteMode("link_only");
       fetchGroups();
     } catch {
       toast({ title: "שגיאה בהוספת קבוצה", variant: "destructive" });
