@@ -55,19 +55,24 @@ export interface CapturedPost {
   captured_at: string;
   reviewed_at: string | null;
   // Joined
-  listened_groups?: ListenedGroup;
+  relay_groups?: RelayGroup;
 }
 
-export interface ListenedGroup {
+export interface RelayGroup {
   id: string;
   user_id: string;
   group_name: string;
   telegram_group_id: string;
+  bot_token: string | null;
   is_active: boolean;
   auto_approve: boolean;
   text_template_prepend: string | null;
   text_template_append: string | null;
+  webhook_active: boolean;
   captured_count: number;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
 }
+
+// Keep backward compat alias
+export type ListenedGroup = RelayGroup;
