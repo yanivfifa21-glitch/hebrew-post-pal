@@ -6,8 +6,25 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+function normalizeExtractedUrl(rawUrl: string): string {
+  return rawUrl.replace(/[),.;!?]+$/g, "").trim();
+}
+
 function extractUrls(text: string): string[] {
-  return (text.match(/(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/gi) || []);
+  const matches = text.match(/(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/gi) || [];
+  const normalized = matches
+    .map((url) => normalizeExtractedUrl(url))
+    .filter((url) => url.length > 0);
+  return [...new Set(normalized)];
+}
+
+function isAliExpressUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return hostname.includes("aliexpress.");
+  } catch {
+    return /aliexpress/i.test(url);
+  }
 }
 
 function stripAffiliateParams(url: string): string {
@@ -93,7 +110,28 @@ async function processMessage(supabase: any, supabaseUrl: string, message: any, 
   // Extract text
   const text = message.caption || message.text || "";
   const urls = extractUrls(text);
-  const aliUrl = urls.find((u: string) => /aliexpress/i.test(u)) || urls[0] || null;
+
+  // Rule: exactly one link per post; skip posts with zero/multiple links
+  if (urls.length !== 1) {
+    return new Response(JSON.stringify({
+      ok: true,
+      skipped: urls.length === 0 ? "no_links_in_post" : "multiple_links_in_post",
+      urlCount: urls.length,
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const aliUrl = urls[0];
+  if (!isAliExpressUrl(aliUrl)) {
+    return new Response(JSON.stringify({
+      ok: true,
+      skipped: "link_is_not_aliexpress",
+      url: aliUrl,
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   // Download photo if present
   let imageUrl: string | null = null;

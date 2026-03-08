@@ -41,6 +41,15 @@ const GroupListener = () => {
   const [isBulkApproving, setIsBulkApproving] = useState(false);
   const [settingUpWebhook, setSettingUpWebhook] = useState<string | null>(null);
   const [showBotToken, setShowBotToken] = useState<Record<string, boolean>>({});
+  const [editingGroup, setEditingGroup] = useState<RelayGroup | null>(null);
+  const [editGroupName, setEditGroupName] = useState("");
+  const [editGroupId, setEditGroupId] = useState("");
+  const [editBotToken, setEditBotToken] = useState("");
+  const [editAutoApprove, setEditAutoApprove] = useState(false);
+  const [editGroupActive, setEditGroupActive] = useState(true);
+  const [editPrepend, setEditPrepend] = useState("");
+  const [editAppend, setEditAppend] = useState("");
+  const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
 
   useEffect(() => {
     fetchGroups();
@@ -129,6 +138,55 @@ const GroupListener = () => {
       toast({ title: "שגיאה בהוספת קבוצה", variant: "destructive" });
     } finally {
       setIsSavingGroup(false);
+    }
+  };
+
+  const openEditGroupDialog = (group: RelayGroup) => {
+    setEditingGroup(group);
+    setEditGroupName(group.group_name || "");
+    setEditGroupId(group.telegram_group_id || "");
+    setEditBotToken(group.bot_token || "");
+    setEditAutoApprove(Boolean(group.auto_approve));
+    setEditGroupActive(Boolean(group.is_active));
+    setEditPrepend(group.text_template_prepend || "");
+    setEditAppend(group.text_template_append || "");
+  };
+
+  const handleSaveGroupChanges = async () => {
+    if (!editingGroup) return;
+    if (!editGroupName.trim() || !editGroupId.trim()) {
+      toast({ title: "נא למלא שם וID של הקבוצה", variant: "destructive" });
+      return;
+    }
+
+    setIsUpdatingGroup(true);
+    try {
+      const payload = {
+        group_name: editGroupName.trim(),
+        telegram_group_id: editGroupId.trim(),
+        bot_token: editBotToken.trim() || null,
+        auto_approve: editAutoApprove,
+        is_active: editGroupActive,
+        text_template_prepend: editPrepend.trim() || null,
+        text_template_append: editAppend.trim() || null,
+      };
+
+      const { data, error } = await supabase
+        .from("relay_groups")
+        .update(payload)
+        .eq("id", editingGroup.id)
+        .select("*")
+        .single();
+
+      if (error) throw error;
+
+      setGroups((prev) => prev.map((g) => (g.id === editingGroup.id ? (data as unknown as RelayGroup) : g)));
+      setEditingGroup(null);
+      toast({ title: "✅ הקבוצה עודכנה" });
+    } catch {
+      toast({ title: "שגיאה בשמירת הקבוצה", variant: "destructive" });
+    } finally {
+      setIsUpdatingGroup(false);
     }
   };
 
@@ -516,9 +574,14 @@ const GroupListener = () => {
                             <Badge variant="outline" className="gap-1 text-muted-foreground"><WifiOff className="h-3 w-3" />לא מחובר</Badge>
                           )}
                         </div>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteGroup(group.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditGroupDialog(group)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteGroup(group.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                       <CardDescription dir="ltr" className="text-xs">{group.telegram_group_id}</CardDescription>
                     </CardHeader>
@@ -586,6 +649,52 @@ const GroupListener = () => {
           </TabsContent>
 
         </Tabs>
+
+        {/* Edit Group Dialog */}
+        <Dialog open={!!editingGroup} onOpenChange={(open) => !open && setEditingGroup(null)}>
+          <DialogContent className="sm:max-w-md" dir="rtl">
+            <DialogHeader>
+              <DialogTitle>עריכת קבוצת ממסר</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>שם הקבוצה</Label>
+                <Input value={editGroupName} onChange={(e) => setEditGroupName(e.target.value)} className="mt-1" />
+              </div>
+              <div>
+                <Label>Telegram Group ID</Label>
+                <Input value={editGroupId} onChange={(e) => setEditGroupId(e.target.value)} dir="ltr" className="mt-1" />
+              </div>
+              <div>
+                <Label>Bot Token</Label>
+                <Input value={editBotToken} onChange={(e) => setEditBotToken(e.target.value)} dir="ltr" className="mt-1" type="password" />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>פעיל</Label>
+                <Switch checked={editGroupActive} onCheckedChange={setEditGroupActive} />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>אישור אוטומטי</Label>
+                <Switch checked={editAutoApprove} onCheckedChange={setEditAutoApprove} />
+              </div>
+              <div>
+                <Label>טקסט לפני הפוסט (אופציונלי)</Label>
+                <Input value={editPrepend} onChange={(e) => setEditPrepend(e.target.value)} className="mt-1" />
+              </div>
+              <div>
+                <Label>טקסט אחרי הפוסט (אופציונלי)</Label>
+                <Input value={editAppend} onChange={(e) => setEditAppend(e.target.value)} className="mt-1" />
+              </div>
+              <div className="flex gap-2">
+                <Button variant="gradient" className="flex-1" onClick={handleSaveGroupChanges} disabled={isUpdatingGroup}>
+                  {isUpdatingGroup ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Check className="h-4 w-4 mr-2" />}
+                  שמור שינויים
+                </Button>
+                <Button variant="outline" onClick={() => setEditingGroup(null)}>ביטול</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Edit Post Dialog */}
         <Dialog open={!!editingPost} onOpenChange={(open) => !open && setEditingPost(null)}>
