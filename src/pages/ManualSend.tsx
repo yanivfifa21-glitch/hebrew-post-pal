@@ -193,6 +193,38 @@ export default function ManualSend() {
       img.src = imageUrl;
     });
   };
+  // Generate watermarked preview whenever media or watermark settings change
+  useEffect(() => {
+    const generateWatermarkedPreview = async () => {
+      const sourcePreview = mediaPreview || imageUrlPreview || (mediaPreviews.length > 0 ? mediaPreviews[0] : null);
+      if (!sourcePreview || !addWatermark || !watermarkPreview) {
+        setWatermarkedPreview(null);
+        return;
+      }
+      // Only for images
+      if (mediaType === "video") {
+        setWatermarkedPreview(null);
+        return;
+      }
+      try {
+        if (mediaFile) {
+          // For uploaded files, apply watermark and create preview
+          const watermarked = await applyWatermark(mediaFile);
+          setWatermarkedPreview(URL.createObjectURL(watermarked));
+        } else if (imageUrlPreview) {
+          const result = await applyWatermarkToUrl(imageUrlPreview);
+          setWatermarkedPreview(result);
+        } else if (mediaPreviews.length > 0 && mediaFiles.length > 0) {
+          const watermarked = await applyWatermark(mediaFiles[0]);
+          setWatermarkedPreview(URL.createObjectURL(watermarked));
+        }
+      } catch {
+        setWatermarkedPreview(null);
+      }
+    };
+    generateWatermarkedPreview();
+  }, [mediaPreview, imageUrlPreview, mediaPreviews, addWatermark, watermarkPreview, mediaFile, mediaType]);
+
   useEffect(() => {
     fetchAccounts();
     getCurrentUser();
