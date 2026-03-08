@@ -389,94 +389,11 @@ const GroupListener = () => {
     }
   };
 
-  const openSendDialog = (posts: CapturedPost | CapturedPost[]) => {
-    const arr = Array.isArray(posts) ? posts : [posts];
-    setSendPosts(arr);
-    setDialogMode('send');
-    setSelectedAccounts(accounts.filter(a => a.is_active).map(a => a.id));
-    setSelectedZones([]);
-    setAddToAutomation(true);
-    setShowSendDialog(true);
-  };
-
   const openQueueDialog = (posts: CapturedPost | CapturedPost[]) => {
     const arr = Array.isArray(posts) ? posts : [posts];
     setSendPosts(arr);
-    setDialogMode('queue');
-    setSelectedAccounts([]);
     setSelectedZones([]);
-    setAddToAutomation(true);
     setShowSendDialog(true);
-  };
-
-  const handleSendAndQueue = async () => {
-    if (sendPosts.length === 0) return;
-    setIsBulkProcessing(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      for (const post of sendPosts) {
-        const text = getPostFinalText(post);
-        const mediaUrl = post.image_url || null;
-        const mediaType = post.media_type || "image";
-
-        // Send to selected accounts
-        if (selectedAccounts.length > 0) {
-          await Promise.allSettled(
-            selectedAccounts.map(async (accountId) => {
-              const acc = accounts.find(a => a.id === accountId);
-              if (!acc) return;
-              if (acc.account_type === "telegram") {
-                await supabase.functions.invoke("send-telegram", {
-                  body: { message: text, imageUrl: mediaUrl, mediaType, accountId, userId: user.id },
-                });
-              } else if (acc.account_type === "whatsapp") {
-                await supabase.functions.invoke("send-whatsapp", {
-                  body: { message: text, imageUrl: mediaUrl, mediaType, accountId, userId: user.id },
-                });
-              }
-            })
-          );
-        }
-
-        // Add to automation queue if checked
-        if (addToAutomation) {
-          const productTitle = text.substring(0, 100) || "Captured Product";
-          const { data: product } = await supabase
-            .from("products")
-            .insert({
-              user_id: user.id, title: productTitle, original_url: post.original_url || "",
-              affiliate_link: post.modified_url || null, image_url: mediaUrl,
-              media_type: mediaType, hebrew_description: text,
-              status: "Scheduled", sent_via: "manual",
-            })
-            .select().single();
-          if (product && selectedZones.length > 0) {
-            await supabase.from("zone_products").insert(
-              selectedZones.map(zoneId => ({ zone_id: zoneId, product_id: product.id }))
-            );
-          }
-        }
-
-        // Mark as queued
-        await supabase.from("captured_posts")
-          .update({ status: "queued", reviewed_at: new Date().toISOString() })
-          .eq("id", post.id);
-        setCapturedPosts((prev) => prev.map((p) =>
-          p.id === post.id ? { ...p, status: "queued" as const } : p
-        ));
-      }
-
-      toast({ title: `✅ ${sendPosts.length} פוסטים נשלחו${addToAutomation ? " ונוספו לתור" : ""}` });
-      setShowSendDialog(false);
-      setSendPosts([]);
-      setSelectedPostIds(new Set());
-    } catch (err) {
-      toast({ title: "שגיאה בשליחה", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
-    } finally {
-      setIsBulkProcessing(false);
-    }
   };
   const handleBulkSendAndQueue = async () => {
     const posts = capturedPosts.filter(p => selectedPostIds.has(p.id));
