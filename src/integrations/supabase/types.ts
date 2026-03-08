@@ -138,14 +138,18 @@ export type Database = {
       }
       app_settings: {
         Row: {
+          affiliate_params: Json | null
           ai_rewrite_template: string | null
           aliexpress_tracking_id: string | null
           automation_enabled: boolean | null
           created_at: string
           custom_ai_prompt: string | null
+          default_auto_approve: boolean
           id: string
           interval_end_time: string | null
           interval_start_time: string | null
+          last_bulk_stock_check: string | null
+          listener_api_url: string | null
           posting_interval_hours: number | null
           posting_interval_minutes: number | null
           posting_times: string[] | null
@@ -153,6 +157,9 @@ export type Database = {
           shabbat_end_time: string | null
           shabbat_mode_enabled: boolean | null
           shabbat_start_time: string | null
+          stock_check_before_publish: boolean
+          stock_check_interval_hours: number
+          stock_check_scheduled: boolean
           telegram_chat_id: string | null
           telegram_enabled: boolean | null
           telegram_interval_end_time: string | null
@@ -168,14 +175,18 @@ export type Database = {
           whatsapp_interval_start_time: string | null
         }
         Insert: {
+          affiliate_params?: Json | null
           ai_rewrite_template?: string | null
           aliexpress_tracking_id?: string | null
           automation_enabled?: boolean | null
           created_at?: string
           custom_ai_prompt?: string | null
+          default_auto_approve?: boolean
           id?: string
           interval_end_time?: string | null
           interval_start_time?: string | null
+          last_bulk_stock_check?: string | null
+          listener_api_url?: string | null
           posting_interval_hours?: number | null
           posting_interval_minutes?: number | null
           posting_times?: string[] | null
@@ -183,6 +194,9 @@ export type Database = {
           shabbat_end_time?: string | null
           shabbat_mode_enabled?: boolean | null
           shabbat_start_time?: string | null
+          stock_check_before_publish?: boolean
+          stock_check_interval_hours?: number
+          stock_check_scheduled?: boolean
           telegram_chat_id?: string | null
           telegram_enabled?: boolean | null
           telegram_interval_end_time?: string | null
@@ -198,14 +212,18 @@ export type Database = {
           whatsapp_interval_start_time?: string | null
         }
         Update: {
+          affiliate_params?: Json | null
           ai_rewrite_template?: string | null
           aliexpress_tracking_id?: string | null
           automation_enabled?: boolean | null
           created_at?: string
           custom_ai_prompt?: string | null
+          default_auto_approve?: boolean
           id?: string
           interval_end_time?: string | null
           interval_start_time?: string | null
+          last_bulk_stock_check?: string | null
+          listener_api_url?: string | null
           posting_interval_hours?: number | null
           posting_interval_minutes?: number | null
           posting_times?: string[] | null
@@ -213,6 +231,9 @@ export type Database = {
           shabbat_end_time?: string | null
           shabbat_mode_enabled?: boolean | null
           shabbat_start_time?: string | null
+          stock_check_before_publish?: boolean
+          stock_check_interval_hours?: number
+          stock_check_scheduled?: boolean
           telegram_chat_id?: string | null
           telegram_enabled?: boolean | null
           telegram_interval_end_time?: string | null
@@ -279,6 +300,66 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      captured_posts: {
+        Row: {
+          captured_at: string
+          id: string
+          image_url: string | null
+          modified_text: string | null
+          modified_url: string | null
+          original_text: string | null
+          original_url: string | null
+          product_id: string | null
+          reviewed_at: string | null
+          source_group_id: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          captured_at?: string
+          id?: string
+          image_url?: string | null
+          modified_text?: string | null
+          modified_url?: string | null
+          original_text?: string | null
+          original_url?: string | null
+          product_id?: string | null
+          reviewed_at?: string | null
+          source_group_id?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          captured_at?: string
+          id?: string
+          image_url?: string | null
+          modified_text?: string | null
+          modified_url?: string | null
+          original_text?: string | null
+          original_url?: string | null
+          product_id?: string | null
+          reviewed_at?: string | null
+          source_group_id?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "captured_posts_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "captured_posts_source_group_id_fkey"
+            columns: ["source_group_id"]
+            isOneToOne: false
+            referencedRelation: "listened_groups"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       coupon_campaigns: {
         Row: {
@@ -397,6 +478,48 @@ export type Database = {
         }
         Relationships: []
       }
+      listened_groups: {
+        Row: {
+          auto_approve: boolean
+          captured_count: number
+          created_at: string
+          group_name: string
+          id: string
+          is_active: boolean
+          telegram_group_id: string
+          text_template_append: string | null
+          text_template_prepend: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          auto_approve?: boolean
+          captured_count?: number
+          created_at?: string
+          group_name: string
+          id?: string
+          is_active?: boolean
+          telegram_group_id: string
+          text_template_append?: string | null
+          text_template_prepend?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          auto_approve?: boolean
+          captured_count?: number
+          created_at?: string
+          group_name?: string
+          id?: string
+          is_active?: boolean
+          telegram_group_id?: string
+          text_template_append?: string | null
+          text_template_prepend?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       manual_queue: {
         Row: {
           created_at: string
@@ -481,11 +604,13 @@ export type Database = {
       products: {
         Row: {
           affiliate_link: string | null
+          auto_disabled: boolean
           channels: string[] | null
           created_at: string
           hebrew_description: string | null
           id: string
           image_url: string | null
+          last_stock_check: string | null
           media_type: string | null
           orders_count: number | null
           original_url: string
@@ -494,17 +619,21 @@ export type Database = {
           scheduled_time: string | null
           sent_via: string | null
           status: string
+          stock_check_count: number
+          stock_status: string
           title: string
           updated_at: string
           user_id: string
         }
         Insert: {
           affiliate_link?: string | null
+          auto_disabled?: boolean
           channels?: string[] | null
           created_at?: string
           hebrew_description?: string | null
           id?: string
           image_url?: string | null
+          last_stock_check?: string | null
           media_type?: string | null
           orders_count?: number | null
           original_url: string
@@ -513,17 +642,21 @@ export type Database = {
           scheduled_time?: string | null
           sent_via?: string | null
           status?: string
+          stock_check_count?: number
+          stock_status?: string
           title: string
           updated_at?: string
           user_id: string
         }
         Update: {
           affiliate_link?: string | null
+          auto_disabled?: boolean
           channels?: string[] | null
           created_at?: string
           hebrew_description?: string | null
           id?: string
           image_url?: string | null
+          last_stock_check?: string | null
           media_type?: string | null
           orders_count?: number | null
           original_url?: string
@@ -532,6 +665,8 @@ export type Database = {
           scheduled_time?: string | null
           sent_via?: string | null
           status?: string
+          stock_check_count?: number
+          stock_status?: string
           title?: string
           updated_at?: string
           user_id?: string
