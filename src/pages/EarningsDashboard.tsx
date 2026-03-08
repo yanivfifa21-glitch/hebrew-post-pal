@@ -105,6 +105,31 @@ const EarningsDashboard = () => {
   const orders = data?.orders || [];
   const spinning = isLoading || isFetching;
 
+  // Aggregate top 5 best-selling products by total sales (item_count) across orders
+  const topProducts = useMemo(() => {
+    const map = new Map<string, { product_id: string; product_title: string; total_sales: number; total_commission: number; total_amount: number }>();
+    for (const o of orders) {
+      if (!o.product_id) continue;
+      const existing = map.get(o.product_id);
+      if (existing) {
+        existing.total_sales += o.item_count;
+        existing.total_commission += o.commission;
+        existing.total_amount += o.paid_amount;
+      } else {
+        map.set(o.product_id, {
+          product_id: o.product_id,
+          product_title: o.product_title,
+          total_sales: o.item_count,
+          total_commission: o.commission,
+          total_amount: o.paid_amount,
+        });
+      }
+    }
+    return Array.from(map.values())
+      .sort((a, b) => b.total_sales - a.total_sales)
+      .slice(0, 5);
+  }, [orders]);
+
   const handleAddToQueue = async (order: OrderItem) => {
     if (!order.product_id || addingProductIds.has(order.product_id)) return;
 
