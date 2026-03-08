@@ -192,6 +192,7 @@ export default function ManualSend() {
       img.src = imageUrl;
     });
   };
+  useEffect(() => {
     fetchAccounts();
     getCurrentUser();
   }, []);
