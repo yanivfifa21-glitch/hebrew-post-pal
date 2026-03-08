@@ -538,6 +538,36 @@ const GroupListener = () => {
                       <Switch checked={newAutoApprove} onCheckedChange={setNewAutoApprove} />
                       <Label>אישור אוטומטי (פוסטים יועברו ישירות לתור)</Label>
                     </div>
+                    <div className="space-y-2">
+                      <Label>מצב עיבוד פוסט</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          type="button"
+                          variant={newRewriteMode === "link_only" ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setNewRewriteMode("link_only")}
+                          className="gap-1.5 h-auto py-2 text-xs"
+                        >
+                          <Link className="h-3.5 w-3.5" />
+                          קישור שותף בלבד
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={newRewriteMode === "full_rewrite" ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setNewRewriteMode("full_rewrite")}
+                          className="gap-1.5 h-auto py-2 text-xs"
+                        >
+                          <Sparkles className="h-3.5 w-3.5" />
+                          ניסוח מחדש + קישור
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {newRewriteMode === "link_only"
+                          ? "רק הקישור יוחלף לקישור שותף, הטקסט יישאר כמו שהוא"
+                          : "הטקסט ינוסח מחדש בעברית + קישור שותף + תמונת מוצר"}
+                      </p>
+                    </div>
                     <div>
                       <Label>טקסט לפני הפוסט (אופציונלי)</Label>
                       <Input value={newPrepend} onChange={(e) => setNewPrepend(e.target.value)} placeholder="🔥 מבצע חם!" className="mt-1" />
