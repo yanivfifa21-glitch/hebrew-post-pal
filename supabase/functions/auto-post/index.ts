@@ -25,6 +25,10 @@ function getIsraelTimeInfo(): { hours: number; minutes: number; dayOfWeek: numbe
   return { hours, minutes, dayOfWeek, timeStr };
 }
 
+function getIsraelDateKey(date: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(date);
+}
+
 function isPostingTime(currentTimeStr: string, postingTimes: string[]): boolean {
   return postingTimes.some(t => t.trim() === currentTimeStr);
 }
