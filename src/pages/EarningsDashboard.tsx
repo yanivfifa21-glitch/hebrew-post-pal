@@ -48,7 +48,6 @@ type EarningsSummary = {
   paid_earnings: number;
   completed_orders: number;
   completed_earnings: number;
-  clicks: number;
   orders: AffiliateOrder[];
   daily_stats: Record<
     string,
@@ -57,7 +56,8 @@ type EarningsSummary = {
       paid_earnings: number;
       completed_orders: number;
       completed_earnings: number;
-      clicks: number;
+    }
+  >;
     }
   >;
 };
