@@ -565,18 +565,26 @@ const GroupListener = () => {
                   {status === "all" && "🔄 הכל"}
                 </Button>
               ))}
-              {postFilter === "pending_review" && capturedPosts.filter(p => p.status === "pending_review").length > 0 && (
-                <Button
-                  variant="gradient"
-                  size="sm"
-                  onClick={handleBulkApprove}
-                  disabled={isBulkApproving}
-                  className="gap-1 mr-auto"
-                >
-                  {isBulkApproving ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
-                  אשר הכל ({capturedPosts.filter(p => p.status === "pending_review").length})
+            </div>
+
+            {/* Bulk actions bar */}
+            {selectedPostIds.size > 0 && (
+              <div className="flex gap-2 flex-wrap items-center bg-primary/5 border border-primary/20 rounded-xl p-3">
+                <Badge variant="outline" className="text-xs">{selectedPostIds.size} נבחרו</Badge>
+                <Button variant="gradient" size="sm" onClick={handleBulkAddToQueue} disabled={isBulkProcessing} className="gap-1">
+                  {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <ListPlus className="h-3 w-3" />}
+                  הוסף נבחרים לתור
                 </Button>
-              )}
+                <Button variant="outline" size="sm" onClick={() => openSendDialog(capturedPosts.filter(p => selectedPostIds.has(p.id)))} className="gap-1">
+                  <Send className="h-3 w-3" />
+                  שלח נבחרים
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setSelectedPostIds(new Set())} className="gap-1 text-muted-foreground">
+                  <X className="h-3 w-3" />
+                  בטל בחירה
+                </Button>
+              </div>
+            )
             </div>
 
             {isLoadingPosts ? (
