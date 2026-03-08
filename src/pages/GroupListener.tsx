@@ -650,6 +650,52 @@ const GroupListener = () => {
 
         </Tabs>
 
+        {/* Edit Group Dialog */}
+        <Dialog open={!!editingGroup} onOpenChange={(open) => !open && setEditingGroup(null)}>
+          <DialogContent className="sm:max-w-md" dir="rtl">
+            <DialogHeader>
+              <DialogTitle>עריכת קבוצת ממסר</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>שם הקבוצה</Label>
+                <Input value={editGroupName} onChange={(e) => setEditGroupName(e.target.value)} className="mt-1" />
+              </div>
+              <div>
+                <Label>Telegram Group ID</Label>
+                <Input value={editGroupId} onChange={(e) => setEditGroupId(e.target.value)} dir="ltr" className="mt-1" />
+              </div>
+              <div>
+                <Label>Bot Token</Label>
+                <Input value={editBotToken} onChange={(e) => setEditBotToken(e.target.value)} dir="ltr" className="mt-1" type="password" />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>פעיל</Label>
+                <Switch checked={editGroupActive} onCheckedChange={setEditGroupActive} />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>אישור אוטומטי</Label>
+                <Switch checked={editAutoApprove} onCheckedChange={setEditAutoApprove} />
+              </div>
+              <div>
+                <Label>טקסט לפני הפוסט (אופציונלי)</Label>
+                <Input value={editPrepend} onChange={(e) => setEditPrepend(e.target.value)} className="mt-1" />
+              </div>
+              <div>
+                <Label>טקסט אחרי הפוסט (אופציונלי)</Label>
+                <Input value={editAppend} onChange={(e) => setEditAppend(e.target.value)} className="mt-1" />
+              </div>
+              <div className="flex gap-2">
+                <Button variant="gradient" className="flex-1" onClick={handleSaveGroupChanges} disabled={isUpdatingGroup}>
+                  {isUpdatingGroup ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Check className="h-4 w-4 mr-2" />}
+                  שמור שינויים
+                </Button>
+                <Button variant="outline" onClick={() => setEditingGroup(null)}>ביטול</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {/* Edit Post Dialog */}
         <Dialog open={!!editingPost} onOpenChange={(open) => !open && setEditingPost(null)}>
           <DialogContent className="sm:max-w-lg" dir="rtl">
