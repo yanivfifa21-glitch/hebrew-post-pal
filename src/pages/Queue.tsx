@@ -27,6 +27,8 @@ const Queue = () => {
   const [currentEnhancing, setCurrentEnhancing] = useState("");
   const [isUpdatingCoupons, setIsUpdatingCoupons] = useState(false);
   const [isCheckingAllStock, setIsCheckingAllStock] = useState(false);
+  const [stockCheckProgress, setStockCheckProgress] = useState(0);
+  const [stockCheckTotal, setStockCheckTotal] = useState(0);
 
   useEffect(() => {
     fetchProducts();
