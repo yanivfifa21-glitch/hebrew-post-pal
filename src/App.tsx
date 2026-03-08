@@ -48,6 +48,7 @@ const App = () => (
           <Route path="/collage" element={<AuthGuard><CollageGenerator /></AuthGuard>} />
           <Route path="/group-listener" element={<AuthGuard><GroupListener /></AuthGuard>} />
           <Route path="/store-scanner" element={<AuthGuard><StoreScanner /></AuthGuard>} />
+          <Route path="/earnings" element={<AuthGuard><EarningsDashboard /></AuthGuard>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
