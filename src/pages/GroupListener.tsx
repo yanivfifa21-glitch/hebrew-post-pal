@@ -153,6 +153,7 @@ const GroupListener = () => {
     setEditGroupActive(Boolean(group.is_active));
     setEditPrepend(group.text_template_prepend || "");
     setEditAppend(group.text_template_append || "");
+    setEditRewriteMode(group.rewrite_mode || "link_only");
   };
 
   const handleSaveGroupChanges = async () => {
