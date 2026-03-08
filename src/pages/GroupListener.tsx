@@ -265,6 +265,7 @@ const GroupListener = () => {
           original_url: post.original_url || "",
           affiliate_link: post.modified_url || null,
           image_url: post.image_url || null,
+          media_type: post.media_type || 'image',
           hebrew_description: post.modified_text || post.original_text || null,
           status: "Scheduled",
           sent_via: "auto",
