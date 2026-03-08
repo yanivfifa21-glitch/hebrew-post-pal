@@ -333,14 +333,31 @@ const GroupListener = () => {
   const getPostFinalText = (post: CapturedPost) => {
     const hasRewrite = !!(post.modified_text && post.modified_text !== post.original_text);
     const choice = textChoice[post.id] || (hasRewrite ? 'rewrite' : 'original');
-    const chosenText = choice === 'original' ? (post.original_text || "") : (post.modified_text || post.original_text || "");
-    let finalText = chosenText;
-    if (choice === 'original' && post.original_url && post.modified_url) {
-      finalText = chosenText.replace(post.original_url, post.modified_url);
-      const shortLinkRegex = /https?:\/\/s\.click\.aliexpress\.com\/e\/[^\s\n"<>]+/gi;
-      if (!finalText.includes(post.modified_url)) finalText = finalText.replace(shortLinkRegex, post.modified_url);
-      const aliLinkRegex = /https?:\/\/[^\s\n"<>]*aliexpress\.com\/item\/[^\s\n"<>]+/gi;
-      if (!finalText.includes(post.modified_url)) finalText = finalText.replace(aliLinkRegex, post.modified_url);
+
+    // Rewrite mode: modified_text already contains the affiliate link — use as-is
+    if (choice === 'rewrite') {
+      return post.modified_text || post.original_text || "";
+    }
+
+    // Original mode: replace ALL AliExpress links with the affiliate link
+    let finalText = post.original_text || "";
+    if (post.modified_url) {
+      // Match any AliExpress-related URL (short links, item links, general ali links)
+      const aliLinkRegex = /https?:\/\/[^\s\n"<>]*(?:aliexpress\.com|a\.aliexpress\.com|s\.click\.aliexpress\.com)[^\s\n"<>]*/gi;
+      // Replace ALL occurrences with the single affiliate link
+      let replaced = false;
+      finalText = finalText.replace(aliLinkRegex, (match) => {
+        if (!replaced) {
+          replaced = true;
+          return post.modified_url!;
+        }
+        // Remove duplicate links entirely
+        return post.modified_url!;
+      });
+      // If the original_url is a non-ali link that was tracked, replace it too
+      if (post.original_url && finalText.includes(post.original_url) && post.original_url !== post.modified_url) {
+        finalText = finalText.replace(post.original_url, post.modified_url);
+      }
     }
     return finalText;
   };
