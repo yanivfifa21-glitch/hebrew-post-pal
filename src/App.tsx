@@ -17,6 +17,7 @@ import Coupons from "./pages/Coupons";
 import CollageGenerator from "./pages/CollageGenerator";
 import GroupListener from "./pages/GroupListener";
 import StoreScanner from "./pages/StoreScanner";
+import EarningsDashboard from "./pages/EarningsDashboard";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import Admin from "./pages/Admin";
@@ -47,6 +48,7 @@ const App = () => (
           <Route path="/collage" element={<AuthGuard><CollageGenerator /></AuthGuard>} />
           <Route path="/group-listener" element={<AuthGuard><GroupListener /></AuthGuard>} />
           <Route path="/store-scanner" element={<AuthGuard><StoreScanner /></AuthGuard>} />
+          <Route path="/earnings" element={<AuthGuard><EarningsDashboard /></AuthGuard>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

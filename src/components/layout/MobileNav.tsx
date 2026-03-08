@@ -16,7 +16,8 @@ import {
   Ticket,
   LayoutGrid,
   Headphones,
-  Store
+  Store,
+  DollarSign
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,7 @@ const navItems = [
   { icon: LayoutGrid, label: "יוצר קולאז׳", path: "/collage" },
   { icon: Headphones, label: "האזנה לקבוצות", path: "/group-listener" },
   { icon: Store, label: "סריקת חנות", path: "/store-scanner" },
+  { icon: DollarSign, label: "דשבורד רווחים", path: "/earnings" },
   { icon: History, label: "היסטוריה", path: "/history" },
   { icon: Settings, label: "הגדרות", path: "/settings" },
 ];
