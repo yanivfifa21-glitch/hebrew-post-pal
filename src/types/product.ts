@@ -15,6 +15,11 @@ export interface Product {
   channels: string[];
   created_at: string;
   updated_at: string;
+  // Stock check fields
+  stock_status?: 'unchecked' | 'available' | 'unavailable' | 'error';
+  last_stock_check?: string | null;
+  stock_check_count?: number;
+  auto_disabled?: boolean;
 }
 
 export interface AppSettings {
@@ -34,4 +39,35 @@ export interface FetchedProductData {
   rating: number;
   affiliateLink?: string;
   hebrewDescription?: string;
+}
+
+export interface CapturedPost {
+  id: string;
+  user_id: string;
+  source_group_id: string | null;
+  original_text: string | null;
+  modified_text: string | null;
+  original_url: string | null;
+  modified_url: string | null;
+  image_url: string | null;
+  status: 'pending_review' | 'approved' | 'rejected' | 'queued';
+  product_id: string | null;
+  captured_at: string;
+  reviewed_at: string | null;
+  // Joined
+  listened_groups?: ListenedGroup;
+}
+
+export interface ListenedGroup {
+  id: string;
+  user_id: string;
+  group_name: string;
+  telegram_group_id: string;
+  is_active: boolean;
+  auto_approve: boolean;
+  text_template_prepend: string | null;
+  text_template_append: string | null;
+  captured_count: number;
+  created_at: string;
+  updated_at: string;
 }
