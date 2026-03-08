@@ -401,13 +401,15 @@ async function processMessage(supabase: any, supabaseUrl: string, message: any, 
     modifiedText = replaceLinksInText(text, aliUrl, modifiedUrl, relayGroup);
   }
 
-  // Use fetched image if we got one and no photo from message
-  const finalImageUrl = imageUrl || fetchedImageUrl;
+  // Use fetched image if we got one and no media from message
+  const finalMediaUrl = mediaUrl || fetchedImageUrl;
+  // For video from telegram, keep mediaType; if fallback to fetched image, it's 'image'
+  const finalMediaType = mediaUrl ? mediaType : 'image';
 
-  // Skip if no image available at all
-  if (!finalImageUrl) {
-    console.warn(`[telegram-listener-webhook] No image available (telegram photo + API fetch both failed) – skipping post`);
-    return new Response(JSON.stringify({ ok: true, skipped: "no_image_available" }), {
+  // Skip if no media available at all
+  if (!finalMediaUrl) {
+    console.warn(`[telegram-listener-webhook] No media available (telegram media + API fetch both failed) – skipping post`);
+    return new Response(JSON.stringify({ ok: true, skipped: "no_media_available" }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
