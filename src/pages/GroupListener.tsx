@@ -13,12 +13,23 @@ import { StockBadge } from "@/components/products/StockBadge";
 import {
   Plus, Trash2, Loader2, Eye, EyeOff, Check, X, Edit,
   Headphones, Copy, Settings, Wifi, WifiOff, Filter,
-  CheckCircle, XCircle, Link, Sparkles
+  CheckCircle, XCircle, Link, Sparkles, Send, ChevronDown
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { CapturedPost, RelayGroup } from "@/types/product";
 import { format } from "date-fns";
+import { ZoneSelector } from "@/components/products/ZoneSelector";
+import { Checkbox } from "@/components/ui/checkbox";
+
+interface MessagingAccountSafe {
+  id: string;
+  account_type: string;
+  account_name: string;
+  is_active: boolean;
+  telegram_chat_id: string | null;
+  whatsapp_chat_id: string | null;
+}
 
 const GroupListener = () => {
   const [groups, setGroups] = useState<RelayGroup[]>([]);
@@ -52,10 +63,19 @@ const GroupListener = () => {
   const [editAppend, setEditAppend] = useState("");
   const [editRewriteMode, setEditRewriteMode] = useState<'link_only' | 'full_rewrite'>("link_only");
   const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
+  // Send to groups state
+  const [sendingPostId, setSendingPostId] = useState<string | null>(null);
+  const [showSendDialog, setShowSendDialog] = useState(false);
+  const [sendPost, setSendPost] = useState<CapturedPost | null>(null);
+  const [accounts, setAccounts] = useState<MessagingAccountSafe[]>([]);
+  const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
+  const [selectedZones, setSelectedZones] = useState<string[]>([]);
+  const [addToAutomation, setAddToAutomation] = useState(true);
 
   useEffect(() => {
     fetchGroups();
     fetchCapturedPosts();
+    fetchAccounts();
     const cleanup = setupRealtime();
     return cleanup;
   }, []);
@@ -94,17 +114,25 @@ const GroupListener = () => {
   const fetchCapturedPosts = async () => {
     setIsLoadingPosts(true);
     try {
-      let query = supabase
-        .from("captured_posts")
-        .select("*, relay_groups(group_name)")
-        .order("captured_at", { ascending: false })
-        .limit(100);
-      if (postFilter !== "all") {
-        query = query.eq("status", postFilter);
+      let allData: any[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        let query = supabase
+          .from("captured_posts")
+          .select("*, relay_groups(group_name)")
+          .order("captured_at", { ascending: false })
+          .range(from, from + pageSize - 1);
+        if (postFilter !== "all") {
+          query = query.eq("status", postFilter);
+        }
+        const { data, error } = await query;
+        if (error) throw error;
+        allData = allData.concat(data || []);
+        if (!data || data.length < pageSize) break;
+        from += pageSize;
       }
-      const { data, error } = await query;
-      if (error) throw error;
-      setCapturedPosts((data || []) as unknown as CapturedPost[]);
+      setCapturedPosts(allData as unknown as CapturedPost[]);
     } catch (e) {
       console.error("Error fetching posts:", e);
     } finally {
@@ -362,6 +390,86 @@ const GroupListener = () => {
     toast({ title: "✅ נשמר" });
   };
 
+  const fetchAccounts = async () => {
+    const { data } = await supabase.rpc("get_my_messaging_accounts_safe");
+    setAccounts((data as unknown as MessagingAccountSafe[]) || []);
+  };
+
+  const openSendDialog = (post: CapturedPost) => {
+    setSendPost(post);
+    setSelectedAccounts(accounts.filter(a => a.is_active).map(a => a.id));
+    setSelectedZones([]);
+    setAddToAutomation(true);
+    setShowSendDialog(true);
+  };
+
+  const handleSendAndQueue = async () => {
+    if (!sendPost) return;
+    setSendingPostId(sendPost.id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const text = sendPost.modified_text || sendPost.original_text || "";
+      const mediaUrl = sendPost.image_url || null;
+      const mediaType = sendPost.media_type || "image";
+
+      // Send to selected accounts
+      if (selectedAccounts.length > 0) {
+        const results = await Promise.allSettled(
+          selectedAccounts.map(async (accountId) => {
+            const acc = accounts.find(a => a.id === accountId);
+            if (!acc) return;
+            if (acc.account_type === "telegram") {
+              await supabase.functions.invoke("send-telegram", {
+                body: { message: text, imageUrl: mediaUrl, mediaType, accountId, userId: user.id },
+              });
+            } else if (acc.account_type === "whatsapp") {
+              await supabase.functions.invoke("send-whatsapp", {
+                body: { message: text, imageUrl: mediaUrl, mediaType, accountId, userId: user.id },
+              });
+            }
+          })
+        );
+        const sent = results.filter(r => r.status === "fulfilled").length;
+        toast({ title: `📤 נשלח ל-${sent} חשבונות` });
+      }
+
+      // Add to automation queue if checked
+      if (addToAutomation) {
+        const productTitle = text.substring(0, 100) || "Captured Product";
+        const { data: product } = await supabase
+          .from("products")
+          .insert({
+            user_id: user.id,
+            title: productTitle,
+            original_url: sendPost.original_url || "",
+            affiliate_link: sendPost.modified_url || null,
+            image_url: mediaUrl,
+            media_type: mediaType,
+            hebrew_description: text,
+            status: "Scheduled",
+            sent_via: "manual",
+          })
+          .select()
+          .single();
+
+        if (product && selectedZones.length > 0) {
+          await supabase.from("zone_products").insert(
+            selectedZones.map(zoneId => ({ zone_id: zoneId, product_id: product.id }))
+          );
+        }
+        toast({ title: "✅ נוסף לתור האוטומציה" });
+      }
+
+      setShowSendDialog(false);
+      setSendPost(null);
+    } catch (err) {
+      toast({ title: "שגיאה בשליחה", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setSendingPostId(null);
+    }
+  };
 
   const pendingCount = capturedPosts.filter((p) => p.status === "pending_review").length;
 
@@ -542,6 +650,14 @@ const GroupListener = () => {
                             <Button variant="ghost" size="sm" onClick={() => handleRejectPost(post.id)} className="gap-1 text-destructive hover:text-destructive">
                               <X className="h-3 w-3" />
                               דחה
+                            </Button>
+                          </div>
+                        )}
+                        {(post.status === "queued" || post.status === "approved") && (
+                          <div className="flex gap-2 flex-wrap">
+                            <Button variant="gradient" size="sm" onClick={() => openSendDialog(post)} disabled={sendingPostId === post.id} className="gap-1">
+                              {sendingPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                              שלח לקבוצות + הוסף לאוטומט
                             </Button>
                           </div>
                         )}
@@ -841,6 +957,62 @@ const GroupListener = () => {
                   שמור שינויים
                 </Button>
                 <Button variant="outline" onClick={() => setEditingPost(null)}>ביטול</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Send to Groups Dialog */}
+        <Dialog open={showSendDialog} onOpenChange={(open) => { if (!open) { setShowSendDialog(false); setSendPost(null); } }}>
+          <DialogContent className="sm:max-w-md" dir="rtl">
+            <DialogHeader>
+              <DialogTitle>שלח לקבוצות והוסף לאוטומט</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              {sendPost?.image_url && (
+                <img src={sendPost.image_url} alt="" className="w-full h-32 object-cover rounded-lg" />
+              )}
+              <div className="text-sm text-muted-foreground line-clamp-3 bg-muted/30 rounded-lg p-3" dir="rtl">
+                {sendPost?.modified_text || sendPost?.original_text || "אין טקסט"}
+              </div>
+
+              {/* Account selection */}
+              <div className="space-y-2">
+                <Label className="font-hebrew text-sm font-medium">בחר חשבונות לשליחה</Label>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {accounts.map((acc) => (
+                    <label key={acc.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={selectedAccounts.includes(acc.id)}
+                        onCheckedChange={(checked) => {
+                          setSelectedAccounts(prev =>
+                            checked ? [...prev, acc.id] : prev.filter(id => id !== acc.id)
+                          );
+                        }}
+                      />
+                      <span>{acc.account_name}</span>
+                      <Badge variant="outline" className="text-xs">{acc.account_type === "telegram" ? "📱 Telegram" : "💬 WhatsApp"}</Badge>
+                      {!acc.is_active && <Badge variant="secondary" className="text-xs">לא פעיל</Badge>}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Zone selection */}
+              <ZoneSelector selectedZones={selectedZones} onSelectionChange={setSelectedZones} />
+
+              {/* Add to automation toggle */}
+              <div className="flex items-center gap-3">
+                <Switch checked={addToAutomation} onCheckedChange={setAddToAutomation} />
+                <Label className="font-hebrew text-sm">הוסף גם לתור האוטומציה</Label>
+              </div>
+
+              <div className="flex gap-2">
+                <Button variant="gradient" className="flex-1 gap-2" onClick={handleSendAndQueue} disabled={sendingPostId !== null}>
+                  {sendingPostId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  שלח {selectedAccounts.length > 0 ? `(${selectedAccounts.length})` : ""} {addToAutomation ? "+ אוטומט" : ""}
+                </Button>
+                <Button variant="outline" onClick={() => { setShowSendDialog(false); setSendPost(null); }}>ביטול</Button>
               </div>
             </div>
           </DialogContent>
