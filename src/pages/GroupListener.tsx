@@ -525,9 +525,15 @@ const GroupListener = () => {
                         </div>
                         {post.status === "pending_review" && (
                           <div className="flex gap-2 flex-wrap">
-                            <Button variant="gradient" size="sm" onClick={() => handleApprovePost(post)} disabled={isApproving === post.id} className="gap-1">
-                              {isApproving === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                              אשר והוסף לתור
+                            {post.modified_text && post.modified_text !== post.original_text && (
+                              <Button variant="gradient" size="sm" onClick={() => handleApprovePost(post, false)} disabled={isApproving === post.id} className="gap-1">
+                                {isApproving === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                                אשר ניסוח מחדש
+                              </Button>
+                            )}
+                            <Button variant={post.modified_text && post.modified_text !== post.original_text ? "outline" : "gradient"} size="sm" onClick={() => handleApprovePost(post, true)} disabled={isApproving === post.id} className="gap-1">
+                              {isApproving === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Link className="h-3 w-3" />}
+                              {post.modified_text && post.modified_text !== post.original_text ? "מקורי + קישור חדש" : "אשר והוסף לתור"}
                             </Button>
                             <Button variant="outline" size="sm" onClick={() => { setEditingPost(post); setEditText(post.modified_text || post.original_text || ""); setEditUrl(post.modified_url || post.original_url || ""); }} className="gap-1">
                               <Edit className="h-3 w-3" />
