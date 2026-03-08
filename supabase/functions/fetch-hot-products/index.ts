@@ -394,6 +394,24 @@ serve(async (req) => {
           }
         }
       }
+    } else if (source === "campaign_products" && campaignName) {
+      // Fetch products for a specific campaign/promotion by name
+      console.log("[fetch-hot-products] Fetching products for campaign:", campaignName);
+      const data = await callFeaturedPromoProducts(campaignName, pageNo);
+      const rr = data?.aliexpress_affiliate_featuredpromo_products_get_response?.resp_result;
+      if (rr?.resp_code === 200) {
+        const rawProducts = rr?.result?.products?.product || [];
+        console.log("[fetch-hot-products] Campaign", campaignName, "returned", rawProducts.length, "products");
+        for (const p of rawProducts) {
+          if (products.length >= desiredCount) break;
+          const mapped = mapProduct(p, `campaign:${campaignName}`);
+          if (!mapped || seen.has(mapped.product_id)) continue;
+          seen.add(mapped.product_id);
+          products.push(mapped);
+        }
+      } else {
+        console.warn("[fetch-hot-products] Campaign products fetch failed for:", campaignName, rr);
+      }
     } else if (source === "campaigns" || source === "incentive") {
       // Campaigns + Incentive: get all available promotions and their products
       const promoData = await callGetPromotions();
