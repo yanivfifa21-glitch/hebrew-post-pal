@@ -63,14 +63,12 @@ const GroupListener = () => {
   const [editAppend, setEditAppend] = useState("");
   const [editRewriteMode, setEditRewriteMode] = useState<'link_only' | 'full_rewrite'>("link_only");
   const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
-  // Send/Queue dialog state
+  // Queue dialog state
   const [showSendDialog, setShowSendDialog] = useState(false);
-  const [_dialogMode, setDialogMode] = useState<'send' | 'queue'>('send');
   const [sendPosts, setSendPosts] = useState<CapturedPost[]>([]);
   const [accounts, setAccounts] = useState<MessagingAccountSafe[]>([]);
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
-  const [addToAutomation, setAddToAutomation] = useState(true);
   // Per-post text choice: 'original' or 'rewrite'
   const [textChoice, setTextChoice] = useState<Record<string, 'original' | 'rewrite'>>({});
   // Bulk selection
