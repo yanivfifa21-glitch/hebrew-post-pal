@@ -125,14 +125,13 @@ serve(async (req) => {
     }
 
     // Normalize chat ID variants for matching
-    const rawId = chatId.replace(/^-100/, "");
+    const digitsOnlyId = chatId.replace(/^-100/, "").replace(/^-/, "");
     const candidateIds = [
-      chatId,                    // as-is from Telegram (e.g. -1005192177865)
-      `-100${rawId}`,            // with -100 prefix
-      `-${rawId}`,               // short negative (e.g. -5192177865)
-      rawId,                     // bare positive
-    ];
-    // Deduplicate
+      chatId,                  // as-is from Telegram
+      `-100${digitsOnlyId}`,   // supergroup format
+      `-${digitsOnlyId}`,      // short negative format
+      digitsOnlyId,            // bare numeric format
+    ].filter(Boolean);
     const uniqueIds = [...new Set(candidateIds)];
 
     console.log(`[telegram-listener-webhook] chatId=${chatId}, trying IDs: ${uniqueIds.join(", ")}`);
