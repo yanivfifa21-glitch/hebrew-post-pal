@@ -39,15 +39,12 @@ const GroupListener = () => {
   const [editUrl, setEditUrl] = useState("");
   const [isApproving, setIsApproving] = useState<string | null>(null);
   const [isBulkApproving, setIsBulkApproving] = useState(false);
-  const [affiliateParams, setAffiliateParams] = useState<Record<string, string>>({});
-  const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingUpWebhook, setSettingUpWebhook] = useState<string | null>(null);
   const [showBotToken, setShowBotToken] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetchGroups();
     fetchCapturedPosts();
-    fetchSettings();
     const cleanup = setupRealtime();
     return cleanup;
   }, []);
@@ -104,20 +101,6 @@ const GroupListener = () => {
     }
   };
 
-  const fetchSettings = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data } = await supabase
-        .from("app_settings")
-        .select("affiliate_params")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (data) {
-        setAffiliateParams((data.affiliate_params as Record<string, string>) || {});
-      }
-    } catch {}
-  };
 
   const handleAddGroup = async () => {
     if (!newGroupName || !newGroupId) {
@@ -277,21 +260,6 @@ const GroupListener = () => {
     toast({ title: "✅ נשמר" });
   };
 
-  const handleSaveSettings = async () => {
-    setIsSavingSettings(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-      await supabase.from("app_settings").update({
-        affiliate_params: affiliateParams,
-      }).eq("user_id", user.id);
-      toast({ title: "✅ הגדרות נשמרו" });
-    } catch {
-      toast({ title: "שגיאה בשמירה", variant: "destructive" });
-    } finally {
-      setIsSavingSettings(false);
-    }
-  };
 
   const pendingCount = capturedPosts.filter((p) => p.status === "pending_review").length;
 
@@ -354,10 +322,6 @@ const GroupListener = () => {
               <Headphones className="h-4 w-4" />
               קבוצות ממסר
               <span className="bg-primary/20 text-primary text-xs font-bold px-2 py-0.5 rounded-full">{groups.length}</span>
-            </TabsTrigger>
-            <TabsTrigger value="settings" className="gap-2 rounded-lg">
-              <Settings className="h-4 w-4" />
-              הגדרות
             </TabsTrigger>
           </TabsList>
 
@@ -621,49 +585,6 @@ const GroupListener = () => {
             )}
           </TabsContent>
 
-          {/* SETTINGS TAB */}
-          <TabsContent value="settings" className="space-y-6">
-            <Card className="glass-card">
-              <CardHeader>
-                <CardTitle>פרמטרי אפילייט שלי</CardTitle>
-                <CardDescription>
-                  כשפוסט נקלט מקבוצת ממסר, הקישורים של AliExpress מוחלפים אוטומטית עם הפרמטרים שלך כדי שתקבל עמלה.
-                  <br />
-                  את הפרמטרים תמצא בפורטל השותפים של AliExpress.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {([
-                  { key: "aff_id", label: "מזהה שותף (Tracking ID)", placeholder: "לדוגמה: 12345678", hint: "המזהה הראשי שלך בתוכנית השותפים" },
-                  { key: "dp", label: "Deep Link Param", placeholder: "אופציונלי", hint: "פרמטר מעקב נוסף (לרוב לא נדרש)" },
-                  { key: "cv", label: "Creative Value", placeholder: "אופציונלי", hint: "ערך קריאייטיב לצורך מעקב קמפיינים" },
-                  { key: "sk", label: "Sub Key", placeholder: "אופציונלי", hint: "מפתח משנה למעקב פנימי" },
-                  { key: "aff_fcid", label: "First Click ID", placeholder: "אופציונלי", hint: "מזהה קליק ראשון (לרוב לא נדרש)" },
-                  { key: "aff_fsk", label: "First Sub Key", placeholder: "אופציונלי", hint: "מפתח משנה של קליק ראשון" },
-                ] as const).map(({ key, label, placeholder, hint }) => (
-                  <div key={key} className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-sm font-medium">{label}</Label>
-                      <span className="text-xs text-muted-foreground font-mono" dir="ltr">({key})</span>
-                    </div>
-                    <Input
-                      value={affiliateParams[key] || ""}
-                      onChange={(e) => setAffiliateParams((prev) => ({ ...prev, [key]: e.target.value }))}
-                      placeholder={placeholder}
-                      dir="ltr"
-                    />
-                    <p className="text-xs text-muted-foreground">{hint}</p>
-                  </div>
-                ))}
-                <div className="pt-2">
-                  <Button variant="gradient" onClick={handleSaveSettings} disabled={isSavingSettings} className="gap-2">
-                    {isSavingSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                    שמור הגדרות
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
         </Tabs>
 
         {/* Edit Post Dialog */}
