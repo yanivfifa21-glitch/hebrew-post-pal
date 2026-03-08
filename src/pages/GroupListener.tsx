@@ -13,7 +13,7 @@ import { StockBadge } from "@/components/products/StockBadge";
 import {
   Plus, Trash2, Loader2, Eye, EyeOff, Check, X, Edit,
   Headphones, Copy, Settings, Wifi, WifiOff, Filter,
-  CheckCircle, XCircle, Link, Sparkles, Send, ChevronDown
+  CheckCircle, XCircle, Link, Sparkles, Send, ChevronDown, ListPlus
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -50,7 +50,7 @@ const GroupListener = () => {
   const [editText, setEditText] = useState("");
   const [editUrl, setEditUrl] = useState("");
   const [isApproving, setIsApproving] = useState<string | null>(null);
-  const [isBulkApproving, setIsBulkApproving] = useState(false);
+  
   const [settingUpWebhook, setSettingUpWebhook] = useState<string | null>(null);
   const [showBotToken, setShowBotToken] = useState<Record<string, boolean>>({});
   const [editingGroup, setEditingGroup] = useState<RelayGroup | null>(null);
@@ -64,13 +64,18 @@ const GroupListener = () => {
   const [editRewriteMode, setEditRewriteMode] = useState<'link_only' | 'full_rewrite'>("link_only");
   const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
   // Send to groups state
-  const [sendingPostId, setSendingPostId] = useState<string | null>(null);
+  
   const [showSendDialog, setShowSendDialog] = useState(false);
-  const [sendPost, setSendPost] = useState<CapturedPost | null>(null);
+  const [sendPosts, setSendPosts] = useState<CapturedPost[]>([]);
   const [accounts, setAccounts] = useState<MessagingAccountSafe[]>([]);
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
   const [addToAutomation, setAddToAutomation] = useState(true);
+  // Per-post text choice: 'original' or 'rewrite'
+  const [textChoice, setTextChoice] = useState<Record<string, 'original' | 'rewrite'>>({});
+  // Bulk selection
+  const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
 
   useEffect(() => {
     fetchGroups();
@@ -296,64 +301,6 @@ const GroupListener = () => {
     }
   };
 
-  const handleApprovePost = async (post: CapturedPost, useOriginalText = false) => {
-    setIsApproving(post.id);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const chosenText = useOriginalText
-        ? post.original_text || ""
-        : (post.modified_text || post.original_text || "");
-
-      // If using original text, replace the original link with the affiliate link
-      let finalText = chosenText;
-      if (useOriginalText && post.original_url && post.modified_url) {
-        finalText = chosenText.replace(post.original_url, post.modified_url);
-        // Also try replacing short links that might differ
-        const shortLinkRegex = /https?:\/\/s\.click\.aliexpress\.com\/e\/[^\s\n"<>]+/gi;
-        if (!finalText.includes(post.modified_url)) {
-          finalText = finalText.replace(shortLinkRegex, post.modified_url);
-        }
-        // Also replace any aliexpress product links
-        const aliLinkRegex = /https?:\/\/[^\s\n"<>]*aliexpress\.com\/item\/[^\s\n"<>]+/gi;
-        if (!finalText.includes(post.modified_url)) {
-          finalText = finalText.replace(aliLinkRegex, post.modified_url);
-        }
-      }
-
-      const productTitle = finalText.substring(0, 100) || "Captured Product";
-      const { data: product, error: productError } = await supabase
-        .from("products")
-        .insert({
-          user_id: user.id,
-          title: productTitle,
-          original_url: post.original_url || "",
-          affiliate_link: post.modified_url || null,
-          image_url: post.image_url || null,
-          media_type: post.media_type || 'image',
-          hebrew_description: finalText || null,
-          status: "Scheduled",
-          sent_via: "auto",
-        })
-        .select()
-        .single();
-      if (productError) throw productError;
-      await supabase
-        .from("captured_posts")
-        .update({ status: "queued", product_id: product.id, reviewed_at: new Date().toISOString() })
-        .eq("id", post.id);
-      setCapturedPosts((prev) => prev.map((p) =>
-        p.id === post.id ? { ...p, status: "queued" as const, product_id: product.id } : p
-      ));
-      toast({ title: useOriginalText ? "✅ אושר עם טקסט מקורי + קישור חדש" : "✅ אושר עם ניסוח מחדש" });
-    } catch {
-      toast({ title: "שגיאה באישור", variant: "destructive" });
-    } finally {
-      setIsApproving(null);
-    }
-  };
-
   const handleRejectPost = async (postId: string) => {
     await supabase
       .from("captured_posts")
@@ -363,18 +310,6 @@ const GroupListener = () => {
       p.id === postId ? { ...p, status: "rejected" as const } : p
     ));
     toast({ title: "נדחה" });
-  };
-
-  const handleBulkApprove = async () => {
-    const pendingPosts = capturedPosts.filter((p) => p.status === "pending_review");
-    if (pendingPosts.length === 0) return;
-    setIsBulkApproving(true);
-    let count = 0;
-    for (const post of pendingPosts) {
-      try { await handleApprovePost(post); count++; } catch {}
-    }
-    setIsBulkApproving(false);
-    toast({ title: `✅ אושרו ${count} פוסטים` });
   };
 
   const handleSaveEdit = async () => {
@@ -395,8 +330,54 @@ const GroupListener = () => {
     setAccounts((data as unknown as MessagingAccountSafe[]) || []);
   };
 
-  const openSendDialog = (post: CapturedPost) => {
-    setSendPost(post);
+  const getPostFinalText = (post: CapturedPost) => {
+    const choice = textChoice[post.id] || (post.modified_text && post.modified_text !== post.original_text ? 'rewrite' : 'original');
+    const chosenText = choice === 'original' ? (post.original_text || "") : (post.modified_text || post.original_text || "");
+    let finalText = chosenText;
+    if (choice === 'original' && post.original_url && post.modified_url) {
+      finalText = chosenText.replace(post.original_url, post.modified_url);
+      const shortLinkRegex = /https?:\/\/s\.click\.aliexpress\.com\/e\/[^\s\n"<>]+/gi;
+      if (!finalText.includes(post.modified_url)) finalText = finalText.replace(shortLinkRegex, post.modified_url);
+      const aliLinkRegex = /https?:\/\/[^\s\n"<>]*aliexpress\.com\/item\/[^\s\n"<>]+/gi;
+      if (!finalText.includes(post.modified_url)) finalText = finalText.replace(aliLinkRegex, post.modified_url);
+    }
+    return finalText;
+  };
+
+  const handleAddToQueue = async (post: CapturedPost) => {
+    setIsApproving(post.id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+      const finalText = getPostFinalText(post);
+      const productTitle = finalText.substring(0, 100) || "Captured Product";
+      const { data: product, error: productError } = await supabase
+        .from("products")
+        .insert({
+          user_id: user.id, title: productTitle, original_url: post.original_url || "",
+          affiliate_link: post.modified_url || null, image_url: post.image_url || null,
+          media_type: post.media_type || 'image', hebrew_description: finalText || null,
+          status: "Scheduled", sent_via: "auto",
+        })
+        .select().single();
+      if (productError) throw productError;
+      await supabase.from("captured_posts")
+        .update({ status: "queued", product_id: product.id, reviewed_at: new Date().toISOString() })
+        .eq("id", post.id);
+      setCapturedPosts((prev) => prev.map((p) =>
+        p.id === post.id ? { ...p, status: "queued" as const, product_id: product.id } : p
+      ));
+      toast({ title: "✅ נוסף לתור" });
+    } catch {
+      toast({ title: "שגיאה בהוספה לתור", variant: "destructive" });
+    } finally {
+      setIsApproving(null);
+    }
+  };
+
+  const openSendDialog = (posts: CapturedPost | CapturedPost[]) => {
+    const arr = Array.isArray(posts) ? posts : [posts];
+    setSendPosts(arr);
     setSelectedAccounts(accounts.filter(a => a.is_active).map(a => a.id));
     setSelectedZones([]);
     setAddToAutomation(true);
@@ -404,70 +385,101 @@ const GroupListener = () => {
   };
 
   const handleSendAndQueue = async () => {
-    if (!sendPost) return;
-    setSendingPostId(sendPost.id);
+    if (sendPosts.length === 0) return;
+    setIsBulkProcessing(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const text = sendPost.modified_text || sendPost.original_text || "";
-      const mediaUrl = sendPost.image_url || null;
-      const mediaType = sendPost.media_type || "image";
+      for (const post of sendPosts) {
+        const text = getPostFinalText(post);
+        const mediaUrl = post.image_url || null;
+        const mediaType = post.media_type || "image";
 
-      // Send to selected accounts
-      if (selectedAccounts.length > 0) {
-        const results = await Promise.allSettled(
-          selectedAccounts.map(async (accountId) => {
-            const acc = accounts.find(a => a.id === accountId);
-            if (!acc) return;
-            if (acc.account_type === "telegram") {
-              await supabase.functions.invoke("send-telegram", {
-                body: { message: text, imageUrl: mediaUrl, mediaType, accountId, userId: user.id },
-              });
-            } else if (acc.account_type === "whatsapp") {
-              await supabase.functions.invoke("send-whatsapp", {
-                body: { message: text, imageUrl: mediaUrl, mediaType, accountId, userId: user.id },
-              });
-            }
-          })
-        );
-        const sent = results.filter(r => r.status === "fulfilled").length;
-        toast({ title: `📤 נשלח ל-${sent} חשבונות` });
-      }
-
-      // Add to automation queue if checked
-      if (addToAutomation) {
-        const productTitle = text.substring(0, 100) || "Captured Product";
-        const { data: product } = await supabase
-          .from("products")
-          .insert({
-            user_id: user.id,
-            title: productTitle,
-            original_url: sendPost.original_url || "",
-            affiliate_link: sendPost.modified_url || null,
-            image_url: mediaUrl,
-            media_type: mediaType,
-            hebrew_description: text,
-            status: "Scheduled",
-            sent_via: "manual",
-          })
-          .select()
-          .single();
-
-        if (product && selectedZones.length > 0) {
-          await supabase.from("zone_products").insert(
-            selectedZones.map(zoneId => ({ zone_id: zoneId, product_id: product.id }))
+        // Send to selected accounts
+        if (selectedAccounts.length > 0) {
+          await Promise.allSettled(
+            selectedAccounts.map(async (accountId) => {
+              const acc = accounts.find(a => a.id === accountId);
+              if (!acc) return;
+              if (acc.account_type === "telegram") {
+                await supabase.functions.invoke("send-telegram", {
+                  body: { message: text, imageUrl: mediaUrl, mediaType, accountId, userId: user.id },
+                });
+              } else if (acc.account_type === "whatsapp") {
+                await supabase.functions.invoke("send-whatsapp", {
+                  body: { message: text, imageUrl: mediaUrl, mediaType, accountId, userId: user.id },
+                });
+              }
+            })
           );
         }
-        toast({ title: "✅ נוסף לתור האוטומציה" });
+
+        // Add to automation queue if checked
+        if (addToAutomation) {
+          const productTitle = text.substring(0, 100) || "Captured Product";
+          const { data: product } = await supabase
+            .from("products")
+            .insert({
+              user_id: user.id, title: productTitle, original_url: post.original_url || "",
+              affiliate_link: post.modified_url || null, image_url: mediaUrl,
+              media_type: mediaType, hebrew_description: text,
+              status: "Scheduled", sent_via: "manual",
+            })
+            .select().single();
+          if (product && selectedZones.length > 0) {
+            await supabase.from("zone_products").insert(
+              selectedZones.map(zoneId => ({ zone_id: zoneId, product_id: product.id }))
+            );
+          }
+        }
+
+        // Mark as queued
+        await supabase.from("captured_posts")
+          .update({ status: "queued", reviewed_at: new Date().toISOString() })
+          .eq("id", post.id);
+        setCapturedPosts((prev) => prev.map((p) =>
+          p.id === post.id ? { ...p, status: "queued" as const } : p
+        ));
       }
 
+      toast({ title: `✅ ${sendPosts.length} פוסטים נשלחו${addToAutomation ? " ונוספו לתור" : ""}` });
       setShowSendDialog(false);
-      setSendPost(null);
+      setSendPosts([]);
+      setSelectedPostIds(new Set());
     } catch (err) {
       toast({ title: "שגיאה בשליחה", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     } finally {
-      setSendingPostId(null);
+      setIsBulkProcessing(false);
+    }
+  };
+
+  const handleBulkAddToQueue = async () => {
+    const posts = capturedPosts.filter(p => selectedPostIds.has(p.id));
+    if (posts.length === 0) return;
+    setIsBulkProcessing(true);
+    let count = 0;
+    for (const post of posts) {
+      try { await handleAddToQueue(post); count++; } catch {}
+    }
+    setIsBulkProcessing(false);
+    setSelectedPostIds(new Set());
+    toast({ title: `✅ ${count} פוסטים נוספו לתור` });
+  };
+
+  const togglePostSelection = (postId: string) => {
+    setSelectedPostIds(prev => {
+      const next = new Set(prev);
+      if (next.has(postId)) next.delete(postId); else next.add(postId);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedPostIds.size === capturedPosts.length) {
+      setSelectedPostIds(new Set());
+    } else {
+      setSelectedPostIds(new Set(capturedPosts.map(p => p.id)));
     }
   };
 
@@ -553,19 +565,26 @@ const GroupListener = () => {
                   {status === "all" && "🔄 הכל"}
                 </Button>
               ))}
-              {postFilter === "pending_review" && capturedPosts.filter(p => p.status === "pending_review").length > 0 && (
-                <Button
-                  variant="gradient"
-                  size="sm"
-                  onClick={handleBulkApprove}
-                  disabled={isBulkApproving}
-                  className="gap-1 mr-auto"
-                >
-                  {isBulkApproving ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
-                  אשר הכל ({capturedPosts.filter(p => p.status === "pending_review").length})
-                </Button>
-              )}
             </div>
+
+            {/* Bulk actions bar */}
+            {selectedPostIds.size > 0 && (
+              <div className="flex gap-2 flex-wrap items-center bg-primary/5 border border-primary/20 rounded-xl p-3">
+                <Badge variant="outline" className="text-xs">{selectedPostIds.size} נבחרו</Badge>
+                <Button variant="gradient" size="sm" onClick={handleBulkAddToQueue} disabled={isBulkProcessing} className="gap-1">
+                  {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <ListPlus className="h-3 w-3" />}
+                  הוסף נבחרים לתור
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => openSendDialog(capturedPosts.filter(p => selectedPostIds.has(p.id)))} className="gap-1">
+                  <Send className="h-3 w-3" />
+                  שלח נבחרים
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setSelectedPostIds(new Set())} className="gap-1 text-muted-foreground">
+                  <X className="h-3 w-3" />
+                  בטל בחירה
+                </Button>
+              </div>
+            )}
 
             {isLoadingPosts ? (
               <div className="flex items-center justify-center py-12">
@@ -581,18 +600,43 @@ const GroupListener = () => {
               </Card>
             ) : (
               <div className="space-y-4">
-                {capturedPosts.map((post) => (
-                  <Card key={post.id} className="glass-card overflow-hidden">
+                {/* Select all */}
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    checked={selectedPostIds.size === capturedPosts.length && capturedPosts.length > 0}
+                    onCheckedChange={toggleSelectAll}
+                    className="h-4 w-4"
+                  />
+                  <Label className="text-sm text-muted-foreground font-hebrew cursor-pointer" onClick={toggleSelectAll}>
+                    בחר הכל ({capturedPosts.length})
+                  </Label>
+                </div>
+
+                {capturedPosts.map((post) => {
+                  const hasRewrite = !!(post.modified_text && post.modified_text !== post.original_text);
+                  const choice = textChoice[post.id] || (hasRewrite ? 'rewrite' : 'original');
+                  return (
+                  <Card key={post.id} className={`glass-card overflow-hidden transition-all ${selectedPostIds.has(post.id) ? "ring-2 ring-primary/40" : ""}`}>
                     <div className="flex flex-col md:flex-row">
-                      {post.image_url && (
-                        <div className="w-full md:w-40 h-40 flex-shrink-0 overflow-hidden">
-                          {post.media_type === 'video' ? (
-                            <video src={post.image_url} className="w-full h-full object-cover" muted playsInline controls />
-                          ) : (
-                            <img src={post.image_url} alt="" className="w-full h-full object-cover" />
-                          )}
+                      {/* Checkbox + Image */}
+                      <div className="flex">
+                        <div className="flex items-start p-3">
+                          <Checkbox
+                            checked={selectedPostIds.has(post.id)}
+                            onCheckedChange={() => togglePostSelection(post.id)}
+                            className="h-4 w-4 mt-1"
+                          />
                         </div>
-                      )}
+                        {post.image_url && (
+                          <div className="w-32 md:w-40 h-40 flex-shrink-0 overflow-hidden">
+                            {post.media_type === 'video' ? (
+                              <video src={post.image_url} className="w-full h-full object-cover" muted playsInline controls />
+                            ) : (
+                              <img src={post.image_url} alt="" className="w-full h-full object-cover" />
+                            )}
+                          </div>
+                        )}
+                      </div>
                       <div className="flex-1 p-4 space-y-3">
                         <div className="flex items-center gap-2 flex-wrap">
                           <Badge className={getStatusColor(post.status)}>{getStatusLabel(post.status)}</Badge>
@@ -605,23 +649,41 @@ const GroupListener = () => {
                             {format(new Date(post.captured_at), "dd/MM/yyyy HH:mm")}
                           </span>
                         </div>
-                        {post.original_text && (
+
+                        {/* Text version selector */}
+                        {hasRewrite ? (
+                          <div className="space-y-2">
+                            <label
+                              className={`block rounded-lg p-3 text-sm cursor-pointer border transition-all ${choice === 'original' ? 'border-primary bg-primary/5' : 'border-border bg-muted/30 text-muted-foreground'}`}
+                              onClick={() => setTextChoice(prev => ({ ...prev, [post.id]: 'original' }))}
+                              dir="rtl"
+                            >
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className={`h-3 w-3 rounded-full border-2 ${choice === 'original' ? 'border-primary bg-primary' : 'border-muted-foreground'}`} />
+                                <span className="text-xs font-medium">מקורי + קישור חדש</span>
+                              </div>
+                              <p className="line-clamp-2 text-xs">{post.original_text}</p>
+                            </label>
+                            <label
+                              className={`block rounded-lg p-3 text-sm cursor-pointer border transition-all ${choice === 'rewrite' ? 'border-primary bg-primary/5' : 'border-border bg-muted/30 text-muted-foreground'}`}
+                              onClick={() => setTextChoice(prev => ({ ...prev, [post.id]: 'rewrite' }))}
+                              dir="rtl"
+                            >
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className={`h-3 w-3 rounded-full border-2 ${choice === 'rewrite' ? 'border-primary bg-primary' : 'border-muted-foreground'}`} />
+                                <span className="text-xs font-medium">✨ מנוסח מחדש</span>
+                              </div>
+                              <p className="line-clamp-2 text-xs">{post.modified_text}</p>
+                            </label>
+                          </div>
+                        ) : post.original_text ? (
                           <div className="bg-muted/30 rounded-lg p-3 text-sm text-muted-foreground" dir="rtl">
                             <p className="line-clamp-3">{post.original_text}</p>
                           </div>
-                        )}
-                        {post.modified_text && post.modified_text !== post.original_text && (
-                          <div className="bg-primary/5 rounded-lg p-3 text-sm border border-primary/20" dir="rtl">
-                            <p className="line-clamp-3">{post.modified_text}</p>
-                          </div>
-                        )}
+                        ) : null}
+
+                        {/* URLs */}
                         <div className="flex flex-col gap-1 text-xs">
-                          {post.original_url && (
-                            <div className="flex items-center gap-1 text-destructive line-through truncate" dir="ltr">
-                              <XCircle className="h-3 w-3 flex-shrink-0" />
-                              <span className="truncate">{post.original_url}</span>
-                            </div>
-                          )}
                           {post.modified_url && (
                             <div className="flex items-center gap-1 text-success truncate" dir="ltr">
                               <CheckCircle className="h-3 w-3 flex-shrink-0" />
@@ -631,38 +693,33 @@ const GroupListener = () => {
                             </div>
                           )}
                         </div>
-                        {post.status === "pending_review" && (
-                          <div className="flex gap-2 flex-wrap">
-                            {post.modified_text && post.modified_text !== post.original_text && (
-                              <Button variant="gradient" size="sm" onClick={() => handleApprovePost(post, false)} disabled={isApproving === post.id} className="gap-1">
-                                {isApproving === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                                אשר ניסוח מחדש
-                              </Button>
-                            )}
-                            <Button variant={post.modified_text && post.modified_text !== post.original_text ? "outline" : "gradient"} size="sm" onClick={() => handleApprovePost(post, true)} disabled={isApproving === post.id} className="gap-1">
-                              {isApproving === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Link className="h-3 w-3" />}
-                              {post.modified_text && post.modified_text !== post.original_text ? "מקורי + קישור חדש" : "אשר והוסף לתור"}
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={() => { setEditingPost(post); setEditText(post.modified_text || post.original_text || ""); setEditUrl(post.modified_url || post.original_url || ""); }} className="gap-1">
-                              <Edit className="h-3 w-3" />
-                              ערוך
-                            </Button>
+
+                        {/* Action buttons */}
+                        <div className="flex gap-2 flex-wrap">
+                          <Button variant="gradient" size="sm" onClick={() => handleAddToQueue(post)} disabled={isApproving === post.id || post.status === "queued"} className="gap-1">
+                            {isApproving === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <ListPlus className="h-3 w-3" />}
+                            הוסף לתור
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => openSendDialog(post)} disabled={isBulkProcessing} className="gap-1">
+                            <Send className="h-3 w-3" />
+                            שלח והוסף לתור
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => { setEditingPost(post); setEditText(post.modified_text || post.original_text || ""); setEditUrl(post.modified_url || post.original_url || ""); }} className="gap-1">
+                            <Edit className="h-3 w-3" />
+                            ערוך
+                          </Button>
+                          {post.status === "pending_review" && (
                             <Button variant="ghost" size="sm" onClick={() => handleRejectPost(post.id)} className="gap-1 text-destructive hover:text-destructive">
                               <X className="h-3 w-3" />
                               דחה
                             </Button>
-                          </div>
-                        )}
-                        <div className="flex gap-2 flex-wrap">
-                          <Button variant="outline" size="sm" onClick={() => openSendDialog(post)} disabled={sendingPostId === post.id} className="gap-1">
-                            {sendingPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                            שלח והוסף לתור
-                          </Button>
+                          )}
                         </div>
                       </div>
                     </div>
                   </Card>
-                ))}
+                  );
+                })}
               </div>
             )}
           </TabsContent>
@@ -961,18 +1018,25 @@ const GroupListener = () => {
         </Dialog>
 
         {/* Send to Groups Dialog */}
-        <Dialog open={showSendDialog} onOpenChange={(open) => { if (!open) { setShowSendDialog(false); setSendPost(null); } }}>
+        <Dialog open={showSendDialog} onOpenChange={(open) => { if (!open) { setShowSendDialog(false); setSendPosts([]); } }}>
           <DialogContent className="sm:max-w-md" dir="rtl">
             <DialogHeader>
-              <DialogTitle>שלח לקבוצות והוסף לאוטומט</DialogTitle>
+              <DialogTitle>שלח לקבוצות {sendPosts.length > 1 ? `(${sendPosts.length} פוסטים)` : ""}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              {sendPost?.image_url && (
-                <img src={sendPost.image_url} alt="" className="w-full h-32 object-cover rounded-lg" />
+              {sendPosts.length === 1 && sendPosts[0]?.image_url && (
+                <img src={sendPosts[0].image_url} alt="" className="w-full h-32 object-cover rounded-lg" />
               )}
-              <div className="text-sm text-muted-foreground line-clamp-3 bg-muted/30 rounded-lg p-3" dir="rtl">
-                {sendPost?.modified_text || sendPost?.original_text || "אין טקסט"}
-              </div>
+              {sendPosts.length === 1 && (
+                <div className="text-sm text-muted-foreground line-clamp-3 bg-muted/30 rounded-lg p-3" dir="rtl">
+                  {getPostFinalText(sendPosts[0]).substring(0, 200)}...
+                </div>
+              )}
+              {sendPosts.length > 1 && (
+                <div className="text-sm text-muted-foreground bg-muted/30 rounded-lg p-3">
+                  {sendPosts.length} פוסטים נבחרים לשליחה
+                </div>
+              )}
 
               {/* Account selection */}
               <div className="space-y-2">
@@ -1006,11 +1070,11 @@ const GroupListener = () => {
               </div>
 
               <div className="flex gap-2">
-                <Button variant="gradient" className="flex-1 gap-2" onClick={handleSendAndQueue} disabled={sendingPostId !== null}>
-                  {sendingPostId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  שלח {selectedAccounts.length > 0 ? `(${selectedAccounts.length})` : ""} {addToAutomation ? "+ אוטומט" : ""}
+                <Button variant="gradient" className="flex-1 gap-2" onClick={handleSendAndQueue} disabled={isBulkProcessing}>
+                  {isBulkProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  שלח {selectedAccounts.length > 0 ? `(${selectedAccounts.length})` : ""} {addToAutomation ? "+ תור" : ""}
                 </Button>
-                <Button variant="outline" onClick={() => { setShowSendDialog(false); setSendPost(null); }}>ביטול</Button>
+                <Button variant="outline" onClick={() => { setShowSendDialog(false); setSendPosts([]); }}>ביטול</Button>
               </div>
             </div>
           </DialogContent>
