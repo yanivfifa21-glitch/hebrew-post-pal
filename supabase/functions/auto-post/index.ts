@@ -265,22 +265,30 @@ serve(async (req) => {
 
   // SECURITY: Verify request is from authorized source (cron job or admin)
   const authHeader = req.headers.get("authorization");
-  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  
-  if (!authHeader) {
-    console.error("[auto-post] Missing authorization header");
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { 
-      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } 
+  const apiKeyHeader = req.headers.get("apikey");
+
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")?.trim();
+  const supabasePublishableKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY")?.trim();
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim();
+
+  const authorizationToken = authHeader?.replace(/^Bearer\s+/i, "").trim();
+  const providedToken = (authorizationToken || apiKeyHeader || "").trim();
+
+  if (!providedToken) {
+    console.error("[auto-post] Missing authorization/apikey header");
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }
-  
-  const token = authHeader.replace("Bearer ", "");
-  // Allow anon key (from cron job) or service role key
-  if (token !== supabaseAnonKey && token !== supabaseServiceKey) {
+
+  const allowedTokens = new Set(
+    [supabaseAnonKey, supabasePublishableKey, supabaseServiceKey].filter(Boolean) as string[]
+  );
+
+  if (!allowedTokens.has(providedToken)) {
     console.error("[auto-post] Invalid authorization token");
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { 
-      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } 
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }
 
