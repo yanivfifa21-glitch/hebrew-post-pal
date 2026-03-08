@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { StockBadge } from "@/components/products/StockBadge";
 import { Rocket, Trash2, Loader2, ExternalLink, Star, ShoppingCart, Copy, Check, Clock, RotateCcw, Edit, Save, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
