@@ -50,6 +50,7 @@ const GroupListener = () => {
   const [editGroupActive, setEditGroupActive] = useState(true);
   const [editPrepend, setEditPrepend] = useState("");
   const [editAppend, setEditAppend] = useState("");
+  const [editRewriteMode, setEditRewriteMode] = useState<'link_only' | 'full_rewrite'>("link_only");
   const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
 
   useEffect(() => {
