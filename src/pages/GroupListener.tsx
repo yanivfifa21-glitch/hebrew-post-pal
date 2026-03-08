@@ -378,7 +378,18 @@ const GroupListener = () => {
   const openSendDialog = (posts: CapturedPost | CapturedPost[]) => {
     const arr = Array.isArray(posts) ? posts : [posts];
     setSendPosts(arr);
+    setDialogMode('send');
     setSelectedAccounts(accounts.filter(a => a.is_active).map(a => a.id));
+    setSelectedZones([]);
+    setAddToAutomation(true);
+    setShowSendDialog(true);
+  };
+
+  const openQueueDialog = (posts: CapturedPost | CapturedPost[]) => {
+    const arr = Array.isArray(posts) ? posts : [posts];
+    setSendPosts(arr);
+    setDialogMode('queue');
+    setSelectedAccounts([]);
     setSelectedZones([]);
     setAddToAutomation(true);
     setShowSendDialog(true);
