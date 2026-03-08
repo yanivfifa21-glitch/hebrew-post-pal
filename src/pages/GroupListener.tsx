@@ -552,8 +552,6 @@ const GroupListener = () => {
       setSelectedPostIds(new Set(capturedPosts.map(p => p.id)));
     }
   };
-    }
-  };
 
   const pendingCount = capturedPosts.filter((p) => p.status === "pending_review").length;
 
