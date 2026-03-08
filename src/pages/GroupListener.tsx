@@ -49,7 +49,7 @@ const GroupListener = () => {
   const [editingPost, setEditingPost] = useState<CapturedPost | null>(null);
   const [editText, setEditText] = useState("");
   const [editUrl, setEditUrl] = useState("");
-  const [isApproving, setIsApproving] = useState<string | null>(null);
+  
   
   const [settingUpWebhook, setSettingUpWebhook] = useState<string | null>(null);
   const [showBotToken, setShowBotToken] = useState<Record<string, boolean>>({});
