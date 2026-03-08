@@ -194,39 +194,68 @@ async function processMessage(supabase: any, supabaseUrl: string, message: any, 
     });
   }
 
-  // Download photo if present
-  let imageUrl: string | null = null;
-  if (message.photo && message.photo.length > 0 && botToken) {
-    const largestPhoto = message.photo[message.photo.length - 1];
-    const fileId = largestPhoto.file_id;
+  // Download media (photo, video, animation, or video document)
+  let mediaUrl: string | null = null;
+  let mediaType: 'image' | 'video' = 'image';
 
+  // Determine which media to download
+  let fileId: string | null = null;
+  let contentType = "image/jpeg";
+  let fileExtension = "jpg";
+
+  if (message.video && botToken) {
+    fileId = message.video.file_id;
+    contentType = message.video.mime_type || "video/mp4";
+    fileExtension = "mp4";
+    mediaType = 'video';
+  } else if (message.animation && botToken) {
+    // GIFs sent as animation – treat as video
+    fileId = message.animation.file_id;
+    contentType = message.animation.mime_type || "video/mp4";
+    fileExtension = message.animation.mime_type?.includes("gif") ? "gif" : "mp4";
+    mediaType = 'video';
+  } else if (message.document && botToken && message.document.mime_type?.startsWith("video/")) {
+    // Videos sent as documents
+    fileId = message.document.file_id;
+    contentType = message.document.mime_type || "video/mp4";
+    fileExtension = "mp4";
+    mediaType = 'video';
+  } else if (message.photo && message.photo.length > 0 && botToken) {
+    const largestPhoto = message.photo[message.photo.length - 1];
+    fileId = largestPhoto.file_id;
+    contentType = "image/jpeg";
+    fileExtension = "jpg";
+    mediaType = 'image';
+  }
+
+  if (fileId && botToken) {
     try {
       const fileResp = await fetch(`https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`);
       const fileData = await fileResp.json();
 
       if (fileData.ok && fileData.result?.file_path) {
         const downloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileData.result.file_path}`;
-        const imgResp = await fetch(downloadUrl);
+        const mediaResp = await fetch(downloadUrl);
 
-        if (imgResp.ok) {
-          const imgArrayBuffer = await imgResp.arrayBuffer();
-          const imgUint8 = new Uint8Array(imgArrayBuffer);
-          const filename = `captured/${crypto.randomUUID()}.jpg`;
+        if (mediaResp.ok) {
+          const arrayBuffer = await mediaResp.arrayBuffer();
+          const uint8 = new Uint8Array(arrayBuffer);
+          const filename = `captured/${crypto.randomUUID()}.${fileExtension}`;
 
           const { error: uploadError } = await supabase.storage
             .from("product-images")
-            .upload(filename, imgUint8, { contentType: "image/jpeg", upsert: true });
+            .upload(filename, uint8, { contentType, upsert: true });
 
           if (!uploadError) {
             const { data: urlData } = supabase.storage.from("product-images").getPublicUrl(filename);
-            imageUrl = urlData?.publicUrl || null;
+            mediaUrl = urlData?.publicUrl || null;
           } else {
             console.error("[telegram-listener-webhook] Upload error:", uploadError);
           }
         }
       }
     } catch (e) {
-      console.error("[telegram-listener-webhook] Photo download error:", e);
+      console.error("[telegram-listener-webhook] Media download error:", e);
     }
   }
 
