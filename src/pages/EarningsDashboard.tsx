@@ -13,8 +13,9 @@ import {
 } from "@/components/ui/tooltip";
 import {
   DollarSign, ShoppingCart, CheckCircle2, TrendingUp, RefreshCw,
-  Calendar, Package, AlertTriangle, Loader2, Plus,
+  Calendar, Package, AlertTriangle, Loader2, Plus, Trophy,
 } from "lucide-react";
+import { useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { formatProductLink } from "@/lib/ctaUtils";
