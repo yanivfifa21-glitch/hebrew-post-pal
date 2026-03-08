@@ -16,6 +16,12 @@ const isValidHttpUrl = (value: string | null | undefined): boolean => {
   }
 };
 
+const resolveCheckUrl = (originalUrl: string | null | undefined, affiliateUrl: string | null | undefined): string | null => {
+  if (isValidHttpUrl(originalUrl)) return originalUrl as string;
+  if (isValidHttpUrl(affiliateUrl)) return affiliateUrl as string;
+  return null;
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -50,8 +56,8 @@ serve(async (req) => {
       if (!products || products.length === 0) continue;
 
       for (const product of products) {
-        const checkUrl = product.affiliate_link || product.original_url;
-        if (!checkUrl || !isValidHttpUrl(checkUrl)) {
+        const checkUrl = resolveCheckUrl(product.original_url, product.affiliate_link);
+        if (!checkUrl) {
           await supabase
             .from("products")
             .update({

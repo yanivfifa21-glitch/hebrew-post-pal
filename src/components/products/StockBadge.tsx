@@ -20,18 +20,23 @@ export const StockBadge = ({ product, onStockChecked, showCheckButton = true }: 
   const handleCheckStock = async (e: React.MouseEvent) => {
     e.stopPropagation();
 
-    const checkUrl = product.affiliate_link || product.original_url;
-    const isValidHttpUrl = (() => {
-      if (!checkUrl) return false;
+    const isValidHttpUrl = (value: string | null | undefined) => {
+      if (!value) return false;
       try {
-        const parsed = new URL(checkUrl);
+        const parsed = new URL(value);
         return parsed.protocol === "http:" || parsed.protocol === "https:";
       } catch {
         return false;
       }
-    })();
+    };
 
-    if (!isValidHttpUrl) {
+    const checkUrl = isValidHttpUrl(product.original_url)
+      ? product.original_url
+      : isValidHttpUrl(product.affiliate_link)
+        ? product.affiliate_link
+        : null;
+
+    if (!checkUrl) {
       toast({ title: "אין קישור תקין לבדיקה", description: "הוסף קישור מוצר מלא לפני בדיקת מלאי" });
       return;
     }
