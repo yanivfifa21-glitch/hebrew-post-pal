@@ -732,8 +732,8 @@ const GroupListener = () => {
 
                         {/* Action buttons */}
                         <div className="flex gap-2 flex-wrap">
-                          <Button variant="gradient" size="sm" onClick={() => handleAddToQueue(post)} disabled={isApproving === post.id || post.status === "queued"} className="gap-1">
-                            {isApproving === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <ListPlus className="h-3 w-3" />}
+                          <Button variant="gradient" size="sm" onClick={() => openQueueDialog(post)} disabled={isBulkProcessing || post.status === "queued"} className="gap-1">
+                            <ListPlus className="h-3 w-3" />
                             הוסף לתור
                           </Button>
                           <Button variant="outline" size="sm" onClick={() => openSendDialog(post)} disabled={isBulkProcessing} className="gap-1">
