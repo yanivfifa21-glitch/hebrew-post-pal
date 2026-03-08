@@ -63,9 +63,9 @@ const GroupListener = () => {
   const [editAppend, setEditAppend] = useState("");
   const [editRewriteMode, setEditRewriteMode] = useState<'link_only' | 'full_rewrite'>("link_only");
   const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
-  // Send to groups state
-  
+  // Send/Queue dialog state
   const [showSendDialog, setShowSendDialog] = useState(false);
+  const [dialogMode, setDialogMode] = useState<'send' | 'queue'>('send');
   const [sendPosts, setSendPosts] = useState<CapturedPost[]>([]);
   const [accounts, setAccounts] = useState<MessagingAccountSafe[]>([]);
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
