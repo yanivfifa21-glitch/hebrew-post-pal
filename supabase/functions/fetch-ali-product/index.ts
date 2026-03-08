@@ -15,7 +15,7 @@ type ProductMeta = {
   rating: number;
 };
 
-type ApiOk = { success: true; data: ProductMeta; cleanUrl: string; productId?: string; raw?: unknown };
+type ApiOk = { success: true; data: ProductMeta; cleanUrl: string; productId?: string; eligible?: boolean; raw?: unknown };
 type ApiErr = { success: false; error: string; code?: string; request_id?: string; trace_id?: string; raw?: unknown };
 
 async function generateMd5Signature(params: Record<string, string>, appSecretRaw: string): Promise<string> {
@@ -250,7 +250,12 @@ serve(async (req) => {
     }
 
     const meta = normalizeMetaFromApi(product);
-    const payload: ApiOk = { success: true, data: meta, cleanUrl, productId };
+
+    // Check if product is eligible for affiliate program
+    const promotionLink = product?.promotion_link || product?.promotionLink || "";
+    const eligible = !!promotionLink;
+
+    const payload: ApiOk = { success: true, data: meta, cleanUrl, productId, eligible };
 
     return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: unknown) {
