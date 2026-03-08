@@ -20,7 +20,7 @@ const CATEGORY_IDS: Record<string, string> = {
 };
 
 // AD CENTER + Incentive product sources
-type ProductSource = "hot" | "hot_deals" | "high_commission" | "featured" | "campaigns" | "search" | "smart_match" | "incentive";
+type ProductSource = "hot" | "hot_deals" | "high_commission" | "featured" | "campaigns" | "campaign_products" | "search" | "smart_match" | "incentive";
 
 const ALL_CATEGORY_IDS = ["509", "15", "66", "200000297", "34", "200003482", "7", "44"];
 
