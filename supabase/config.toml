@@ -32,3 +32,12 @@ verify_jwt = false
 
 [functions.enhance-product-image]
 verify_jwt = false
+
+[functions.check-product-stock]
+verify_jwt = false
+
+[functions.bulk-stock-check]
+verify_jwt = false
+
+[functions.process-captured-post]
+verify_jwt = false
