@@ -979,7 +979,7 @@ const GroupListener = () => {
                 <Label className="font-hebrew text-sm font-medium">בחר חשבונות לשליחה</Label>
                 <div className="space-y-2 max-h-40 overflow-y-auto">
                   {accounts.map((acc) => (
-                    <label key={acc.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <label key={acc.id} className={`flex items-center gap-2 text-sm cursor-pointer ${!acc.is_active ? "opacity-50" : ""}`}>
                       <Checkbox
                         checked={selectedAccounts.includes(acc.id)}
                         onCheckedChange={(checked) => {
