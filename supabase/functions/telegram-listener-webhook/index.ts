@@ -10,12 +10,68 @@ function normalizeExtractedUrl(rawUrl: string): string {
   return rawUrl.replace(/[),.;!?]+$/g, "").trim();
 }
 
-function extractUrls(text: string): string[] {
+function extractUrlsFromText(text: string): string[] {
   const matches = text.match(/(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/gi) || [];
-  const normalized = matches
+  return matches
     .map((url) => normalizeExtractedUrl(url))
     .filter((url) => url.length > 0);
-  return [...new Set(normalized)];
+}
+
+function extractUrlsFromEntities(text: string, entities: any[] | undefined): string[] {
+  if (!entities || entities.length === 0 || !text) return [];
+
+  const urls: string[] = [];
+  for (const entity of entities) {
+    if (!entity) continue;
+
+    if (entity.type === "text_link" && typeof entity.url === "string") {
+      urls.push(normalizeExtractedUrl(entity.url));
+      continue;
+    }
+
+    if (entity.type === "url" && typeof entity.offset === "number" && typeof entity.length === "number") {
+      const entityUrl = text.slice(entity.offset, entity.offset + entity.length);
+      if (entityUrl) urls.push(normalizeExtractedUrl(entityUrl));
+    }
+  }
+
+  return urls.filter((url) => url.length > 0);
+}
+
+function extractUrlsFromInlineKeyboard(message: any): string[] {
+  const rows = message?.reply_markup?.inline_keyboard;
+  if (!Array.isArray(rows)) return [];
+
+  const urls: string[] = [];
+  for (const row of rows) {
+    if (!Array.isArray(row)) continue;
+    for (const button of row) {
+      if (button?.url && typeof button.url === "string") {
+        urls.push(normalizeExtractedUrl(button.url));
+      }
+    }
+  }
+
+  return urls.filter((url) => url.length > 0);
+}
+
+function collectMessageUrls(message: any): string[] {
+  const text = message.text || "";
+  const caption = message.caption || "";
+
+  const allUrls = [
+    ...extractUrlsFromText(text),
+    ...extractUrlsFromText(caption),
+    ...extractUrlsFromEntities(text, message.entities),
+    ...extractUrlsFromEntities(caption, message.caption_entities),
+    ...extractUrlsFromInlineKeyboard(message),
+  ];
+
+  if (message?.link_preview_options?.url && typeof message.link_preview_options.url === "string") {
+    allUrls.push(normalizeExtractedUrl(message.link_preview_options.url));
+  }
+
+  return [...new Set(allUrls.filter((url) => url.length > 0))];
 }
 
 function isAliExpressUrl(url: string): boolean {
