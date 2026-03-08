@@ -478,8 +478,67 @@ const GroupListener = () => {
       setIsBulkProcessing(false);
     }
   };
-
-
+  const handleBulkSendAndQueue = async () => {
+    const posts = capturedPosts.filter(p => selectedPostIds.has(p.id));
+    if (posts.length === 0) return;
+    setSendPosts(posts);
+    // Reuse handleSendAndQueue logic directly
+    setIsBulkProcessing(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+      for (const post of posts) {
+        const text = getPostFinalText(post);
+        const mediaUrl = post.image_url || null;
+        const mediaType = post.media_type || "image";
+        if (selectedAccounts.length > 0) {
+          await Promise.allSettled(
+            selectedAccounts.map(async (accountId) => {
+              const acc = accounts.find(a => a.id === accountId);
+              if (!acc) return;
+              if (acc.account_type === "telegram") {
+                await supabase.functions.invoke("send-telegram", {
+                  body: { message: text, imageUrl: mediaUrl, mediaType, accountId, userId: user.id },
+                });
+              } else if (acc.account_type === "whatsapp") {
+                await supabase.functions.invoke("send-whatsapp", {
+                  body: { message: text, imageUrl: mediaUrl, mediaType, accountId, userId: user.id },
+                });
+              }
+            })
+          );
+        }
+        // Always add to queue
+        const productTitle = text.substring(0, 100) || "Captured Product";
+        const { data: product } = await supabase
+          .from("products")
+          .insert({
+            user_id: user.id, title: productTitle, original_url: post.original_url || "",
+            affiliate_link: post.modified_url || null, image_url: mediaUrl,
+            media_type: mediaType, hebrew_description: text,
+            status: "Scheduled", sent_via: "manual",
+          })
+          .select().single();
+        if (product && selectedZones.length > 0) {
+          await supabase.from("zone_products").insert(
+            selectedZones.map(zoneId => ({ zone_id: zoneId, product_id: product.id }))
+          );
+        }
+        await supabase.from("captured_posts")
+          .update({ status: "queued", reviewed_at: new Date().toISOString() })
+          .eq("id", post.id);
+        setCapturedPosts((prev) => prev.map((p) =>
+          p.id === post.id ? { ...p, status: "queued" as const } : p
+        ));
+      }
+      toast({ title: `✅ ${posts.length} פוסטים נשלחו ונוספו לתור` });
+      setSelectedPostIds(new Set());
+    } catch (err) {
+      toast({ title: "שגיאה בשליחה", variant: "destructive" });
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
 
 
   const togglePostSelection = (postId: string) => {
