@@ -339,6 +339,7 @@ const Queue = () => {
               isSelected={currentSelected.has(product.id)}
               onSelectionChange={currentHandler}
               showCheckbox={showSelection}
+              onStockChecked={handleStockChecked}
             />
           </div>
         ))}
