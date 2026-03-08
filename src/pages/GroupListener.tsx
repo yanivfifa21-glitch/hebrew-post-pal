@@ -654,26 +654,38 @@ const GroupListener = () => {
                         {hasRewrite ? (
                           <div className="space-y-2">
                             <label
-                              className={`block rounded-lg p-3 text-sm cursor-pointer border transition-all ${choice === 'original' ? 'border-primary bg-primary/5' : 'border-border bg-muted/30 text-muted-foreground'}`}
+                              className={`block rounded-lg p-3 text-sm cursor-pointer border-2 transition-all ${choice === 'original' ? 'border-primary bg-primary/10 ring-1 ring-primary/30' : 'border-border bg-muted/30 text-muted-foreground hover:border-muted-foreground/40'}`}
                               onClick={() => setTextChoice(prev => ({ ...prev, [post.id]: 'original' }))}
                               dir="rtl"
                             >
                               <div className="flex items-center gap-2 mb-1">
-                                <div className={`h-3 w-3 rounded-full border-2 ${choice === 'original' ? 'border-primary bg-primary' : 'border-muted-foreground'}`} />
-                                <span className="text-xs font-medium">מקורי + קישור חדש</span>
+                                {choice === 'original' ? (
+                                  <div className="h-5 w-5 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                                    <Check className="h-3 w-3 text-primary-foreground" />
+                                  </div>
+                                ) : (
+                                  <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/40 flex-shrink-0" />
+                                )}
+                                <span className="text-xs font-semibold">מקורי + קישור חדש</span>
                               </div>
-                              <p className="line-clamp-2 text-xs">{post.original_text}</p>
+                              <p className="line-clamp-2 text-xs mr-7">{post.original_text}</p>
                             </label>
                             <label
-                              className={`block rounded-lg p-3 text-sm cursor-pointer border transition-all ${choice === 'rewrite' ? 'border-primary bg-primary/5' : 'border-border bg-muted/30 text-muted-foreground'}`}
+                              className={`block rounded-lg p-3 text-sm cursor-pointer border-2 transition-all ${choice === 'rewrite' ? 'border-primary bg-primary/10 ring-1 ring-primary/30' : 'border-border bg-muted/30 text-muted-foreground hover:border-muted-foreground/40'}`}
                               onClick={() => setTextChoice(prev => ({ ...prev, [post.id]: 'rewrite' }))}
                               dir="rtl"
                             >
                               <div className="flex items-center gap-2 mb-1">
-                                <div className={`h-3 w-3 rounded-full border-2 ${choice === 'rewrite' ? 'border-primary bg-primary' : 'border-muted-foreground'}`} />
-                                <span className="text-xs font-medium">✨ מנוסח מחדש</span>
+                                {choice === 'rewrite' ? (
+                                  <div className="h-5 w-5 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                                    <Check className="h-3 w-3 text-primary-foreground" />
+                                  </div>
+                                ) : (
+                                  <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/40 flex-shrink-0" />
+                                )}
+                                <span className="text-xs font-semibold">✨ מנוסח מחדש</span>
                               </div>
-                              <p className="line-clamp-2 text-xs">{post.modified_text}</p>
+                              <p className="line-clamp-2 text-xs mr-7">{post.modified_text}</p>
                             </label>
                           </div>
                         ) : post.original_text ? (
