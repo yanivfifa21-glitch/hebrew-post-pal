@@ -356,7 +356,7 @@ export type Database = {
             foreignKeyName: "captured_posts_source_group_id_fkey"
             columns: ["source_group_id"]
             isOneToOne: false
-            referencedRelation: "listened_groups"
+            referencedRelation: "relay_groups"
             referencedColumns: ["id"]
           },
         ]
@@ -473,48 +473,6 @@ export type Database = {
           message?: string
           send_time?: string
           target_account_ids?: string[]
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      listened_groups: {
-        Row: {
-          auto_approve: boolean
-          captured_count: number
-          created_at: string
-          group_name: string
-          id: string
-          is_active: boolean
-          telegram_group_id: string
-          text_template_append: string | null
-          text_template_prepend: string | null
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          auto_approve?: boolean
-          captured_count?: number
-          created_at?: string
-          group_name: string
-          id?: string
-          is_active?: boolean
-          telegram_group_id: string
-          text_template_append?: string | null
-          text_template_prepend?: string | null
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          auto_approve?: boolean
-          captured_count?: number
-          created_at?: string
-          group_name?: string
-          id?: string
-          is_active?: boolean
-          telegram_group_id?: string
-          text_template_append?: string | null
-          text_template_prepend?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -670,6 +628,54 @@ export type Database = {
           title?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      relay_groups: {
+        Row: {
+          auto_approve: boolean
+          bot_token: string | null
+          captured_count: number
+          created_at: string
+          group_name: string
+          id: string
+          is_active: boolean
+          telegram_group_id: string
+          text_template_append: string | null
+          text_template_prepend: string | null
+          updated_at: string
+          user_id: string
+          webhook_active: boolean
+        }
+        Insert: {
+          auto_approve?: boolean
+          bot_token?: string | null
+          captured_count?: number
+          created_at?: string
+          group_name: string
+          id?: string
+          is_active?: boolean
+          telegram_group_id: string
+          text_template_append?: string | null
+          text_template_prepend?: string | null
+          updated_at?: string
+          user_id: string
+          webhook_active?: boolean
+        }
+        Update: {
+          auto_approve?: boolean
+          bot_token?: string | null
+          captured_count?: number
+          created_at?: string
+          group_name?: string
+          id?: string
+          is_active?: boolean
+          telegram_group_id?: string
+          text_template_append?: string | null
+          text_template_prepend?: string | null
+          updated_at?: string
+          user_id?: string
+          webhook_active?: boolean
         }
         Relationships: []
       }
