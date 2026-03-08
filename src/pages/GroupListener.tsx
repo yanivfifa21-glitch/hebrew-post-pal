@@ -595,7 +595,7 @@ const GroupListener = () => {
             {selectedPostIds.size > 0 && (
               <div className="flex gap-2 flex-wrap items-center bg-primary/5 border border-primary/20 rounded-xl p-3">
                 <Badge variant="outline" className="text-xs">{selectedPostIds.size} נבחרו</Badge>
-                <Button variant="gradient" size="sm" onClick={handleBulkAddToQueue} disabled={isBulkProcessing} className="gap-1">
+                <Button variant="gradient" size="sm" onClick={() => openQueueDialog(capturedPosts.filter(p => selectedPostIds.has(p.id)))} disabled={isBulkProcessing} className="gap-1">
                   {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <ListPlus className="h-3 w-3" />}
                   הוסף נבחרים לתור
                 </Button>
