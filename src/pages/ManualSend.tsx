@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -24,7 +24,8 @@ import {
   Eye,
   AlertCircle,
   Sparkles,
-  MapPin
+  MapPin,
+  Stamp
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
