@@ -732,6 +732,8 @@ serve(async (req) => {
           }
 
           const message = buildMessage(product);
+          const { success, sentTo, errors } = await sendProductToAccounts(
+            supabase, userId, product, message, allAccounts.map((a: any) => a.id)
           );
 
           if (success) {
