@@ -640,6 +640,10 @@ serve(async (req) => {
         const productRows = products.map((p) => {
           // Extract campaign name from source label like "campaign:PromoName"
           const campName = p.source?.startsWith("campaign:") ? p.source.replace("campaign:", "") : null;
+          // For campaign_products source, use the campaignDbId directly
+          const resolvedCampaignId = source === "campaign_products" && campaignDbId
+            ? campaignDbId
+            : (campName ? (campaignMap.get(campName) || null) : null);
           return {
             user_id: user.id,
             product_id: p.product_id,
@@ -648,8 +652,8 @@ serve(async (req) => {
             price: p.price,
             original_price: p.original_price,
             product_url: p.product_url,
-            source: source,
-            campaign_id: campName ? (campaignMap.get(campName) || null) : null,
+            source: source === "campaign_products" ? "campaigns" : source,
+            campaign_id: resolvedCampaignId,
             sales_count: p.sales_count,
             rating: p.rating,
             commission_rate: p.commission_rate || 0,
