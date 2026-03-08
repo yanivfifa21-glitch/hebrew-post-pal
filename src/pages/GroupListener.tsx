@@ -32,6 +32,7 @@ const GroupListener = () => {
   const [newAutoApprove, setNewAutoApprove] = useState(false);
   const [newPrepend, setNewPrepend] = useState("");
   const [newAppend, setNewAppend] = useState("");
+  const [newRewriteMode, setNewRewriteMode] = useState<'link_only' | 'full_rewrite'>("link_only");
   const [isSavingGroup, setIsSavingGroup] = useState(false);
   const [postFilter, setPostFilter] = useState<string>("pending_review");
   const [editingPost, setEditingPost] = useState<CapturedPost | null>(null);
