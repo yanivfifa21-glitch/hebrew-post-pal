@@ -761,7 +761,7 @@ const GroupListener = () => {
                                 )}
                                 <span className="text-xs font-semibold">מקורי + קישור חדש</span>
                               </div>
-                              <p className="text-xs mr-7 whitespace-pre-wrap">{post.original_text}</p>
+                              <p className="text-xs mr-7 whitespace-pre-wrap">{getPostFinalText({ ...post, modified_text: post.modified_text, original_text: post.original_text })}</p>
                             </label>
                             <label
                               className={`block rounded-lg p-3 text-sm cursor-pointer border-2 transition-all ${choice === 'rewrite' ? 'border-primary bg-primary/10 ring-1 ring-primary/30' : 'border-border bg-muted/30 text-muted-foreground hover:border-muted-foreground/40'}`}
