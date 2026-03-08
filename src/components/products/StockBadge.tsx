@@ -19,9 +19,25 @@ export const StockBadge = ({ product, onStockChecked, showCheckButton = true }: 
 
   const handleCheckStock = async (e: React.MouseEvent) => {
     e.stopPropagation();
+
+    const checkUrl = product.affiliate_link || product.original_url;
+    const isValidHttpUrl = (() => {
+      if (!checkUrl) return false;
+      try {
+        const parsed = new URL(checkUrl);
+        return parsed.protocol === "http:" || parsed.protocol === "https:";
+      } catch {
+        return false;
+      }
+    })();
+
+    if (!isValidHttpUrl) {
+      toast({ title: "אין קישור תקין לבדיקה", description: "הוסף קישור מוצר מלא לפני בדיקת מלאי" });
+      return;
+    }
+
     setIsChecking(true);
     try {
-      const checkUrl = product.affiliate_link || product.original_url;
       const { data, error } = await supabase.functions.invoke("check-product-stock", {
         body: { productId: product.id, url: checkUrl },
       });
