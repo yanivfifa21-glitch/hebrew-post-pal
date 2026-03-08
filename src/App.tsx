@@ -16,6 +16,7 @@ import Zones from "./pages/Zones";
 import Coupons from "./pages/Coupons";
 import CollageGenerator from "./pages/CollageGenerator";
 import GroupListener from "./pages/GroupListener";
+import StoreScanner from "./pages/StoreScanner";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import Admin from "./pages/Admin";
