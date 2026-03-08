@@ -390,6 +390,86 @@ const GroupListener = () => {
     toast({ title: "✅ נשמר" });
   };
 
+  const fetchAccounts = async () => {
+    const { data } = await supabase.rpc("get_my_messaging_accounts_safe");
+    setAccounts((data as unknown as MessagingAccountSafe[]) || []);
+  };
+
+  const openSendDialog = (post: CapturedPost) => {
+    setSendPost(post);
+    setSelectedAccounts(accounts.filter(a => a.is_active).map(a => a.id));
+    setSelectedZones([]);
+    setAddToAutomation(true);
+    setShowSendDialog(true);
+  };
+
+  const handleSendAndQueue = async () => {
+    if (!sendPost) return;
+    setSendingPostId(sendPost.id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const text = sendPost.modified_text || sendPost.original_text || "";
+      const mediaUrl = sendPost.image_url || null;
+      const mediaType = sendPost.media_type || "image";
+
+      // Send to selected accounts
+      if (selectedAccounts.length > 0) {
+        const results = await Promise.allSettled(
+          selectedAccounts.map(async (accountId) => {
+            const acc = accounts.find(a => a.id === accountId);
+            if (!acc) return;
+            if (acc.account_type === "telegram") {
+              await supabase.functions.invoke("send-telegram", {
+                body: { message: text, imageUrl: mediaUrl, mediaType, accountId, userId: user.id },
+              });
+            } else if (acc.account_type === "whatsapp") {
+              await supabase.functions.invoke("send-whatsapp", {
+                body: { message: text, imageUrl: mediaUrl, mediaType, accountId, userId: user.id },
+              });
+            }
+          })
+        );
+        const sent = results.filter(r => r.status === "fulfilled").length;
+        toast({ title: `📤 נשלח ל-${sent} חשבונות` });
+      }
+
+      // Add to automation queue if checked
+      if (addToAutomation) {
+        const productTitle = text.substring(0, 100) || "Captured Product";
+        const { data: product } = await supabase
+          .from("products")
+          .insert({
+            user_id: user.id,
+            title: productTitle,
+            original_url: sendPost.original_url || "",
+            affiliate_link: sendPost.modified_url || null,
+            image_url: mediaUrl,
+            media_type: mediaType,
+            hebrew_description: text,
+            status: "Scheduled",
+            sent_via: "manual",
+          })
+          .select()
+          .single();
+
+        if (product && selectedZones.length > 0) {
+          await supabase.from("zone_products").insert(
+            selectedZones.map(zoneId => ({ zone_id: zoneId, product_id: product.id }))
+          );
+        }
+        toast({ title: "✅ נוסף לתור האוטומציה" });
+      }
+
+      setShowSendDialog(false);
+      setSendPost(null);
+    } catch (err) {
+      toast({ title: "שגיאה בשליחה", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setSendingPostId(null);
+    }
+  };
 
   const pendingCount = capturedPosts.filter((p) => p.status === "pending_review").length;
 
