@@ -106,7 +106,6 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    // SECURITY: Verify the user from JWT token
     const authHeader = req.headers.get("authorization");
     if (!authHeader) {
       console.error("[fetch-ali-product] Missing authorization header");
@@ -117,23 +116,32 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    
-    // Verify user with anon key
-    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
-    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(
-      authHeader.replace("Bearer ", "")
-    );
-
-    if (authError || !user) {
-      console.error("[fetch-ali-product] Auth verification failed:", authError);
-      const payload: ApiErr = { success: false, error: "Unauthorized" };
-      return new Response(JSON.stringify(payload), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
 
     const body = await req.json().catch(() => ({}));
     const productUrl = String(body?.productUrl || "").trim();
+    const bodyUserId = body?.userId ? String(body.userId).trim() : null;
 
-    console.log("[fetch-ali-product] Input URL:", productUrl, "for user:", user.id);
+    // Determine user ID: try JWT first, fallback to body.userId for service-role calls
+    let resolvedUserId: string | null = null;
+    const token = authHeader.replace("Bearer ", "");
+
+    // Check if this is a service-role call with userId in body
+    if (token === supabaseServiceKey && bodyUserId) {
+      resolvedUserId = bodyUserId;
+      console.log("[fetch-ali-product] Service-role call for user:", resolvedUserId);
+    } else {
+      // Normal user JWT verification
+      const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
+      const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
+      if (authError || !user) {
+        console.error("[fetch-ali-product] Auth verification failed:", authError);
+        const payload: ApiErr = { success: false, error: "Unauthorized" };
+        return new Response(JSON.stringify(payload), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      resolvedUserId = user.id;
+    }
+
+    console.log("[fetch-ali-product] Input URL:", productUrl, "for user:", resolvedUserId);
 
     if (!productUrl) {
       const payload: ApiErr = { success: false, error: "Product URL is required" };
@@ -144,7 +152,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { data: credentials, error: credentialsError } = await supabase
-      .rpc("get_decrypted_user_credentials", { p_user_id: user.id });
+      .rpc("get_decrypted_user_credentials", { p_user_id: resolvedUserId });
 
     if (credentialsError || credentials?.error) {
       console.error("[fetch-ali-product] Error fetching credentials:", credentialsError || credentials?.error);
