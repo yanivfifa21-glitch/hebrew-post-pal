@@ -444,7 +444,8 @@ async function processMessage(supabase: any, supabaseUrl: string, message: any, 
       modified_text: modifiedText,
       original_url: aliUrl,
       modified_url: modifiedUrl || null,
-      image_url: finalImageUrl,
+      image_url: finalMediaUrl,
+      media_type: finalMediaType,
       status,
     })
     .select()
