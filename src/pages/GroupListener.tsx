@@ -486,6 +486,7 @@ const GroupListener = () => {
       const text = getPostFinalText(post);
       const mediaUrl = post.image_url || null;
       const mediaType = post.media_type || "image";
+      const productTitle = text.substring(0, 100) || "Captured Product";
       if (selectedAccounts.length > 0) {
         await Promise.allSettled(
           selectedAccounts.map(async (accountId) => {
@@ -493,17 +494,16 @@ const GroupListener = () => {
             if (!acc) return;
             if (acc.account_type === "telegram") {
               await supabase.functions.invoke("send-telegram", {
-                body: { message: text, imageUrl: mediaUrl, mediaType, accountId, userId: user.id },
+                body: { title: productTitle, hebrewDescription: text, price: 0, imageUrl: mediaUrl, affiliateLink: post.modified_url || null, mediaType, accountId, userId: user.id },
               });
             } else if (acc.account_type === "whatsapp") {
               await supabase.functions.invoke("send-whatsapp", {
-                body: { message: text, imageUrl: mediaUrl, mediaType, accountId, userId: user.id },
+                body: { title: productTitle, hebrewDescription: text, price: 0, imageUrl: mediaUrl, affiliateLink: post.modified_url || null, mediaType, accountId, userId: user.id },
               });
             }
           })
         );
       }
-      const productTitle = text.substring(0, 100) || "Captured Product";
       const { data: product } = await supabase
         .from("products")
         .insert({
