@@ -134,7 +134,15 @@ serve(async (req) => {
     
     console.log("[send-whatsapp] Sending for user:", user.email);
 
-    const message = hebrewDescription;
+    const message = hebrewDescription || title || "";
+
+    if (!message) {
+      console.error("[send-whatsapp] No message content provided");
+      return new Response(
+        JSON.stringify({ success: false, error: "No message content" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     console.log("[send-whatsapp] Message preview:", message.substring(0, 100) + "...");
 
