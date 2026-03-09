@@ -448,7 +448,6 @@ const GroupListener = () => {
           );
         }
         // Always add to queue
-        const productTitle = text.substring(0, 100) || "Captured Product";
         const { data: product } = await supabase
           .from("products")
           .insert({
