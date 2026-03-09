@@ -535,7 +535,7 @@ const GroupListener = () => {
       setCapturedPosts((prev) => prev.map((p) =>
         p.id === post.id ? { ...p, status: "queued" as const } : p
       ));
-      toast({ title: "✅ נשלח ונוסף לתור" });
+      toast({ title: failCount > 0 ? `⚠️ נוסף לתור, ${failCount} שליחות נכשלו` : "✅ נשלח ונוסף לתור" , variant: failCount > 0 ? "destructive" : "default" });
     } catch {
       toast({ title: "שגיאה בשליחה", variant: "destructive" });
     } finally {
