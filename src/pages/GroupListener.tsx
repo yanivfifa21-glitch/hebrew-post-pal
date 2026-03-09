@@ -74,6 +74,11 @@ const GroupListener = () => {
   // Bulk selection
   const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const POSTS_PER_PAGE = 50;
+  // View mode
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
 
   useEffect(() => {
     fetchGroups();
