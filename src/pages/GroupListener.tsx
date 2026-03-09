@@ -430,6 +430,7 @@ const GroupListener = () => {
         const text = getPostFinalText(post);
         const mediaUrl = post.image_url || null;
         const mediaType = post.media_type || "image";
+        const productTitle = text.substring(0, 100) || "Captured Product";
         if (selectedAccounts.length > 0) {
           await Promise.allSettled(
             selectedAccounts.map(async (accountId) => {
