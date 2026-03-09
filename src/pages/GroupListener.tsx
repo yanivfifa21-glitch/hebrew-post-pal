@@ -90,6 +90,7 @@ const GroupListener = () => {
   }, []);
 
   useEffect(() => {
+    setCurrentPage(1);
     fetchCapturedPosts();
   }, [postFilter]);
 
