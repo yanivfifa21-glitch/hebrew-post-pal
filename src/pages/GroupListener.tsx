@@ -438,22 +438,24 @@ const GroupListener = () => {
         const mediaUrl = post.image_url || null;
         const mediaType = post.media_type || "image";
         const productTitle = text.substring(0, 100) || "Captured Product";
+        let sentCount = 0;
+        let failCount = 0;
         if (selectedAccounts.length > 0) {
-          await Promise.allSettled(
+          const results = await Promise.allSettled(
             selectedAccounts.map(async (accountId) => {
               const acc = accounts.find(a => a.id === accountId);
               if (!acc) return;
-              if (acc.account_type === "telegram") {
-                await supabase.functions.invoke("send-telegram", {
-                  body: { title: productTitle, hebrewDescription: text, price: 0, imageUrl: mediaUrl, affiliateLink: post.modified_url || null, mediaType, accountId, userId: user.id },
-                });
-              } else if (acc.account_type === "whatsapp") {
-                await supabase.functions.invoke("send-whatsapp", {
-                  body: { title: productTitle, hebrewDescription: text, price: 0, imageUrl: mediaUrl, affiliateLink: post.modified_url || null, mediaType, accountId, userId: user.id },
-                });
+              const fnName = acc.account_type === "telegram" ? "send-telegram" : "send-whatsapp";
+              const { data, error } = await supabase.functions.invoke(fnName, {
+                body: { title: productTitle, hebrewDescription: text, price: 0, imageUrl: mediaUrl, affiliateLink: post.modified_url || null, mediaType, accountId, userId: user.id },
+              });
+              if (error || (data && !data.success)) {
+                console.error(`[GroupListener] ${fnName} failed for ${acc.account_name}:`, error || data?.error);
+                throw new Error(data?.error || error?.message || "Send failed");
               }
             })
           );
+          results.forEach(r => { if (r.status === 'fulfilled') sentCount++; else failCount++; });
         }
         // Always add to queue
         const { data: product } = await supabase
@@ -494,22 +496,24 @@ const GroupListener = () => {
       const mediaUrl = post.image_url || null;
       const mediaType = post.media_type || "image";
       const productTitle = text.substring(0, 100) || "Captured Product";
+      let sentCount = 0;
+      let failCount = 0;
       if (selectedAccounts.length > 0) {
-        await Promise.allSettled(
+        const results = await Promise.allSettled(
           selectedAccounts.map(async (accountId) => {
             const acc = accounts.find(a => a.id === accountId);
             if (!acc) return;
-            if (acc.account_type === "telegram") {
-              await supabase.functions.invoke("send-telegram", {
-                body: { title: productTitle, hebrewDescription: text, price: 0, imageUrl: mediaUrl, affiliateLink: post.modified_url || null, mediaType, accountId, userId: user.id },
-              });
-            } else if (acc.account_type === "whatsapp") {
-              await supabase.functions.invoke("send-whatsapp", {
-                body: { title: productTitle, hebrewDescription: text, price: 0, imageUrl: mediaUrl, affiliateLink: post.modified_url || null, mediaType, accountId, userId: user.id },
-              });
+            const fnName = acc.account_type === "telegram" ? "send-telegram" : "send-whatsapp";
+            const { data, error } = await supabase.functions.invoke(fnName, {
+              body: { title: productTitle, hebrewDescription: text, price: 0, imageUrl: mediaUrl, affiliateLink: post.modified_url || null, mediaType, accountId, userId: user.id },
+            });
+            if (error || (data && !data.success)) {
+              console.error(`[GroupListener] ${fnName} failed:`, error || data?.error);
+              throw new Error(data?.error || error?.message || "Send failed");
             }
           })
         );
+        results.forEach(r => { if (r.status === 'fulfilled') sentCount++; else failCount++; });
       }
       const { data: product } = await supabase
         .from("products")
@@ -531,7 +535,7 @@ const GroupListener = () => {
       setCapturedPosts((prev) => prev.map((p) =>
         p.id === post.id ? { ...p, status: "queued" as const } : p
       ));
-      toast({ title: "✅ נשלח ונוסף לתור" });
+      toast({ title: failCount > 0 ? `⚠️ נוסף לתור, ${failCount} שליחות נכשלו` : "✅ נשלח ונוסף לתור" , variant: failCount > 0 ? "destructive" : "default" });
     } catch {
       toast({ title: "שגיאה בשליחה", variant: "destructive" });
     } finally {

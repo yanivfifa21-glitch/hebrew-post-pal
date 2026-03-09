@@ -242,7 +242,16 @@ serve(async (req) => {
 
     const useCustomEmoji = settingsData?.use_custom_emoji !== false; // default true
 
-    let caption = escapeHtmlForTelegram(hebrewDescription);
+    const messageText = hebrewDescription || title || "";
+    if (!messageText) {
+      console.error("[send-telegram] No message content provided");
+      return new Response(
+        JSON.stringify({ success: false, error: "No message content" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    let caption = escapeHtmlForTelegram(messageText);
     let usedCustomEmoji = false;
 
     if (useCustomEmoji) {
