@@ -13,7 +13,8 @@ import { StockBadge } from "@/components/products/StockBadge";
 import {
   Plus, Trash2, Loader2, Eye, EyeOff, Check, X, Edit,
   Headphones, Copy, Settings, Wifi, WifiOff, Filter,
-  CheckCircle, XCircle, Link, Sparkles, Send, ChevronDown, ListPlus
+  CheckCircle, XCircle, Link, Sparkles, Send, ChevronDown, ListPlus,
+  LayoutGrid, LayoutList, ChevronLeft, ChevronRight
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -74,6 +75,11 @@ const GroupListener = () => {
   // Bulk selection
   const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const POSTS_PER_PAGE = 50;
+  // View mode
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
 
   useEffect(() => {
     fetchGroups();
@@ -84,6 +90,7 @@ const GroupListener = () => {
   }, []);
 
   useEffect(() => {
+    setCurrentPage(1);
     fetchCapturedPosts();
   }, [postFilter]);
 
@@ -688,23 +695,92 @@ const GroupListener = () => {
                   <p className="text-muted-foreground text-sm">הגדר קבוצת ממסר והפעל Webhook כדי להתחיל לקלוט פוסטים</p>
                 </CardContent>
               </Card>
-            ) : (
+            ) : (() => {
+              const totalPages = Math.ceil(capturedPosts.length / POSTS_PER_PAGE);
+              const paginatedPosts = capturedPosts.slice((currentPage - 1) * POSTS_PER_PAGE, currentPage * POSTS_PER_PAGE);
+              return (
               <div className="space-y-4">
-                {/* Select all */}
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    checked={selectedPostIds.size === capturedPosts.length && capturedPosts.length > 0}
-                    onCheckedChange={toggleSelectAll}
-                    className="h-4 w-4"
-                  />
-                  <Label className="text-sm text-muted-foreground font-hebrew cursor-pointer" onClick={toggleSelectAll}>
-                    בחר הכל ({capturedPosts.length})
-                  </Label>
+                {/* Controls: Select all + View toggle + Page info */}
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      checked={selectedPostIds.size === capturedPosts.length && capturedPosts.length > 0}
+                      onCheckedChange={toggleSelectAll}
+                      className="h-4 w-4"
+                    />
+                    <Label className="text-sm text-muted-foreground font-hebrew cursor-pointer" onClick={toggleSelectAll}>
+                      בחר הכל ({capturedPosts.length})
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant={viewMode === 'list' ? 'default' : 'outline'} size="icon" className="h-8 w-8" onClick={() => setViewMode('list')}>
+                      <LayoutList className="h-4 w-4" />
+                    </Button>
+                    <Button variant={viewMode === 'grid' ? 'default' : 'outline'} size="icon" className="h-8 w-8" onClick={() => setViewMode('grid')}>
+                      <LayoutGrid className="h-4 w-4" />
+                    </Button>
+                    {totalPages > 1 && (
+                      <span className="text-xs text-muted-foreground">
+                        עמוד {currentPage} מתוך {totalPages} ({capturedPosts.length} פוסטים)
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                {capturedPosts.map((post) => {
+                <div className={viewMode === 'grid' ? "grid grid-cols-2 xl:grid-cols-4 gap-3" : "space-y-4"}>
+                {paginatedPosts.map((post) => {
                   const hasRewrite = !!(post.modified_text && post.modified_text !== post.original_text);
-                  const choice = textChoice[post.id]; // undefined = nothing selected yet
+                  const choice = textChoice[post.id];
+                  
+                  if (viewMode === 'grid') {
+                    return (
+                      <Card key={post.id} className={`glass-card overflow-hidden transition-all ${selectedPostIds.has(post.id) ? "ring-2 ring-primary/40" : ""}`}>
+                        <div className="flex flex-col h-full">
+                          {/* Header: checkbox + status */}
+                          <div className="flex items-center gap-2 p-2 pb-0">
+                            <Checkbox
+                              checked={selectedPostIds.has(post.id)}
+                              onCheckedChange={() => togglePostSelection(post.id)}
+                              className="h-4 w-4"
+                            />
+                            <Badge className={`text-[10px] ${getStatusColor(post.status)}`}>{getStatusLabel(post.status)}</Badge>
+                            <span className="text-[10px] text-muted-foreground mr-auto">
+                              {format(new Date(post.captured_at), "dd/MM HH:mm")}
+                            </span>
+                          </div>
+                          {/* Image */}
+                          {post.image_url && (
+                            <div className="w-full aspect-square overflow-hidden mt-2">
+                              {post.media_type === 'video' ? (
+                                <video src={post.image_url} className="w-full h-full object-cover" muted playsInline />
+                              ) : (
+                                <img src={post.image_url} alt="" className="w-full h-full object-cover" />
+                              )}
+                            </div>
+                          )}
+                          {/* Text */}
+                          <div className="p-2 flex-1 min-h-0">
+                            <p className="text-xs text-muted-foreground line-clamp-4 whitespace-pre-wrap" dir="rtl">
+                              {getPostFinalText(post, hasRewrite ? (choice || 'original') : 'original')}
+                            </p>
+                          </div>
+                          {/* Actions */}
+                          <div className="flex gap-1 p-2 pt-0 flex-wrap">
+                            <Button variant="gradient" size="sm" className="h-7 text-[10px] gap-1 flex-1" onClick={() => openQueueDialog(post)} disabled={isBulkProcessing || post.status === "queued"}>
+                              <ListPlus className="h-3 w-3" />
+                              תור
+                            </Button>
+                            <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 flex-1" onClick={() => { setSendPosts([post]); handleSingleSendAndQueue(post); }} disabled={isBulkProcessing || selectedAccounts.length === 0}>
+                              <Send className="h-3 w-3" />
+                              שלח
+                            </Button>
+                          </div>
+                        </div>
+                      </Card>
+                    );
+                  }
+
+                  // List view (original)
                   return (
                   <Card key={post.id} className={`glass-card overflow-hidden transition-all ${selectedPostIds.has(post.id) ? "ring-2 ring-primary/40" : ""}`}>
                     <div className="flex flex-col md:flex-row">
@@ -836,8 +912,61 @@ const GroupListener = () => {
                   </Card>
                   );
                 })}
+                </div>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-center gap-2 pt-4">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={currentPage === 1}
+                      onClick={() => setCurrentPage(p => p - 1)}
+                      className="gap-1"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                      הקודם
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                        let page: number;
+                        if (totalPages <= 7) {
+                          page = i + 1;
+                        } else if (currentPage <= 4) {
+                          page = i + 1;
+                        } else if (currentPage >= totalPages - 3) {
+                          page = totalPages - 6 + i;
+                        } else {
+                          page = currentPage - 3 + i;
+                        }
+                        return (
+                          <Button
+                            key={page}
+                            variant={currentPage === page ? 'default' : 'outline'}
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => setCurrentPage(page)}
+                          >
+                            {page}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={currentPage === totalPages}
+                      onClick={() => setCurrentPage(p => p + 1)}
+                      className="gap-1"
+                    >
+                      הבא
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
               </div>
-            )}
+              );
+            })()}
           </TabsContent>
 
           {/* RELAY GROUPS TAB */}
