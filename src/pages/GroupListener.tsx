@@ -13,7 +13,8 @@ import { StockBadge } from "@/components/products/StockBadge";
 import {
   Plus, Trash2, Loader2, Eye, EyeOff, Check, X, Edit,
   Headphones, Copy, Settings, Wifi, WifiOff, Filter,
-  CheckCircle, XCircle, Link, Sparkles, Send, ChevronDown, ListPlus
+  CheckCircle, XCircle, Link, Sparkles, Send, ChevronDown, ListPlus,
+  LayoutGrid, LayoutList, ChevronLeft, ChevronRight
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
