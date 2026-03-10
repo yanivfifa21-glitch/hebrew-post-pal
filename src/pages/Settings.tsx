@@ -1950,20 +1950,23 @@ const Settings = () => {
           </CardContent>
         </Card>
 
-        {/* OpenAI API Key */}
+        {/* AI API Keys (OpenAI + Gemini) */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-green-500" />
-              OpenAI API Key
+              <Sparkles className="h-5 w-5 text-primary" />
+              מפתחות AI לניסוח מחדש
             </CardTitle>
             <CardDescription>
-              הגדר מפתח OpenAI לניסוח מחדש של פוסטים בהאזנה לקבוצות
+              הגדר מפתח OpenAI ו/או Gemini לניסוח מחדש של פוסטים. ניתן להשתמש בשניהם או באחד.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             <div className="space-y-2">
-              <Label className="text-sm font-medium">API Key</Label>
+              <Label className="text-sm font-medium flex items-center gap-2">
+                OpenAI API Key
+                {openaiApiKey && <Badge variant="outline" className="text-xs text-green-600 border-green-500/30">מוגדר ✓</Badge>}
+              </Label>
               <Input
                 type="password"
                 value={openaiApiKey}
@@ -1972,7 +1975,23 @@ const Settings = () => {
                 dir="ltr"
               />
               <p className="text-xs text-muted-foreground">
-                ניתן ליצור מפתח ב-<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-primary underline">platform.openai.com</a>. המפתח נשמר בהגדרות החשבון.
+                ניתן ליצור מפתח ב-<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-primary underline">platform.openai.com</a>
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium flex items-center gap-2">
+                Gemini API Key
+                {geminiApiKey && <Badge variant="outline" className="text-xs text-blue-600 border-blue-500/30">מוגדר ✓</Badge>}
+              </Label>
+              <Input
+                type="password"
+                value={geminiApiKey}
+                onChange={(e) => setGeminiApiKey(e.target.value)}
+                placeholder="AIza..."
+                dir="ltr"
+              />
+              <p className="text-xs text-muted-foreground">
+                ניתן ליצור מפתח ב-<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-primary underline">aistudio.google.com</a>
               </p>
             </div>
           </CardContent>
