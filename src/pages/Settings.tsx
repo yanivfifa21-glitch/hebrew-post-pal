@@ -303,8 +303,9 @@ const Settings = () => {
   const [isSavingGoldPost, setIsSavingGoldPost] = useState(false);
   const [isUploadingGoldMedia, setIsUploadingGoldMedia] = useState(false);
 
-  // OpenAI API key
+  // OpenAI & Gemini API keys
   const [openaiApiKey, setOpenaiApiKey] = useState('');
+  const [geminiApiKey, setGeminiApiKey] = useState('');
 
   const fetchBankIsraelRate = async () => {
     setIsFetchingRate(true);
@@ -399,7 +400,7 @@ const Settings = () => {
       // Fetch app settings (non-sensitive data only)
       const { data, error } = await supabase
         .from('app_settings')
-        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, ai_rewrite_template, posting_interval_hours, posting_interval_minutes, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, interval_start_time, interval_end_time, usd_exchange_rate, whatsapp_interval_minutes, telegram_interval_minutes, whatsapp_interval_start_time, whatsapp_interval_end_time, telegram_interval_start_time, telegram_interval_end_time, use_custom_emoji, openai_api_key')
+        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, ai_rewrite_template, posting_interval_hours, posting_interval_minutes, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, interval_start_time, interval_end_time, usd_exchange_rate, whatsapp_interval_minutes, telegram_interval_minutes, whatsapp_interval_start_time, whatsapp_interval_end_time, telegram_interval_start_time, telegram_interval_end_time, use_custom_emoji, openai_api_key, gemini_api_key')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -445,6 +446,7 @@ const Settings = () => {
         // Custom emoji toggle
         setUseCustomEmoji((data as any).use_custom_emoji !== false);
         setOpenaiApiKey((data as any).openai_api_key || '');
+        setGeminiApiKey((data as any).gemini_api_key || '');
       } else {
         // No settings yet - use defaults
         setCustomAiPrompt(DEFAULT_PROMPT);
@@ -526,6 +528,7 @@ const Settings = () => {
         telegram_interval_start_time: useSeparateIntervals ? telegramIntervalStart : '08:00',
         telegram_interval_end_time: useSeparateIntervals ? telegramIntervalEnd : '22:00',
         openai_api_key: openaiApiKey || null,
+        gemini_api_key: geminiApiKey || null,
       };
 
       if (settingsId) {
@@ -1947,20 +1950,23 @@ const Settings = () => {
           </CardContent>
         </Card>
 
-        {/* OpenAI API Key */}
+        {/* AI API Keys (OpenAI + Gemini) */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-green-500" />
-              OpenAI API Key
+              <Sparkles className="h-5 w-5 text-primary" />
+              מפתחות AI לניסוח מחדש
             </CardTitle>
             <CardDescription>
-              הגדר מפתח OpenAI לניסוח מחדש של פוסטים בהאזנה לקבוצות
+              הגדר מפתח OpenAI ו/או Gemini לניסוח מחדש של פוסטים. ניתן להשתמש בשניהם או באחד.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             <div className="space-y-2">
-              <Label className="text-sm font-medium">API Key</Label>
+              <Label className="text-sm font-medium flex items-center gap-2">
+                OpenAI API Key
+                {openaiApiKey && <Badge variant="outline" className="text-xs text-green-600 border-green-500/30">מוגדר ✓</Badge>}
+              </Label>
               <Input
                 type="password"
                 value={openaiApiKey}
@@ -1969,7 +1975,23 @@ const Settings = () => {
                 dir="ltr"
               />
               <p className="text-xs text-muted-foreground">
-                ניתן ליצור מפתח ב-<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-primary underline">platform.openai.com</a>. המפתח נשמר בהגדרות החשבון.
+                ניתן ליצור מפתח ב-<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-primary underline">platform.openai.com</a>
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium flex items-center gap-2">
+                Gemini API Key
+                {geminiApiKey && <Badge variant="outline" className="text-xs text-blue-600 border-blue-500/30">מוגדר ✓</Badge>}
+              </Label>
+              <Input
+                type="password"
+                value={geminiApiKey}
+                onChange={(e) => setGeminiApiKey(e.target.value)}
+                placeholder="AIza..."
+                dir="ltr"
+              />
+              <p className="text-xs text-muted-foreground">
+                ניתן ליצור מפתח ב-<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-primary underline">aistudio.google.com</a>
               </p>
             </div>
           </CardContent>

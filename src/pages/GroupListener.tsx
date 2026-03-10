@@ -573,14 +573,16 @@ const GroupListener = () => {
     }
   };
 
-  // OpenAI rewrite with cycling versions
-  const handleOpenAIRewrite = async (post: CapturedPost) => {
-    setRewritingOpenAIPostId(post.id);
+  // OpenAI/Gemini rewrite with cycling versions
+  const handleExternalRewrite = async (post: CapturedPost, provider: 'openai' | 'gemini') => {
+    const stateKey = `${provider}_${post.id}`;
+    if (provider === 'openai') setRewritingOpenAIPostId(post.id);
+    else setRewritingPostId(`gemini_${post.id}`);
     try {
-      const currentVersion = (openaiVersionMap[post.id] || 0) % 3 + 1;
+      const currentVersion = (openaiVersionMap[stateKey] || 0) % 3 + 1;
       const textToRewrite = post.modified_text || post.original_text || "";
       const { data, error } = await supabase.functions.invoke("rewrite-openai", {
-        body: { text: textToRewrite, version: currentVersion },
+        body: { text: textToRewrite, version: currentVersion, provider },
       });
       if (error) throw error;
       if (data?.success && data?.rewrittenText) {
@@ -588,15 +590,17 @@ const GroupListener = () => {
         await supabase.from("captured_posts").update({ modified_text: newText }).eq("id", post.id);
         setCapturedPosts(prev => prev.map(p => p.id === post.id ? { ...p, modified_text: newText } : p));
         setTextChoice(prev => ({ ...prev, [post.id]: 'rewrite' }));
-        setOpenaiVersionMap(prev => ({ ...prev, [post.id]: currentVersion }));
-        toast({ title: `✨ OpenAI גרסה ${currentVersion} הושלמה` });
+        setOpenaiVersionMap(prev => ({ ...prev, [stateKey]: currentVersion }));
+        const label = provider === 'openai' ? 'OpenAI' : 'Gemini';
+        toast({ title: `✨ ${label} גרסה ${currentVersion} הושלמה` });
       } else {
-        toast({ title: data?.error || "שגיאה בניסוח OpenAI", variant: "destructive" });
+        toast({ title: data?.error || `שגיאה בניסוח ${provider}`, variant: "destructive" });
       }
     } catch {
-      toast({ title: "שגיאה בניסוח OpenAI", variant: "destructive" });
+      toast({ title: `שגיאה בניסוח ${provider}`, variant: "destructive" });
     } finally {
-      setRewritingOpenAIPostId(null);
+      if (provider === 'openai') setRewritingOpenAIPostId(null);
+      else setRewritingPostId(null);
     }
   };
 
@@ -838,9 +842,13 @@ const GroupListener = () => {
                               {rewritingPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                               AI
                             </Button>
-                            <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 flex-1 border-green-500/30 text-green-600" onClick={() => handleOpenAIRewrite(post)} disabled={rewritingOpenAIPostId === post.id}>
+                            <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 flex-1 border-green-500/30 text-green-600" onClick={() => handleExternalRewrite(post, 'openai')} disabled={rewritingOpenAIPostId === post.id}>
                               {rewritingOpenAIPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                               GPT
+                            </Button>
+                            <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 flex-1 border-blue-500/30 text-blue-600" onClick={() => handleExternalRewrite(post, 'gemini')} disabled={rewritingPostId === `gemini_${post.id}`}>
+                              {rewritingPostId === `gemini_${post.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                              Gemini
                             </Button>
                           </div>
                         </div>
@@ -968,9 +976,13 @@ const GroupListener = () => {
                             {rewritingPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                             נסח מחדש
                           </Button>
-                          <Button variant="outline" size="sm" onClick={() => handleOpenAIRewrite(post)} disabled={rewritingOpenAIPostId === post.id} className="gap-1 border-green-500/50 text-green-600 hover:bg-green-50">
+                          <Button variant="outline" size="sm" onClick={() => handleExternalRewrite(post, 'openai')} disabled={rewritingOpenAIPostId === post.id} className="gap-1 border-green-500/50 text-green-600 hover:bg-green-50">
                             {rewritingOpenAIPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                            נסח מחדש – OpenAI {openaiVersionMap[post.id] ? `(v${openaiVersionMap[post.id]})` : ''}
+                            נסח מחדש – OpenAI {openaiVersionMap[`openai_${post.id}`] ? `(v${openaiVersionMap[`openai_${post.id}`]})` : ''}
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => handleExternalRewrite(post, 'gemini')} disabled={rewritingPostId === `gemini_${post.id}`} className="gap-1 border-blue-500/50 text-blue-600 hover:bg-blue-50">
+                            {rewritingPostId === `gemini_${post.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                            נסח מחדש – Gemini {openaiVersionMap[`gemini_${post.id}`] ? `(v${openaiVersionMap[`gemini_${post.id}`]})` : ''}
                           </Button>
                           <Button variant="outline" size="sm" onClick={() => { setEditingPost(post); setEditText(post.modified_text || post.original_text || ""); setEditUrl(post.modified_url || post.original_url || ""); }} className="gap-1">
                             <Edit className="h-3 w-3" />

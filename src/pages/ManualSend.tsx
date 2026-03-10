@@ -89,6 +89,8 @@ export default function ManualSend() {
   const [watermarkPreview, setWatermarkPreview] = useState<string | null>(null);
   const [watermarkedPreview, setWatermarkedPreview] = useState<string | null>(null);
   const watermarkCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [isRewritingExternal, setIsRewritingExternal] = useState(false);
+  const [externalRewriteVersion, setExternalRewriteVersion] = useState<Record<string, number>>({});
 
   // Load saved watermark from localStorage
   useEffect(() => {
@@ -956,7 +958,36 @@ export default function ManualSend() {
     }
   };
 
-  // Combined: AI Rewrite + Affiliate Link + Fetch Image
+  // External AI Rewrite (OpenAI / Gemini)
+  const handleExternalRewrite = async (provider: 'openai' | 'gemini') => {
+    if (!message.trim()) {
+      toast({ title: "נא להזין טקסט לכתיבה מחדש", variant: "destructive" });
+      return;
+    }
+    setIsRewritingExternal(true);
+    try {
+      const versionKey = provider;
+      const currentVersion = (externalRewriteVersion[versionKey] || 0) % 3 + 1;
+      const { data, error } = await supabase.functions.invoke("rewrite-openai", {
+        body: { text: message.trim(), version: currentVersion, provider },
+      });
+      if (error) throw error;
+      if (data?.success && data?.rewrittenText) {
+        setMessage(data.rewrittenText.trim());
+        setExternalRewriteVersion(prev => ({ ...prev, [versionKey]: currentVersion }));
+        const label = provider === 'openai' ? 'OpenAI' : 'Gemini';
+        toast({ title: `✨ ${label} גרסה ${currentVersion} הושלמה` });
+      } else {
+        toast({ title: data?.error || `שגיאה בניסוח ${provider}`, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: `שגיאה בניסוח`, variant: "destructive" });
+    } finally {
+      setIsRewritingExternal(false);
+    }
+  };
+
+
   const handleRewriteWithAffiliate = async () => {
     if (!message.trim()) {
       toast({ title: "נא להזין טקסט", variant: "destructive" });
@@ -1229,6 +1260,30 @@ export default function ManualSend() {
                       {isRewritingWithAffiliate ? "מעבד..." : "נסח מחדש + לינק אפיליאייט"}
                     </span>
                   </Button>
+
+                  {/* External AI Rewrite Buttons */}
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleExternalRewrite('openai')}
+                      disabled={isRewritingExternal || !message.trim()}
+                      className="flex-1 gap-2 border-green-500/50 text-green-600 hover:bg-green-50"
+                    >
+                      {isRewritingExternal ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      <span className="font-hebrew">נסח מחדש – OpenAI {externalRewriteVersion['openai'] ? `(v${externalRewriteVersion['openai']})` : ''}</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleExternalRewrite('gemini')}
+                      disabled={isRewritingExternal || !message.trim()}
+                      className="flex-1 gap-2 border-blue-500/50 text-blue-600 hover:bg-blue-50"
+                    >
+                      {isRewritingExternal ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      <span className="font-hebrew">נסח מחדש – Gemini {externalRewriteVersion['gemini'] ? `(v${externalRewriteVersion['gemini']})` : ''}</span>
+                    </Button>
+                  </div>
                 </div>
                 
                 <Textarea
