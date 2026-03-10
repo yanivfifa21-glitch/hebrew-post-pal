@@ -980,7 +980,7 @@ export default function ManualSend() {
           if (productInfo?.success && productInfo?.data) {
             const p = productInfo.data;
             // Check if the original text already contains a price
-            const hasPriceInText = /\$\s*\d|₪\s*\d|\d\s*\$|\d\s*₪|מחיר/i.test(message);
+            const hasPriceInText = /\$\s*\d+\.?\d*|₪\s*\d+\.?\d*|\d+\.?\d*\s*\$|\d+\.?\d*\s*₪/.test(message);
             productData = {
               orders: p.orders_count,
               rating: p.rating,
