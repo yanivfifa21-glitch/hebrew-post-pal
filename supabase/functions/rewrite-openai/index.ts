@@ -22,20 +22,33 @@ const VERSION_PROMPTS = [
 - Short, catchy Hebrew
 - Fun and casual
 - Use emojis
-- Keep all original info (price, rating, orders, link)`,
+- Always keep the structure:
+  [אימוג'י פתיחה + כותרת מושכת]
+  [2–3 שורות תיאור קצרות עם יתרונות]
+  💰 רק [מחיר בדולרים] ~ כ-[מחיר בשקלים] בלבד!
+  [שורת אמינות: דירוג / מספר הזמנות / מבצע]
+  🔗 להזמנה >> [קישור]`,
 
   `Rewrite in another style:
 - Short, persuasive, slightly more energetic
 - Use different wording and flow
-- Keep emojis, all info intact`,
+- Keep emojis
+- Always keep the structure:
+  [אימוג'י פתיחה + כותרת מושכת]
+  [2–3 שורות תיאור קצרות עם יתרונות]
+  💰 רק [מחיר בדולרים] ~ כ-[מחיר בשקלים] בלבד!
+  [שורת אמינות: דירוג / מספר הזמנות / מבצע]
+  🔗 להזמנה >> [קישור]`,
 ];
 
 const COMMON_RULES = `
 Rules:
 - Preserve price (if exists), rating, number of orders, and link exactly as they appear
+- If product data is provided below, USE THE EXACT numbers for price, orders, rating and link
 - Only return the rewritten text
 - Output in Hebrew
-- Do NOT add any explanation or metadata`;
+- Do NOT add any explanation or metadata
+- Do NOT wrap in markdown code blocks`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -65,7 +78,8 @@ serve(async (req) => {
     const userId = user.id;
 
     const body = await req.json();
-    const { text, version, provider } = body; // provider: "openai" | "gemini"
+    const { text, version, provider, productData } = body;
+    // productData: { price?, orders?, rating?, link?, priceILS? }
 
     if (!text) {
       return new Response(JSON.stringify({ error: "Missing text" }), {
@@ -77,13 +91,14 @@ serve(async (req) => {
     const serviceClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: settings } = await serviceClient
       .from("app_settings")
-      .select("openai_api_key, gemini_api_key")
+      .select("openai_api_key, gemini_api_key, usd_exchange_rate")
       .eq("user_id", userId)
       .maybeSingle();
 
     const selectedProvider = provider || "openai";
     const openaiKey = (settings as any)?.openai_api_key;
     const geminiKey = (settings as any)?.gemini_api_key;
+    const exchangeRate = (settings as any)?.usd_exchange_rate || 3.7;
 
     if (selectedProvider === "openai" && !openaiKey) {
       return new Response(JSON.stringify({ error: "מפתח OpenAI לא הוגדר. הוסף אותו בהגדרות." }), {
@@ -99,14 +114,27 @@ serve(async (req) => {
     const versionIndex = ((version || 1) - 1) % 3;
     const versionPrompt = VERSION_PROMPTS[versionIndex];
 
+    // Build product data section for the prompt
+    let productDataSection = "";
+    if (productData) {
+      productDataSection = "\n\n--- PRODUCT DATA (use these exact numbers) ---";
+      if (productData.price) {
+        const priceILS = productData.priceILS || Math.round(productData.price * exchangeRate);
+        productDataSection += `\nמחיר: $${productData.price} ~ כ-${priceILS}₪`;
+      }
+      if (productData.orders) productDataSection += `\nמספר הזמנות: ${productData.orders >= 1000 ? Math.round(productData.orders / 100) / 10 + 'K+' : productData.orders + '+'}`;
+      if (productData.rating) productDataSection += `\nדירוג: ⭐ ${productData.rating}`;
+      if (productData.link) productDataSection += `\nקישור: ${productData.link}`;
+      productDataSection += "\n---";
+    }
+
     const systemPrompt = `You are an expert Israeli marketing copywriter for Telegram deal channels.
 ${versionPrompt}
-${COMMON_RULES}`;
+${COMMON_RULES}${productDataSection}`;
 
     let rewrittenText = "";
 
     if (selectedProvider === "gemini") {
-      // Call Gemini API
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`;
       const response = await fetch(geminiUrl, {
         method: "POST",
@@ -122,7 +150,16 @@ ${COMMON_RULES}`;
       if (!response.ok) {
         const errText = await response.text();
         console.error("[rewrite-openai] Gemini error:", response.status, errText);
-        return new Response(JSON.stringify({ error: `Gemini API error: ${response.status}` }), {
+        
+        // Parse error for better user message
+        let userMessage = `Gemini API error: ${response.status}`;
+        if (response.status === 429) {
+          userMessage = "חריגה ממכסת Gemini – המפתח שלך על תוכנית חינמית. שדרג לתוכנית בתשלום או נסה שוב מאוחר יותר.";
+        } else if (response.status === 400) {
+          userMessage = "מפתח Gemini לא תקין. בדוק בהגדרות.";
+        }
+        
+        return new Response(JSON.stringify({ error: userMessage }), {
           status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -130,7 +167,6 @@ ${COMMON_RULES}`;
       const data = await response.json();
       rewrittenText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
     } else {
-      // Call OpenAI API
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -151,7 +187,15 @@ ${COMMON_RULES}`;
       if (!response.ok) {
         const errText = await response.text();
         console.error("[rewrite-openai] OpenAI error:", response.status, errText);
-        return new Response(JSON.stringify({ error: `OpenAI API error: ${response.status}` }), {
+        
+        let userMessage = `OpenAI API error: ${response.status}`;
+        if (response.status === 429) {
+          userMessage = "חריגה ממכסת OpenAI. נסה שוב מאוחר יותר.";
+        } else if (response.status === 401) {
+          userMessage = "מפתח OpenAI לא תקין. בדוק בהגדרות.";
+        }
+        
+        return new Response(JSON.stringify({ error: userMessage }), {
           status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
