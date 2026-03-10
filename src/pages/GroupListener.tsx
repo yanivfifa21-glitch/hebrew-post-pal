@@ -588,14 +588,14 @@ const GroupListener = () => {
       if (productUrl && /aliexpress/i.test(productUrl)) {
         try {
           const { data: productInfo } = await supabase.functions.invoke("fetch-ali-product", {
-            body: { url: productUrl },
+            body: { productUrl },
           });
-          if (productInfo?.success && productInfo?.product) {
-            const p = productInfo.product;
+          if (productInfo?.success && productInfo?.data) {
+            const p = productInfo.data;
             productData = {
-              price: p.price || p.app_sale_price,
-              orders: p.orders_count || p.lastest_volume,
-              rating: p.rating || p.evaluate_rate,
+              price: p.price,
+              orders: p.orders_count,
+              rating: p.rating,
               link: post.modified_url || productUrl,
             };
           }
@@ -1434,6 +1434,52 @@ const GroupListener = () => {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Floating Action Bar when posts are selected */}
+        {selectedPostIds.size > 0 && (
+          <div className="fixed bottom-4 left-4 right-4 z-50 bg-card/95 backdrop-blur-lg border border-border shadow-lg rounded-2xl p-3 space-y-2 max-w-2xl mx-auto" dir="rtl">
+            <div className="flex items-center justify-between gap-2">
+              <Badge variant="outline" className="text-xs font-bold">{selectedPostIds.size} נבחרו</Badge>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedPostIds(new Set())} className="h-7 text-xs gap-1 text-muted-foreground">
+                <X className="h-3 w-3" />
+                בטל
+              </Button>
+            </div>
+            {/* Inline account selection */}
+            <div className="flex gap-2 flex-wrap">
+              {accounts.map((acc) => (
+                <label key={acc.id} className={`flex items-center gap-1.5 text-xs cursor-pointer px-2 py-1 rounded-lg border transition-all ${selectedAccounts.includes(acc.id) ? 'border-primary bg-primary/10' : 'border-border bg-muted/30 opacity-60'}`}>
+                  <Checkbox
+                    checked={selectedAccounts.includes(acc.id)}
+                    onCheckedChange={(checked) => {
+                      setSelectedAccounts(prev =>
+                        checked ? [...prev, acc.id] : prev.filter(id => id !== acc.id)
+                      );
+                    }}
+                    className="h-3 w-3"
+                  />
+                  <span>{acc.account_name}</span>
+                </label>
+              ))}
+            </div>
+            {/* Zone selector inline */}
+            <ZoneSelector selectedZones={selectedZones} onSelectionChange={setSelectedZones} />
+            {/* Action buttons */}
+            <div className="flex gap-2">
+              <Button variant="gradient" size="sm" className="flex-1 gap-1" onClick={() => handleAddToQueue(capturedPosts.filter(p => selectedPostIds.has(p.id)))} disabled={isBulkProcessing}>
+                {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <ListPlus className="h-3 w-3" />}
+                הוסף לתור {selectedZones.length > 0 ? `(${selectedZones.length} אזורים)` : ""}
+              </Button>
+              <Button variant="outline" size="sm" className="flex-1 gap-1" onClick={() => handleBulkSendAndQueue()} disabled={isBulkProcessing || selectedAccounts.length === 0}>
+                {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                שלח ({selectedAccounts.length})
+              </Button>
+              <Button variant="destructive" size="sm" className="gap-1" onClick={handleBulkDelete} disabled={isBulkProcessing}>
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </MainLayout>
   );
