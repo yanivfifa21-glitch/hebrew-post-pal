@@ -834,6 +834,14 @@ const GroupListener = () => {
                               <Send className="h-3 w-3" />
                               שלח
                             </Button>
+                            <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 flex-1" onClick={() => handleManualRewrite(post)} disabled={rewritingPostId === post.id}>
+                              {rewritingPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                              AI
+                            </Button>
+                            <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 flex-1 border-green-500/30 text-green-600" onClick={() => handleOpenAIRewrite(post)} disabled={rewritingOpenAIPostId === post.id}>
+                              {rewritingOpenAIPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                              GPT
+                            </Button>
                           </div>
                         </div>
                       </Card>
