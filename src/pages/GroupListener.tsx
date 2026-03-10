@@ -80,6 +80,10 @@ const GroupListener = () => {
   const POSTS_PER_PAGE = 50;
   // View mode
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  // Rewrite states
+  const [rewritingPostId, setRewritingPostId] = useState<string | null>(null);
+  const [rewritingOpenAIPostId, setRewritingOpenAIPostId] = useState<string | null>(null);
+  const [openaiVersionMap, setOpenaiVersionMap] = useState<Record<string, number>>({});
 
   useEffect(() => {
     fetchGroups();
