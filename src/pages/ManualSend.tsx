@@ -89,6 +89,8 @@ export default function ManualSend() {
   const [watermarkPreview, setWatermarkPreview] = useState<string | null>(null);
   const [watermarkedPreview, setWatermarkedPreview] = useState<string | null>(null);
   const watermarkCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [isRewritingExternal, setIsRewritingExternal] = useState(false);
+  const [externalRewriteVersion, setExternalRewriteVersion] = useState<Record<string, number>>({});
 
   // Load saved watermark from localStorage
   useEffect(() => {
