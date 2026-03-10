@@ -1288,23 +1288,41 @@ export default function ManualSend() {
                     </Button>
                    </div>
                   
-                  {/* Rewrite + Affiliate Link Button */}
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={handleRewriteWithAffiliate}
-                    disabled={isRewritingWithAffiliate || !message.trim() || !detectAliLink(message)}
-                    className="w-full gap-2"
-                  >
-                    {isRewritingWithAffiliate ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Link className="h-4 w-4" />
-                    )}
-                    <span className="font-hebrew">
-                      {isRewritingWithAffiliate ? "מעבד..." : "נסח מחדש + לינק אפיליאייט"}
-                    </span>
-                  </Button>
+                  {/* Rewrite + Affiliate Link with Provider Selection */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1.5">
+                      {(["system", "openai", "gemini"] as const).map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setAffiliateRewriteProvider(p)}
+                          className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                            affiliateRewriteProvider === p
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted text-muted-foreground hover:bg-muted/80"
+                          }`}
+                        >
+                          {p === "system" ? "מערכת" : p === "openai" ? "OpenAI" : "Gemini"}
+                        </button>
+                      ))}
+                    </div>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={handleRewriteWithAffiliate}
+                      disabled={isRewritingWithAffiliate || !message.trim() || !detectAliLink(message)}
+                      className="w-full gap-2"
+                    >
+                      {isRewritingWithAffiliate ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Link className="h-4 w-4" />
+                      )}
+                      <span className="font-hebrew">
+                        {isRewritingWithAffiliate ? "מעבד..." : `נסח מחדש + לינק אפיליאייט (${affiliateRewriteProvider === "system" ? "מערכת" : affiliateRewriteProvider === "openai" ? "OpenAI" : "Gemini"})`}
+                      </span>
+                    </Button>
+                  </div>
 
                   {/* External AI Rewrite Buttons */}
                   <div className="flex gap-2">
