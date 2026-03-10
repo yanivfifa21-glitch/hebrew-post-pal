@@ -594,7 +594,8 @@ const GroupListener = () => {
             const p = productInfo.data;
             // Check if the original text already contains a price ($ or ₪ or מחיר)
             const originalText = post.original_text || post.modified_text || "";
-            const hasPriceInText = /\$\s*\d|₪\s*\d|\d\s*\$|\d\s*₪|מחיר/i.test(originalText);
+            // Check if the original text already contains an actual price (currency symbol + number)
+            const hasPriceInText = /\$\s*\d+\.?\d*|₪\s*\d+\.?\d*|\d+\.?\d*\s*\$|\d+\.?\d*\s*₪/.test(originalText);
             productData = {
               orders: p.orders_count,
               rating: p.rating,

@@ -14,20 +14,30 @@ Rewrite the following post in Hebrew using this structure:
 
 [2–3 שורות תיאור קצרות עם יתרונות]
 
-💰 רק $[מחיר] ~ כ-[מחיר בשקלים]₪ בלבד!
-עם קופון [קוד קופון]
+[שורת מחיר - רק אם מחיר מופיע במפורש בנתונים!]
+[שורת קופון - רק אם קוד קופון מופיע במפורש!]
 
-⭐ מעל [מספר הזמנות] הזמנות בציון [דירוג]
+[שורת הזמנות ודירוג - רק אם נתונים מופיעים!]
 
 🔗 להזמנה >> [קישור]
 
-CRITICAL RULES ABOUT PRICES:
-- **NEVER INVENT OR MAKE UP PRICES.** If no price appears in the original text AND no price is provided in the PRODUCT DATA section below, you MUST completely OMIT the 💰 price line. Do NOT guess or estimate a price.
-- If a price IS available (either in the original text or in PRODUCT DATA), use that EXACT price - do not change it.
-- If a coupon code exists in the original text or product data, put it on a SEPARATE line right after the price line: "עם קופון [CODE]"
-- If NO coupon exists, OMIT the coupon line entirely
-- For the rating/orders line use EXACTLY this format: "⭐ מעל [X] הזמנות בציון [Y]" where X is the order count and Y is the rating
-- If no orders/rating data available (neither in text nor in PRODUCT DATA), OMIT the ⭐ line entirely. Do NOT invent numbers.
+ABSOLUTE RULES - FOLLOW EXACTLY:
+
+PRICES:
+- **NEVER INVENT, GUESS, OR MAKE UP PRICES.** This is the #1 rule.
+- A price is ONLY a number next to $ or ₪ (e.g. "$12.5", "45₪"). Marketing phrases like "מחיר כזה" or "מחיר משתלם" are NOT prices.
+- If NO actual price number appears in the original text AND no price is in the PRODUCT DATA section, COMPLETELY OMIT any price line. No 💰 line at all.
+- If a real price IS provided, use EXACTLY that price: "💰 רק $[price] ~ כ-[priceILS]₪ בלבד!"
+
+COUPONS:
+- If a specific coupon CODE exists (e.g. "SAVE5", "CODE123"), include: "עם קופון [CODE]"
+- If NO specific coupon code exists, OMIT the coupon line entirely. Do NOT write "עם קופון" without a code.
+
+ORDERS & RATING:
+- Use ONLY numbers from PRODUCT DATA or original text: "⭐ מעל [X] הזמנות בציון [Y]"
+- If no data available, OMIT the ⭐ line entirely. Do NOT invent numbers.
+
+OTHER RULES:
 - Only return the rewritten text
 - Output in Hebrew
 - Do NOT add any explanation or metadata
