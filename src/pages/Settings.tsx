@@ -528,6 +528,7 @@ const Settings = () => {
         telegram_interval_start_time: useSeparateIntervals ? telegramIntervalStart : '08:00',
         telegram_interval_end_time: useSeparateIntervals ? telegramIntervalEnd : '22:00',
         openai_api_key: openaiApiKey || null,
+        gemini_api_key: geminiApiKey || null,
       };
 
       if (settingsId) {
