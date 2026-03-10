@@ -842,9 +842,13 @@ const GroupListener = () => {
                               {rewritingPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                               AI
                             </Button>
-                            <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 flex-1 border-green-500/30 text-green-600" onClick={() => handleOpenAIRewrite(post)} disabled={rewritingOpenAIPostId === post.id}>
+                            <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 flex-1 border-green-500/30 text-green-600" onClick={() => handleExternalRewrite(post, 'openai')} disabled={rewritingOpenAIPostId === post.id}>
                               {rewritingOpenAIPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                               GPT
+                            </Button>
+                            <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 flex-1 border-blue-500/30 text-blue-600" onClick={() => handleExternalRewrite(post, 'gemini')} disabled={rewritingPostId === `gemini_${post.id}`}>
+                              {rewritingPostId === `gemini_${post.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                              Gemini
                             </Button>
                           </div>
                         </div>
