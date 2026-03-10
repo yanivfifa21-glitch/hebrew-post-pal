@@ -81,6 +81,7 @@ export default function ManualSend() {
   const [showPreview, setShowPreview] = useState(false);
   const [translationMode, setTranslationMode] = useState<TranslationMode>("aiRewrite");
   const [isRewriting, setIsRewriting] = useState(false);
+  const [affiliateRewriteProvider, setAffiliateRewriteProvider] = useState<"system" | "openai" | "gemini">("system");
   const [isRewritingWithAffiliate, setIsRewritingWithAffiliate] = useState(false);
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
   const [fetchedProductStats, setFetchedProductStats] = useState<{ orders_count?: number; rating?: number } | null>(null);
