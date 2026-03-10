@@ -1472,7 +1472,7 @@ const GroupListener = () => {
               </Button>
               <Button variant="outline" size="sm" className="flex-1 gap-1" onClick={() => handleBulkSendAndQueue()} disabled={isBulkProcessing || selectedAccounts.length === 0}>
                 {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                שלח ({selectedAccounts.length})
+                שלח והוסף לתור ({selectedAccounts.length})
               </Button>
               <Button variant="destructive" size="sm" className="gap-1" onClick={handleBulkDelete} disabled={isBulkProcessing}>
                 <Trash2 className="h-3 w-3" />
