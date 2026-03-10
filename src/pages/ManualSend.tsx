@@ -958,7 +958,7 @@ export default function ManualSend() {
     }
   };
 
-  // External AI Rewrite (OpenAI / Gemini)
+  // External AI Rewrite (OpenAI / Gemini) - fetches product data from AliExpress API
   const handleExternalRewrite = async (provider: 'openai' | 'gemini') => {
     if (!message.trim()) {
       toast({ title: "נא להזין טקסט לכתיבה מחדש", variant: "destructive" });
@@ -968,8 +968,31 @@ export default function ManualSend() {
     try {
       const versionKey = provider;
       const currentVersion = (externalRewriteVersion[versionKey] || 0) % 3 + 1;
+      
+      // Try to fetch product data from AliExpress API
+      let productData: any = null;
+      const urlMatch = message.match(/https?:\/\/[^\s]*aliexpress[^\s]*/i) || message.match(/https?:\/\/s\.click\.aliexpress\.com[^\s]*/i);
+      if (urlMatch) {
+        try {
+          const { data: productInfo } = await supabase.functions.invoke("fetch-ali-product", {
+            body: { url: urlMatch[0] },
+          });
+          if (productInfo?.success && productInfo?.product) {
+            const p = productInfo.product;
+            productData = {
+              price: p.price || p.app_sale_price,
+              orders: p.orders_count || p.lastest_volume,
+              rating: p.rating || p.evaluate_rate,
+              link: urlMatch[0],
+            };
+          }
+        } catch (e) {
+          console.log("[ManualSend] Could not fetch product data, continuing without it");
+        }
+      }
+      
       const { data, error } = await supabase.functions.invoke("rewrite-openai", {
-        body: { text: message.trim(), version: currentVersion, provider },
+        body: { text: message.trim(), version: currentVersion, provider, productData },
       });
       if (error) throw error;
       if (data?.success && data?.rewrittenText) {

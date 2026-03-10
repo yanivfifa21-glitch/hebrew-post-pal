@@ -573,7 +573,7 @@ const GroupListener = () => {
     }
   };
 
-  // OpenAI/Gemini rewrite with cycling versions
+  // OpenAI/Gemini rewrite with cycling versions - fetches product data from AliExpress API
   const handleExternalRewrite = async (post: CapturedPost, provider: 'openai' | 'gemini') => {
     const stateKey = `${provider}_${post.id}`;
     if (provider === 'openai') setRewritingOpenAIPostId(post.id);
@@ -581,8 +581,31 @@ const GroupListener = () => {
     try {
       const currentVersion = (openaiVersionMap[stateKey] || 0) % 3 + 1;
       const textToRewrite = post.modified_text || post.original_text || "";
+      
+      // Try to fetch product data from AliExpress API
+      let productData: any = null;
+      const productUrl = post.original_url || post.modified_url || "";
+      if (productUrl && /aliexpress/i.test(productUrl)) {
+        try {
+          const { data: productInfo } = await supabase.functions.invoke("fetch-ali-product", {
+            body: { url: productUrl },
+          });
+          if (productInfo?.success && productInfo?.product) {
+            const p = productInfo.product;
+            productData = {
+              price: p.price || p.app_sale_price,
+              orders: p.orders_count || p.lastest_volume,
+              rating: p.rating || p.evaluate_rate,
+              link: post.modified_url || productUrl,
+            };
+          }
+        } catch (e) {
+          console.log("[GroupListener] Could not fetch product data, continuing without it");
+        }
+      }
+      
       const { data, error } = await supabase.functions.invoke("rewrite-openai", {
-        body: { text: textToRewrite, version: currentVersion, provider },
+        body: { text: textToRewrite, version: currentVersion, provider, productData },
       });
       if (error) throw error;
       if (data?.success && data?.rewrittenText) {
@@ -602,6 +625,29 @@ const GroupListener = () => {
       if (provider === 'openai') setRewritingOpenAIPostId(null);
       else setRewritingPostId(null);
     }
+  };
+
+  // Bulk delete posts
+  const handleBulkDelete = async () => {
+    if (selectedPostIds.size === 0) return;
+    setIsBulkProcessing(true);
+    try {
+      const ids = Array.from(selectedPostIds);
+      const { error } = await supabase.from("captured_posts").delete().in("id", ids);
+      if (error) throw error;
+      setCapturedPosts(prev => prev.filter(p => !selectedPostIds.has(p.id)));
+      setSelectedPostIds(new Set());
+      toast({ title: `🗑️ ${ids.length} פוסטים נמחקו` });
+    } catch {
+      toast({ title: "שגיאה במחיקה", variant: "destructive" });
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  const selectFirst50 = () => {
+    const first50 = capturedPosts.slice(0, 50).map(p => p.id);
+    setSelectedPostIds(new Set(first50));
   };
 
   const togglePostSelection = (postId: string) => {
@@ -740,6 +786,10 @@ const GroupListener = () => {
                   {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                   שלח והוסף לתור ({selectedAccounts.length})
                 </Button>
+                <Button variant="destructive" size="sm" onClick={handleBulkDelete} disabled={isBulkProcessing} className="gap-1">
+                  {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                  מחק נבחרים
+                </Button>
                 <Button variant="ghost" size="sm" onClick={() => setSelectedPostIds(new Set())} className="gap-1 text-muted-foreground">
                   <X className="h-3 w-3" />
                   בטל בחירה
@@ -766,7 +816,7 @@ const GroupListener = () => {
               <div className="space-y-4">
                 {/* Controls: Select all + View toggle + Page info */}
                 <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
                     <Checkbox
                       checked={selectedPostIds.size === capturedPosts.length && capturedPosts.length > 0}
                       onCheckedChange={toggleSelectAll}
@@ -775,6 +825,11 @@ const GroupListener = () => {
                     <Label className="text-sm text-muted-foreground font-hebrew cursor-pointer" onClick={toggleSelectAll}>
                       בחר הכל ({capturedPosts.length})
                     </Label>
+                    {capturedPosts.length > 50 && (
+                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={selectFirst50}>
+                        בחר 50
+                      </Button>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <Button variant={viewMode === 'list' ? 'default' : 'outline'} size="icon" className="h-8 w-8" onClick={() => setViewMode('list')}>
