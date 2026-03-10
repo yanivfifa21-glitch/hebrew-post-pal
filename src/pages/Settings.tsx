@@ -1947,7 +1947,35 @@ const Settings = () => {
           </CardContent>
         </Card>
 
-        {/* Custom AI Prompt */}
+        {/* OpenAI API Key */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-green-500" />
+              OpenAI API Key
+            </CardTitle>
+            <CardDescription>
+              הגדר מפתח OpenAI לניסוח מחדש של פוסטים בהאזנה לקבוצות
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">API Key</Label>
+              <Input
+                type="password"
+                value={openaiApiKey}
+                onChange={(e) => setOpenaiApiKey(e.target.value)}
+                placeholder="sk-..."
+                dir="ltr"
+              />
+              <p className="text-xs text-muted-foreground">
+                ניתן ליצור מפתח ב-<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-primary underline">platform.openai.com</a>. המפתח נשמר בהגדרות החשבון.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
