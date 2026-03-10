@@ -6,49 +6,31 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const VERSION_PROMPTS = [
-  `Rewrite the following post **exactly in the style of an Israeli Telegram deals channel**:
-- Short, 2–3 lines description
-- Include emojis
-- Clear marketing style
-- Always keep the structure:
-  [אימוג'י פתיחה + כותרת מושכת]
-  [2–3 שורות תיאור קצרות עם יתרונות]
-  💰 רק [מחיר בדולרים] ~ כ-[מחיר בשקלים] בלבד!
-  [שורת אמינות: דירוג / מספר הזמנות / מבצע]
-  🔗 להזמנה >> [קישור]`,
+const UNIFIED_PROMPT = `You are an expert Israeli marketing copywriter for Telegram deal channels.
 
-  `Rewrite in a different style:
-- Short, catchy Hebrew
-- Fun and casual
-- Use emojis
-- Always keep the structure:
-  [אימוג'י פתיחה + כותרת מושכת]
-  [2–3 שורות תיאור קצרות עם יתרונות]
-  💰 רק [מחיר בדולרים] ~ כ-[מחיר בשקלים] בלבד!
-  [שורת אמינות: דירוג / מספר הזמנות / מבצע]
-  🔗 להזמנה >> [קישור]`,
+Rewrite the following post in Hebrew using this EXACT structure:
 
-  `Rewrite in another style:
-- Short, persuasive, slightly more energetic
-- Use different wording and flow
-- Keep emojis
-- Always keep the structure:
-  [אימוג'י פתיחה + כותרת מושכת]
-  [2–3 שורות תיאור קצרות עם יתרונות]
-  💰 רק [מחיר בדולרים] ~ כ-[מחיר בשקלים] בלבד!
-  [שורת אמינות: דירוג / מספר הזמנות / מבצע]
-  🔗 להזמנה >> [קישור]`,
-];
+[אימוג'י פתיחה + כותרת מושכת]
 
-const COMMON_RULES = `
+[2–3 שורות תיאור קצרות עם יתרונות]
+
+💰 רק [מחיר בדולרים] ~ כ-[מחיר בשקלים] בלבד!
+
+[שורת אמינות: דירוג / מספר הזמנות / מבצע]
+
+🔗 להזמנה >> [קישור]
+
 Rules:
-- Preserve price (if exists), rating, number of orders, and link exactly as they appear
 - If product data is provided below, USE THE EXACT numbers for price, orders, rating and link
+- If NO price data is available (neither in text nor in product data), OMIT the 💰 price line entirely
+- If a coupon code exists in the original text, KEEP IT exactly as-is in the rewritten text
 - Only return the rewritten text
 - Output in Hebrew
 - Do NOT add any explanation or metadata
-- Do NOT wrap in markdown code blocks`;
+- Do NOT wrap in markdown code blocks
+- Use different emojis and wording each time for variety
+- Round orders: 1000+ → "1K+", 5400 → "5.4K+", etc.
+- Rating should be on a 5-star scale (e.g. ⭐ 4.8)`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -79,7 +61,6 @@ serve(async (req) => {
 
     const body = await req.json();
     const { text, version, provider, productData } = body;
-    // productData: { price?, orders?, rating?, link?, priceILS? }
 
     if (!text) {
       return new Response(JSON.stringify({ error: "Missing text" }), {
@@ -111,9 +92,6 @@ serve(async (req) => {
       });
     }
 
-    const versionIndex = ((version || 1) - 1) % 3;
-    const versionPrompt = VERSION_PROMPTS[versionIndex];
-
     // Build product data section for the prompt
     let productDataSection = "";
     if (productData) {
@@ -122,15 +100,22 @@ serve(async (req) => {
         const priceILS = productData.priceILS || Math.round(productData.price * exchangeRate);
         productDataSection += `\nמחיר: $${productData.price} ~ כ-${priceILS}₪`;
       }
-      if (productData.orders) productDataSection += `\nמספר הזמנות: ${productData.orders >= 1000 ? Math.round(productData.orders / 100) / 10 + 'K+' : productData.orders + '+'}`;
-      if (productData.rating) productDataSection += `\nדירוג: ⭐ ${productData.rating}`;
+      if (productData.orders) {
+        const orders = Number(productData.orders);
+        const formatted = orders >= 1000 ? (Math.round(orders / 100) / 10) + 'K+' : orders + '+';
+        productDataSection += `\nמספר הזמנות: ${formatted}`;
+      }
+      if (productData.rating) {
+        let rating = Number(productData.rating);
+        // Normalize: if > 5, assume it's percentage
+        if (rating > 5) rating = (rating / 100) * 5;
+        productDataSection += `\nדירוג: ⭐ ${rating.toFixed(1)}`;
+      }
       if (productData.link) productDataSection += `\nקישור: ${productData.link}`;
       productDataSection += "\n---";
     }
 
-    const systemPrompt = `You are an expert Israeli marketing copywriter for Telegram deal channels.
-${versionPrompt}
-${COMMON_RULES}${productDataSection}`;
+    const systemPrompt = `${UNIFIED_PROMPT}${productDataSection}`;
 
     let rewrittenText = "";
 
@@ -151,7 +136,6 @@ ${COMMON_RULES}${productDataSection}`;
         const errText = await response.text();
         console.error("[rewrite-openai] Gemini error:", response.status, errText);
         
-        // Parse error for better user message
         let userMessage = `Gemini API error: ${response.status}`;
         if (response.status === 429) {
           userMessage = "חריגה ממכסת Gemini – המפתח שלך על תוכנית חינמית. שדרג לתוכנית בתשלום או נסה שוב מאוחר יותר.";
@@ -210,7 +194,6 @@ ${COMMON_RULES}${productDataSection}`;
     return new Response(JSON.stringify({
       success: true,
       rewrittenText,
-      version: versionIndex + 1,
       provider: selectedProvider,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
