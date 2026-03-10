@@ -14,23 +14,27 @@ Rewrite the following post in Hebrew using this EXACT structure:
 
 [2–3 שורות תיאור קצרות עם יתרונות]
 
-💰 רק [מחיר בדולרים] ~ כ-[מחיר בשקלים] בלבד!
+💰 רק $[מחיר] ~ כ-[מחיר בשקלים]₪ בלבד!
+עם קופון [קוד קופון]
 
-[שורת אמינות: דירוג / מספר הזמנות / מבצע]
+⭐ מעל [מספר הזמנות] הזמנות בציון [דירוג]
 
 🔗 להזמנה >> [קישור]
 
 Rules:
 - If product data is provided below, USE THE EXACT numbers for price, orders, rating and link
 - If NO price data is available (neither in text nor in product data), OMIT the 💰 price line entirely
-- If a coupon code exists in the original text, KEEP IT exactly as-is in the rewritten text
+- If a coupon code exists in the original text or product data, put it on a SEPARATE line right after the price line: "עם קופון [CODE]"
+- If NO coupon exists, OMIT the coupon line entirely
+- For the rating/orders line use EXACTLY this format: "⭐ מעל [X] הזמנות בציון [Y]" where X is the order count and Y is the rating (e.g. "⭐ מעל 2.4K הזמנות בציון 4.9")
+- If no orders/rating data available, OMIT the ⭐ line entirely
 - Only return the rewritten text
 - Output in Hebrew
 - Do NOT add any explanation or metadata
 - Do NOT wrap in markdown code blocks
 - Use different emojis and wording each time for variety
 - Round orders: 1000+ → "1K+", 5400 → "5.4K+", etc.
-- Rating should be on a 5-star scale (e.g. ⭐ 4.8)`;
+- Rating should be on a 5-star scale (e.g. 4.9)`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
