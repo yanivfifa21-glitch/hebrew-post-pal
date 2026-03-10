@@ -588,14 +588,14 @@ const GroupListener = () => {
       if (productUrl && /aliexpress/i.test(productUrl)) {
         try {
           const { data: productInfo } = await supabase.functions.invoke("fetch-ali-product", {
-            body: { url: productUrl },
+            body: { productUrl },
           });
-          if (productInfo?.success && productInfo?.product) {
-            const p = productInfo.product;
+          if (productInfo?.success && productInfo?.data) {
+            const p = productInfo.data;
             productData = {
-              price: p.price || p.app_sale_price,
-              orders: p.orders_count || p.lastest_volume,
-              rating: p.rating || p.evaluate_rate,
+              price: p.price,
+              orders: p.orders_count,
+              rating: p.rating,
               link: post.modified_url || productUrl,
             };
           }
