@@ -139,6 +139,27 @@ const Queue = () => {
     }
   };
 
+  const handleDeleteSelected = async () => {
+    const toDelete = selectedProducts.size > 0 ? Array.from(selectedProducts) : scheduledProducts.map(p => p.id);
+    if (toDelete.length === 0) return;
+
+    const label = selectedProducts.size > 0 ? `${toDelete.length} נבחרים` : `כל ${toDelete.length} המוצרים`;
+    if (!window.confirm(`למחוק ${label} מהתור?`)) return;
+
+    setIsDeletingBulk(true);
+    try {
+      const { error } = await supabase.from("products").delete().in("id", toDelete);
+      if (error) throw error;
+      setProducts(prev => prev.filter(p => !toDelete.includes(p.id)));
+      setSelectedProducts(new Set());
+      toast({ title: `🗑️ ${toDelete.length} מוצרים נמחקו` });
+    } catch {
+      toast({ title: "שגיאה במחיקה", variant: "destructive" });
+    } finally {
+      setIsDeletingBulk(false);
+    }
+  };
+
   const handleEnhanceSelected = async () => {
     if (selectedProducts.size === 0) {
       toast({
