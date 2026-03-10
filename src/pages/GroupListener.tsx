@@ -846,6 +846,34 @@ const GroupListener = () => {
                   </div>
                 </div>
 
+                {/* Top Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-center gap-2">
+                    <Button variant="outline" size="sm" disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="gap-1">
+                      <ChevronRight className="h-4 w-4" />
+                      הקודם
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                        let page: number;
+                        if (totalPages <= 7) page = i + 1;
+                        else if (currentPage <= 4) page = i + 1;
+                        else if (currentPage >= totalPages - 3) page = totalPages - 6 + i;
+                        else page = currentPage - 3 + i;
+                        return (
+                          <Button key={page} variant={currentPage === page ? 'default' : 'outline'} size="sm" className="h-8 w-8 p-0" onClick={() => setCurrentPage(page)}>
+                            {page}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    <Button variant="outline" size="sm" disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)} className="gap-1">
+                      הבא
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+
                 <div className={viewMode === 'grid' ? "grid grid-cols-2 xl:grid-cols-4 gap-3" : "space-y-4"}>
                 {paginatedPosts.map((post) => {
                   const hasRewrite = !!(post.modified_text && post.modified_text !== post.original_text);
