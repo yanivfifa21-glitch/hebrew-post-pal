@@ -958,7 +958,36 @@ export default function ManualSend() {
     }
   };
 
-  // Combined: AI Rewrite + Affiliate Link + Fetch Image
+  // External AI Rewrite (OpenAI / Gemini)
+  const handleExternalRewrite = async (provider: 'openai' | 'gemini') => {
+    if (!message.trim()) {
+      toast({ title: "נא להזין טקסט לכתיבה מחדש", variant: "destructive" });
+      return;
+    }
+    setIsRewritingExternal(true);
+    try {
+      const versionKey = provider;
+      const currentVersion = (externalRewriteVersion[versionKey] || 0) % 3 + 1;
+      const { data, error } = await supabase.functions.invoke("rewrite-openai", {
+        body: { text: message.trim(), version: currentVersion, provider },
+      });
+      if (error) throw error;
+      if (data?.success && data?.rewrittenText) {
+        setMessage(data.rewrittenText.trim());
+        setExternalRewriteVersion(prev => ({ ...prev, [versionKey]: currentVersion }));
+        const label = provider === 'openai' ? 'OpenAI' : 'Gemini';
+        toast({ title: `✨ ${label} גרסה ${currentVersion} הושלמה` });
+      } else {
+        toast({ title: data?.error || `שגיאה בניסוח ${provider}`, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: `שגיאה בניסוח`, variant: "destructive" });
+    } finally {
+      setIsRewritingExternal(false);
+    }
+  };
+
+
   const handleRewriteWithAffiliate = async () => {
     if (!message.trim()) {
       toast({ title: "נא להזין טקסט", variant: "destructive" });
