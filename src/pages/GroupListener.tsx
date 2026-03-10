@@ -592,19 +592,12 @@ const GroupListener = () => {
           });
           if (productInfo?.success && productInfo?.data) {
             const p = productInfo.data;
-            // Check if the original text already contains a price ($ or ₪ or מחיר)
-            const originalText = post.original_text || post.modified_text || "";
-            // Check if the original text already contains an actual price (currency symbol + number)
-            const hasPriceInText = /\$\s*\d+\.?\d*|₪\s*\d+\.?\d*|\d+\.?\d*\s*\$|\d+\.?\d*\s*₪/.test(originalText);
+            // Don't pass API price - let AI use exact price from original text
             productData = {
               orders: p.orders_count,
               rating: p.rating,
               link: post.modified_url || productUrl,
             };
-            // Only include price if it was already mentioned in the original post
-            if (hasPriceInText) {
-              productData.price = p.price;
-            }
           }
         } catch (e) {
           console.log("[GroupListener] Could not fetch product data, continuing without it");
