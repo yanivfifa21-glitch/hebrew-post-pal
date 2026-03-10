@@ -25,17 +25,25 @@ ABSOLUTE RULES - FOLLOW EXACTLY:
 
 PRICES:
 - **NEVER INVENT, GUESS, OR MAKE UP PRICES.** This is the #1 rule.
-- A price is ONLY a number next to $ or ₪ (e.g. "$12.5", "45₪"). Marketing phrases like "מחיר כזה" or "מחיר משתלם" are NOT prices.
+- If the ORIGINAL TEXT contains a price (a number next to $ or ₪), use EXACTLY that price. Do NOT replace it with a different price from PRODUCT DATA or anywhere else.
+- If the original text says "16₪" or "$5.17", write EXACTLY those numbers. Do NOT substitute with API prices.
 - If NO actual price number appears in the original text AND no price is in the PRODUCT DATA section, COMPLETELY OMIT any price line. No 💰 line at all.
-- If a real price IS provided, use EXACTLY that price: "💰 רק $[price] ~ כ-[priceILS]₪ בלבד!"
+- Marketing phrases like "מחיר כזה" or "מחיר משתלם" are NOT prices - ignore them.
+- Format: "💰 רק [exact original price] בלבד!" - keep both ₪ and $ if both appear in original.
+
+SHIPPING:
+- If the original text mentions free shipping (משלוח חינם), ALWAYS include it in the rewrite.
+- Keep the exact shipping condition (e.g. "בקנייה מעל 12$", "מעל 10$", etc.)
+- Format: "🚚 משלוח חינם [condition if any]!"
 
 COUPONS:
 - If a specific coupon CODE exists (e.g. "SAVE5", "CODE123"), include: "עם קופון [CODE]"
 - If NO specific coupon code exists, OMIT the coupon line entirely. Do NOT write "עם קופון" without a code.
 
 ORDERS & RATING:
-- Use ONLY numbers from PRODUCT DATA or original text: "⭐ מעל [X] הזמנות בציון [Y]"
-- If no data available, OMIT the ⭐ line entirely. Do NOT invent numbers.
+- PRIORITY: Use numbers from the ORIGINAL TEXT first. Only use PRODUCT DATA numbers if the original text has none.
+- Format: "⭐ מעל [X] הזמנות בציון [Y]"
+- If no data available from either source, OMIT the ⭐ line entirely. Do NOT invent numbers.
 
 OTHER RULES:
 - Only return the rewritten text
