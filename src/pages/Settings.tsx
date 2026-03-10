@@ -525,6 +525,7 @@ const Settings = () => {
         whatsapp_interval_end_time: useSeparateIntervals ? whatsappIntervalEnd : '22:00',
         telegram_interval_start_time: useSeparateIntervals ? telegramIntervalStart : '08:00',
         telegram_interval_end_time: useSeparateIntervals ? telegramIntervalEnd : '22:00',
+        openai_api_key: openaiApiKey || null,
       };
 
       if (settingsId) {
