@@ -446,6 +446,7 @@ const Settings = () => {
         // Custom emoji toggle
         setUseCustomEmoji((data as any).use_custom_emoji !== false);
         setOpenaiApiKey((data as any).openai_api_key || '');
+        setGeminiApiKey((data as any).gemini_api_key || '');
       } else {
         // No settings yet - use defaults
         setCustomAiPrompt(DEFAULT_PROMPT);
