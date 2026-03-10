@@ -956,6 +956,14 @@ const GroupListener = () => {
                             {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                             שלח והוסף לתור
                           </Button>
+                          <Button variant="outline" size="sm" onClick={() => handleManualRewrite(post)} disabled={rewritingPostId === post.id} className="gap-1">
+                            {rewritingPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                            נסח מחדש
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => handleOpenAIRewrite(post)} disabled={rewritingOpenAIPostId === post.id} className="gap-1 border-green-500/50 text-green-600 hover:bg-green-50">
+                            {rewritingOpenAIPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                            נסח מחדש – OpenAI {openaiVersionMap[post.id] ? `(v${openaiVersionMap[post.id]})` : ''}
+                          </Button>
                           <Button variant="outline" size="sm" onClick={() => { setEditingPost(post); setEditText(post.modified_text || post.original_text || ""); setEditUrl(post.modified_url || post.original_url || ""); }} className="gap-1">
                             <Edit className="h-3 w-3" />
                             ערוך
