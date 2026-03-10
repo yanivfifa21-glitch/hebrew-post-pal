@@ -117,11 +117,7 @@ serve(async (req) => {
     // Build product data section for the prompt
     let productDataSection = "";
     if (productData) {
-      productDataSection = "\n\n--- PRODUCT DATA (use these exact numbers) ---";
-      if (productData.price) {
-        const priceILS = productData.priceILS || Math.round(productData.price * exchangeRate);
-        productDataSection += `\nמחיר: $${productData.price} ~ כ-${priceILS}₪`;
-      }
+      productDataSection = "\n\n--- PRODUCT DATA (for orders/rating only - do NOT use for price, use the ORIGINAL TEXT price exactly as written) ---";
       if (productData.orders) {
         const orders = Number(productData.orders);
         const formatted = orders >= 1000 ? (Math.round(orders / 100) / 10) + 'K+' : orders + '+';

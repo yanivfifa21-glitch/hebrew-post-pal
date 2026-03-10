@@ -979,17 +979,12 @@ export default function ManualSend() {
           });
           if (productInfo?.success && productInfo?.data) {
             const p = productInfo.data;
-            // Check if the original text already contains a price
-            const hasPriceInText = /\$\s*\d+\.?\d*|₪\s*\d+\.?\d*|\d+\.?\d*\s*\$|\d+\.?\d*\s*₪/.test(message);
+            // Don't pass API price - let AI use exact price from original text
             productData = {
               orders: p.orders_count,
               rating: p.rating,
               link: urlMatch[0],
             };
-            // Only include price if it was already mentioned in the original text
-            if (hasPriceInText) {
-              productData.price = p.price;
-            }
           }
         } catch (e) {
           console.log("[ManualSend] Could not fetch product data, continuing without it");
