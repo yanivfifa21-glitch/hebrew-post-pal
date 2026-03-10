@@ -591,20 +591,43 @@ const Queue = () => {
                   }
                 </span>
                 <div className="mr-auto">
-                  <Button
-                    variant="ghost-destructive"
-                    size="sm"
-                    onClick={handleDeleteSelected}
-                    disabled={isDeletingBulk}
-                    className="gap-2"
-                  >
-                    {isDeletingBulk ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                    {selectedProducts.size > 0 ? `מחק נבחרים (${selectedProducts.size})` : `מחק הכל (${scheduledProducts.length})`}
-                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="ghost-destructive"
+                        size="sm"
+                        disabled={isDeletingBulk}
+                        className="gap-2"
+                      >
+                        {isDeletingBulk ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                        {selectedProducts.size > 0 ? `מחק נבחרים (${selectedProducts.size})` : `מחק הכל (${scheduledProducts.length})`}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>אישור מחיקה</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          {selectedProducts.size > 0
+                            ? `האם למחוק ${selectedProducts.size} מוצרים נבחרים? פעולה זו לא ניתנת לביטול.`
+                            : `האם למחוק את כל ${scheduledProducts.length} המוצרים בתור? פעולה זו לא ניתנת לביטול.`
+                          }
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter className="flex gap-2">
+                        <AlertDialogCancel>ביטול</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={handleDeleteSelected}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          מחק
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </div>
             )}
