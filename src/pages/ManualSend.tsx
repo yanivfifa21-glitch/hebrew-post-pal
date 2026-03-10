@@ -1083,6 +1083,10 @@ export default function ManualSend() {
         if (rewriteResult.error) throw new Error("שגיאה בניסוח מחדש: " + rewriteResult.error.message);
         if (!rewriteResult.data?.success) throw new Error(rewriteResult.data?.error || "שגיאה בניסוח מחדש");
         newMessage = rewriteResult.data.rewrittenText.trim();
+        // Strip any link/CTA the AI may have added (we'll add our own affiliate link)
+        newMessage = newMessage.replace(/🔗\s*להזמנה\s*>>?\s*https?:\/\/\S+/gi, '').trim();
+        newMessage = newMessage.replace(/👇\s*(?:לרכישה|להזמנה|להזמנה מאליאקספרס)\s*\n?https?:\/\/\S+/gi, '').trim();
+        newMessage = newMessage.replace(/https?:\/\/(?:s\.click\.aliexpress\.com|a\.aliexpress\.com|www\.aliexpress\.com|aliexpress\.com)\S+/gi, '').trim();
       }
 
       // Append orders/rating from product data if not in text
