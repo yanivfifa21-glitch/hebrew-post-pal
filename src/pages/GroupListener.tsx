@@ -786,6 +786,10 @@ const GroupListener = () => {
                   {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                   שלח והוסף לתור ({selectedAccounts.length})
                 </Button>
+                <Button variant="destructive" size="sm" onClick={handleBulkDelete} disabled={isBulkProcessing} className="gap-1">
+                  {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                  מחק נבחרים
+                </Button>
                 <Button variant="ghost" size="sm" onClick={() => setSelectedPostIds(new Set())} className="gap-1 text-muted-foreground">
                   <X className="h-3 w-3" />
                   בטל בחירה
