@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Clock, CheckCircle, Sparkles, Wand2, Loader2, Send, RotateCcw, Ticket, PackageSearch } from "lucide-react";
+import { Clock, CheckCircle, Sparkles, Wand2, Loader2, Send, RotateCcw, Ticket, PackageSearch, Trash2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { applyCouponToText, Coupon } from "@/lib/couponUtils";
 
@@ -29,6 +29,7 @@ const Queue = () => {
   const [isCheckingAllStock, setIsCheckingAllStock] = useState(false);
   const [stockCheckProgress, setStockCheckProgress] = useState(0);
   const [stockCheckTotal, setStockCheckTotal] = useState(0);
+  const [isDeletingBulk, setIsDeletingBulk] = useState(false);
 
   useEffect(() => {
     fetchProducts();
@@ -135,6 +136,27 @@ const Queue = () => {
       toast({ title: "שגיאה בהחזרה לתור", variant: "destructive" });
     } finally {
       setIsReturningBulk(false);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    const toDelete = selectedProducts.size > 0 ? Array.from(selectedProducts) : scheduledProducts.map(p => p.id);
+    if (toDelete.length === 0) return;
+
+    const label = selectedProducts.size > 0 ? `${toDelete.length} נבחרים` : `כל ${toDelete.length} המוצרים`;
+    if (!window.confirm(`למחוק ${label} מהתור?`)) return;
+
+    setIsDeletingBulk(true);
+    try {
+      const { error } = await supabase.from("products").delete().in("id", toDelete);
+      if (error) throw error;
+      setProducts(prev => prev.filter(p => !toDelete.includes(p.id)));
+      setSelectedProducts(new Set());
+      toast({ title: `🗑️ ${toDelete.length} מוצרים נמחקו` });
+    } catch {
+      toast({ title: "שגיאה במחיקה", variant: "destructive" });
+    } finally {
+      setIsDeletingBulk(false);
     }
   };
 
@@ -555,21 +577,37 @@ const Queue = () => {
           <TabsContent value="scheduled" className="animate-fade-in space-y-4">
             {/* Select All Row */}
             {scheduledProducts.length > 0 && (
-              <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border/50">
+              <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border/50 flex-wrap">
                 <Checkbox
                   checked={allScheduledSelected}
                   onCheckedChange={(checked) => handleSelectAll(checked === true)}
                   className="h-5 w-5"
-                  aria-label="Select all scheduled products"
+                  aria-label="בחר הכל"
                 />
                 <span className="text-sm font-medium">
                   {allScheduledSelected 
-                    ? "Deselect All" 
+                    ? "בטל בחירה" 
                     : someScheduledSelected 
-                      ? `${selectedProducts.size} selected` 
-                      : "Select All"
+                      ? `${selectedProducts.size} נבחרו` 
+                      : `בחר הכל (${scheduledProducts.length})`
                   }
                 </span>
+                <div className="mr-auto">
+                  <Button
+                    variant="ghost-destructive"
+                    size="sm"
+                    onClick={handleDeleteSelected}
+                    disabled={isDeletingBulk}
+                    className="gap-2"
+                  >
+                    {isDeletingBulk ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                    {selectedProducts.size > 0 ? `מחק נבחרים (${selectedProducts.size})` : `מחק הכל (${scheduledProducts.length})`}
+                  </Button>
+                </div>
               </div>
             )}
             {renderProducts(scheduledProducts, true)}
