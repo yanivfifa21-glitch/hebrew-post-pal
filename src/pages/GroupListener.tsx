@@ -80,6 +80,10 @@ const GroupListener = () => {
   const POSTS_PER_PAGE = 50;
   // View mode
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  // Rewrite states
+  const [rewritingPostId, setRewritingPostId] = useState<string | null>(null);
+  const [rewritingOpenAIPostId, setRewritingOpenAIPostId] = useState<string | null>(null);
+  const [openaiVersionMap, setOpenaiVersionMap] = useState<Record<string, number>>({});
 
   useEffect(() => {
     fetchGroups();
@@ -544,6 +548,58 @@ const GroupListener = () => {
   };
 
 
+  // Manual AI rewrite (Lovable AI)
+  const handleManualRewrite = async (post: CapturedPost) => {
+    setRewritingPostId(post.id);
+    try {
+      const textToRewrite = post.original_text || "";
+      const { data, error } = await supabase.functions.invoke("generate-hebrew-post", {
+        body: { title: textToRewrite, manualRewrite: true },
+      });
+      if (error) throw error;
+      if (data?.success && data?.hebrewDescription) {
+        const newText = data.hebrewDescription.trim();
+        await supabase.from("captured_posts").update({ modified_text: newText }).eq("id", post.id);
+        setCapturedPosts(prev => prev.map(p => p.id === post.id ? { ...p, modified_text: newText } : p));
+        setTextChoice(prev => ({ ...prev, [post.id]: 'rewrite' }));
+        toast({ title: "✨ ניסוח מחדש הושלם" });
+      } else {
+        toast({ title: "שגיאה בניסוח מחדש", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "שגיאה בניסוח מחדש", variant: "destructive" });
+    } finally {
+      setRewritingPostId(null);
+    }
+  };
+
+  // OpenAI rewrite with cycling versions
+  const handleOpenAIRewrite = async (post: CapturedPost) => {
+    setRewritingOpenAIPostId(post.id);
+    try {
+      const currentVersion = (openaiVersionMap[post.id] || 0) % 3 + 1;
+      const textToRewrite = post.modified_text || post.original_text || "";
+      const { data, error } = await supabase.functions.invoke("rewrite-openai", {
+        body: { text: textToRewrite, version: currentVersion },
+      });
+      if (error) throw error;
+      if (data?.success && data?.rewrittenText) {
+        const newText = data.rewrittenText.trim();
+        await supabase.from("captured_posts").update({ modified_text: newText }).eq("id", post.id);
+        setCapturedPosts(prev => prev.map(p => p.id === post.id ? { ...p, modified_text: newText } : p));
+        setTextChoice(prev => ({ ...prev, [post.id]: 'rewrite' }));
+        setOpenaiVersionMap(prev => ({ ...prev, [post.id]: currentVersion }));
+        toast({ title: `✨ OpenAI גרסה ${currentVersion} הושלמה` });
+      } else {
+        toast({ title: data?.error || "שגיאה בניסוח OpenAI", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "שגיאה בניסוח OpenAI", variant: "destructive" });
+    } finally {
+      setRewritingOpenAIPostId(null);
+    }
+  };
+
   const togglePostSelection = (postId: string) => {
     setSelectedPostIds(prev => {
       const next = new Set(prev);
@@ -778,6 +834,14 @@ const GroupListener = () => {
                               <Send className="h-3 w-3" />
                               שלח
                             </Button>
+                            <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 flex-1" onClick={() => handleManualRewrite(post)} disabled={rewritingPostId === post.id}>
+                              {rewritingPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                              AI
+                            </Button>
+                            <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 flex-1 border-green-500/30 text-green-600" onClick={() => handleOpenAIRewrite(post)} disabled={rewritingOpenAIPostId === post.id}>
+                              {rewritingOpenAIPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                              GPT
+                            </Button>
                           </div>
                         </div>
                       </Card>
@@ -899,6 +963,14 @@ const GroupListener = () => {
                           <Button variant="outline" size="sm" onClick={() => { setSendPosts([post]); handleSingleSendAndQueue(post); }} disabled={isBulkProcessing || selectedAccounts.length === 0} className="gap-1">
                             {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                             שלח והוסף לתור
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => handleManualRewrite(post)} disabled={rewritingPostId === post.id} className="gap-1">
+                            {rewritingPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                            נסח מחדש
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => handleOpenAIRewrite(post)} disabled={rewritingOpenAIPostId === post.id} className="gap-1 border-green-500/50 text-green-600 hover:bg-green-50">
+                            {rewritingOpenAIPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                            נסח מחדש – OpenAI {openaiVersionMap[post.id] ? `(v${openaiVersionMap[post.id]})` : ''}
                           </Button>
                           <Button variant="outline" size="sm" onClick={() => { setEditingPost(post); setEditText(post.modified_text || post.original_text || ""); setEditUrl(post.modified_url || post.original_url || ""); }} className="gap-1">
                             <Edit className="h-3 w-3" />

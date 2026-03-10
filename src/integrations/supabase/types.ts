@@ -150,6 +150,7 @@ export type Database = {
           interval_start_time: string | null
           last_bulk_stock_check: string | null
           listener_api_url: string | null
+          openai_api_key: string | null
           posting_interval_hours: number | null
           posting_interval_minutes: number | null
           posting_times: string[] | null
@@ -187,6 +188,7 @@ export type Database = {
           interval_start_time?: string | null
           last_bulk_stock_check?: string | null
           listener_api_url?: string | null
+          openai_api_key?: string | null
           posting_interval_hours?: number | null
           posting_interval_minutes?: number | null
           posting_times?: string[] | null
@@ -224,6 +226,7 @@ export type Database = {
           interval_start_time?: string | null
           last_bulk_stock_check?: string | null
           listener_api_url?: string | null
+          openai_api_key?: string | null
           posting_interval_hours?: number | null
           posting_interval_minutes?: number | null
           posting_times?: string[] | null

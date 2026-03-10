@@ -62,3 +62,6 @@ verify_jwt = false
 
 [functions.scan-store]
 verify_jwt = false
+
+[functions.rewrite-openai]
+verify_jwt = false

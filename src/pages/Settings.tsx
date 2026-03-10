@@ -303,6 +303,9 @@ const Settings = () => {
   const [isSavingGoldPost, setIsSavingGoldPost] = useState(false);
   const [isUploadingGoldMedia, setIsUploadingGoldMedia] = useState(false);
 
+  // OpenAI API key
+  const [openaiApiKey, setOpenaiApiKey] = useState('');
+
   const fetchBankIsraelRate = async () => {
     setIsFetchingRate(true);
     try {
@@ -396,7 +399,7 @@ const Settings = () => {
       // Fetch app settings (non-sensitive data only)
       const { data, error } = await supabase
         .from('app_settings')
-        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, ai_rewrite_template, posting_interval_hours, posting_interval_minutes, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, interval_start_time, interval_end_time, usd_exchange_rate, whatsapp_interval_minutes, telegram_interval_minutes, whatsapp_interval_start_time, whatsapp_interval_end_time, telegram_interval_start_time, telegram_interval_end_time, use_custom_emoji')
+        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, ai_rewrite_template, posting_interval_hours, posting_interval_minutes, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, interval_start_time, interval_end_time, usd_exchange_rate, whatsapp_interval_minutes, telegram_interval_minutes, whatsapp_interval_start_time, whatsapp_interval_end_time, telegram_interval_start_time, telegram_interval_end_time, use_custom_emoji, openai_api_key')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -441,6 +444,7 @@ const Settings = () => {
           : DEFAULT_AI_REWRITE_TEMPLATE);
         // Custom emoji toggle
         setUseCustomEmoji((data as any).use_custom_emoji !== false);
+        setOpenaiApiKey((data as any).openai_api_key || '');
       } else {
         // No settings yet - use defaults
         setCustomAiPrompt(DEFAULT_PROMPT);
@@ -521,6 +525,7 @@ const Settings = () => {
         whatsapp_interval_end_time: useSeparateIntervals ? whatsappIntervalEnd : '22:00',
         telegram_interval_start_time: useSeparateIntervals ? telegramIntervalStart : '08:00',
         telegram_interval_end_time: useSeparateIntervals ? telegramIntervalEnd : '22:00',
+        openai_api_key: openaiApiKey || null,
       };
 
       if (settingsId) {
@@ -1942,7 +1947,35 @@ const Settings = () => {
           </CardContent>
         </Card>
 
-        {/* Custom AI Prompt */}
+        {/* OpenAI API Key */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-green-500" />
+              OpenAI API Key
+            </CardTitle>
+            <CardDescription>
+              הגדר מפתח OpenAI לניסוח מחדש של פוסטים בהאזנה לקבוצות
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">API Key</Label>
+              <Input
+                type="password"
+                value={openaiApiKey}
+                onChange={(e) => setOpenaiApiKey(e.target.value)}
+                placeholder="sk-..."
+                dir="ltr"
+              />
+              <p className="text-xs text-muted-foreground">
+                ניתן ליצור מפתח ב-<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-primary underline">platform.openai.com</a>. המפתח נשמר בהגדרות החשבון.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
