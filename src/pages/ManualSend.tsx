@@ -1022,7 +1022,6 @@ export default function ManualSend() {
       return;
     }
 
-    // Detect AliExpress link in message
     const aliLink = detectAliLink(message);
     if (!aliLink) {
       toast({ title: "לא נמצא קישור אליאקספרס בטקסט", variant: "destructive" });
@@ -1031,46 +1030,73 @@ export default function ManualSend() {
 
     setIsRewritingWithAffiliate(true);
     try {
-      // Send the FULL original text to AI (without the link itself)
       const originalText = message.trim();
-      // Remove AliExpress links from the text sent to AI (they'll be replaced with affiliate link)
       const textForAi = originalText.replace(/https?:\/\/(?:s\.click\.aliexpress\.com|a\.aliexpress\.com|www\.aliexpress\.com|aliexpress\.com)\S+/gi, '').trim();
 
-      // Run all 3 operations in parallel: AI rewrite, affiliate link, fetch image
-      const [rewriteResult, affiliateResult, imageResult] = await Promise.all([
-        supabase.functions.invoke("generate-hebrew-post", {
+      // Choose rewrite function based on provider
+      const provider = affiliateRewriteProvider;
+
+      // Run affiliate link + image fetch in parallel with rewrite
+      const affiliatePromise = supabase.functions.invoke("generate-affiliate-link", {
+        body: { productUrl: aliLink, userId },
+      });
+      const imagePromise = supabase.functions.invoke("fetch-ali-product", {
+        body: { productUrl: aliLink },
+      });
+
+      let rewritePromise: Promise<any>;
+
+      if (provider === "system") {
+        rewritePromise = supabase.functions.invoke("generate-hebrew-post", {
           body: { title: textForAi, manualRewrite: true },
-        }),
-        supabase.functions.invoke("generate-affiliate-link", {
-          body: { productUrl: aliLink, userId },
-        }),
-        supabase.functions.invoke("fetch-ali-product", {
-          body: { productUrl: aliLink },
-        }),
+        });
+      } else {
+        // For openai/gemini, fetch product data first for the rewrite prompt
+        const imageResultEarly = await imagePromise;
+        let productData: any = null;
+        if (imageResultEarly.data?.success && imageResultEarly.data?.data) {
+          const p = imageResultEarly.data.data;
+          productData = {
+            orders: p.orders_count,
+            rating: p.rating,
+            link: aliLink,
+          };
+        }
+        rewritePromise = supabase.functions.invoke("rewrite-openai", {
+          body: { text: textForAi, version: 1, provider, productData },
+        });
+      }
+
+      const [rewriteResult, affiliateResult, imageResult] = await Promise.all([
+        rewritePromise,
+        affiliatePromise,
+        provider === "system" ? imagePromise : Promise.resolve(await imagePromise),
       ]);
 
-      // Process AI rewrite
-      if (rewriteResult.error) throw new Error("שגיאה בניסוח מחדש: " + rewriteResult.error.message);
-      if (!rewriteResult.data?.success) throw new Error(rewriteResult.data?.error || "שגיאה בניסוח מחדש");
-      
-      // Use AI output directly - prices/coupons are preserved by the AI prompt
-      let newMessage = rewriteResult.data.hebrewDescription.trim();
+      // Process rewrite result
+      let newMessage = "";
+      if (provider === "system") {
+        if (rewriteResult.error) throw new Error("שגיאה בניסוח מחדש: " + rewriteResult.error.message);
+        if (!rewriteResult.data?.success) throw new Error(rewriteResult.data?.error || "שגיאה בניסוח מחדש");
+        newMessage = rewriteResult.data.hebrewDescription.trim();
+      } else {
+        if (rewriteResult.error) throw new Error("שגיאה בניסוח מחדש: " + rewriteResult.error.message);
+        if (!rewriteResult.data?.success) throw new Error(rewriteResult.data?.error || "שגיאה בניסוח מחדש");
+        newMessage = rewriteResult.data.rewrittenText.trim();
+      }
 
-      // Append orders count and rating from product data if not already in text
-      if (imageResult.data?.success && imageResult.data?.data) {
-        const productData = imageResult.data.data;
-        
-        // Store fetched stats for later use in product creation
+      // Append orders/rating from product data if not in text
+      const imgData = imageResult.data;
+      if (imgData?.success && imgData?.data) {
+        const productData = imgData.data;
         setFetchedProductStats({
           orders_count: productData.orders_count ? Number(productData.orders_count) : undefined,
           rating: productData.rating ? Number(productData.rating) : undefined,
         });
 
         const statsLines: string[] = [];
-
-        // Use specific pattern matching to avoid false positives from AI text
-        const hasOrdersStat = /מעל\s+[\d,]+\s+הזמנות|📦\s.*הזמנות|👥\s.*הזמנות/.test(newMessage);
-        const hasRatingStat = /דירוג[:\s]+[\d.]+\s+מתוך|⭐\s.*דירוג/.test(newMessage);
+        const hasOrdersStat = /מעל\s+[\d,]+\s+הזמנות|📦\s.*הזמנות|👥\s.*הזמנות|⭐\s.*הזמנות/.test(newMessage);
+        const hasRatingStat = /דירוג[:\s]+[\d.]+|⭐\s.*ציון|בציון\s+[\d.]+/.test(newMessage);
 
         if (productData.orders_count && Number(productData.orders_count) > 0 && !hasOrdersStat) {
           const rounded = Math.ceil(Number(productData.orders_count) / 100) * 100;
@@ -1079,15 +1105,13 @@ export default function ManualSend() {
 
         if (productData.rating && Number(productData.rating) > 0 && !hasRatingStat) {
           let r = Number(productData.rating);
-          if (r > 5) r = r / 20; // normalize percentage to 5-star
+          if (r > 5) r = r / 20;
           statsLines.push(`⭐ דירוג: ${r.toFixed(1)} מתוך 5`);
         }
 
         if (statsLines.length > 0) {
           newMessage = newMessage.trim() + '\n\n' + statsLines.join('\n');
         }
-      } else {
-        console.warn("[RewriteWithAffiliate] fetch-ali-product failed or returned no data:", imageResult.data);
       }
 
       // Process affiliate link
@@ -1095,11 +1119,7 @@ export default function ManualSend() {
       if (affiliateResult.data?.success && affiliateResult.data?.affiliateLink) {
         affiliateLink = affiliateResult.data.affiliateLink;
       } else {
-        console.warn("[RewriteWithAffiliate] Affiliate link generation failed, using original link");
-        toast({ 
-          title: "⚠️ לא הצלחנו להחליף לקישור שותף", 
-          description: "הקישור המקורי יישאר",
-        });
+        toast({ title: "⚠️ לא הצלחנו להחליף לקישור שותף", description: "הקישור המקורי יישאר" });
       }
 
       // Append CTA with affiliate link
@@ -1110,14 +1130,15 @@ export default function ManualSend() {
       setMessage(newMessage);
 
       // Process image
-      if (imageResult.data?.success && imageResult.data?.data?.image_url) {
-        setImageUrlPreview(imageResult.data.data.image_url);
+      if (imgData?.success && imgData?.data?.image_url) {
+        setImageUrlPreview(imgData.data.image_url);
         setMediaFile(null);
         setMediaPreview(null);
         setMediaType(null);
       }
 
-      toast({ title: "✨ הפוסט נוסח מחדש עם קישור שותף ותמונה" });
+      const providerLabel = provider === "system" ? "מערכת" : provider === "openai" ? "OpenAI" : "Gemini";
+      toast({ title: `✨ הפוסט נוסח מחדש (${providerLabel}) עם קישור שותף ותמונה` });
     } catch (e) {
       toast({
         title: "שגיאה",
