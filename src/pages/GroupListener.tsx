@@ -816,7 +816,7 @@ const GroupListener = () => {
               <div className="space-y-4">
                 {/* Controls: Select all + View toggle + Page info */}
                 <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
                     <Checkbox
                       checked={selectedPostIds.size === capturedPosts.length && capturedPosts.length > 0}
                       onCheckedChange={toggleSelectAll}
@@ -825,6 +825,11 @@ const GroupListener = () => {
                     <Label className="text-sm text-muted-foreground font-hebrew cursor-pointer" onClick={toggleSelectAll}>
                       בחר הכל ({capturedPosts.length})
                     </Label>
+                    {capturedPosts.length > 50 && (
+                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={selectFirst50}>
+                        בחר 50
+                      </Button>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <Button variant={viewMode === 'list' ? 'default' : 'outline'} size="icon" className="h-8 w-8" onClick={() => setViewMode('list')}>
