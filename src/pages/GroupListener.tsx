@@ -479,10 +479,10 @@ const GroupListener = () => {
         await supabase.from("captured_posts")
           .update({ status: "queued", reviewed_at: new Date().toISOString() })
           .eq("id", post.id);
-        setCapturedPosts((prev) => prev.map((p) =>
-          p.id === post.id ? { ...p, status: "queued" as const } : p
-        ));
       }
+      // Remove sent posts from the visible list
+      const sentIds = new Set(posts.map(p => p.id));
+      setCapturedPosts((prev) => prev.filter((p) => !sentIds.has(p.id)));
       toast({ title: `✅ ${posts.length} פוסטים נשלחו ונוספו לתור` });
       setSelectedPostIds(new Set());
     } catch (err) {
@@ -536,9 +536,9 @@ const GroupListener = () => {
       await supabase.from("captured_posts")
         .update({ status: "queued", reviewed_at: new Date().toISOString() })
         .eq("id", post.id);
-      setCapturedPosts((prev) => prev.map((p) =>
-        p.id === post.id ? { ...p, status: "queued" as const } : p
-      ));
+      // Remove post from visible list
+      setCapturedPosts((prev) => prev.filter((p) => p.id !== post.id));
+      setSelectedPostIds(prev => { const n = new Set(prev); n.delete(post.id); return n; });
       toast({ title: failCount > 0 ? `⚠️ נוסף לתור, ${failCount} שליחות נכשלו` : "✅ נשלח ונוסף לתור" , variant: failCount > 0 ? "destructive" : "default" });
     } catch {
       toast({ title: "שגיאה בשליחה", variant: "destructive" });
@@ -1472,7 +1472,7 @@ const GroupListener = () => {
               </Button>
               <Button variant="outline" size="sm" className="flex-1 gap-1" onClick={() => handleBulkSendAndQueue()} disabled={isBulkProcessing || selectedAccounts.length === 0}>
                 {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                שלח ({selectedAccounts.length})
+                שלח והוסף לתור ({selectedAccounts.length})
               </Button>
               <Button variant="destructive" size="sm" className="gap-1" onClick={handleBulkDelete} disabled={isBulkProcessing}>
                 <Trash2 className="h-3 w-3" />
