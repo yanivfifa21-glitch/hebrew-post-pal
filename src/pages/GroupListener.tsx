@@ -479,10 +479,10 @@ const GroupListener = () => {
         await supabase.from("captured_posts")
           .update({ status: "queued", reviewed_at: new Date().toISOString() })
           .eq("id", post.id);
-        setCapturedPosts((prev) => prev.map((p) =>
-          p.id === post.id ? { ...p, status: "queued" as const } : p
-        ));
       }
+      // Remove sent posts from the visible list
+      const sentIds = new Set(posts.map(p => p.id));
+      setCapturedPosts((prev) => prev.filter((p) => !sentIds.has(p.id)));
       toast({ title: `✅ ${posts.length} פוסטים נשלחו ונוספו לתור` });
       setSelectedPostIds(new Set());
     } catch (err) {
