@@ -303,8 +303,9 @@ const Settings = () => {
   const [isSavingGoldPost, setIsSavingGoldPost] = useState(false);
   const [isUploadingGoldMedia, setIsUploadingGoldMedia] = useState(false);
 
-  // OpenAI API key
+  // OpenAI & Gemini API keys
   const [openaiApiKey, setOpenaiApiKey] = useState('');
+  const [geminiApiKey, setGeminiApiKey] = useState('');
 
   const fetchBankIsraelRate = async () => {
     setIsFetchingRate(true);
