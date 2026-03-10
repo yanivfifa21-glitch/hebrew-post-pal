@@ -536,9 +536,9 @@ const GroupListener = () => {
       await supabase.from("captured_posts")
         .update({ status: "queued", reviewed_at: new Date().toISOString() })
         .eq("id", post.id);
-      setCapturedPosts((prev) => prev.map((p) =>
-        p.id === post.id ? { ...p, status: "queued" as const } : p
-      ));
+      // Remove post from visible list
+      setCapturedPosts((prev) => prev.filter((p) => p.id !== post.id));
+      setSelectedPostIds(prev => { const n = new Set(prev); n.delete(post.id); return n; });
       toast({ title: failCount > 0 ? `⚠️ נוסף לתור, ${failCount} שליחות נכשלו` : "✅ נשלח ונוסף לתור" , variant: failCount > 0 ? "destructive" : "default" });
     } catch {
       toast({ title: "שגיאה בשליחה", variant: "destructive" });
