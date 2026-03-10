@@ -548,6 +548,58 @@ const GroupListener = () => {
   };
 
 
+  // Manual AI rewrite (Lovable AI)
+  const handleManualRewrite = async (post: CapturedPost) => {
+    setRewritingPostId(post.id);
+    try {
+      const textToRewrite = post.original_text || "";
+      const { data, error } = await supabase.functions.invoke("generate-hebrew-post", {
+        body: { title: textToRewrite, manualRewrite: true },
+      });
+      if (error) throw error;
+      if (data?.success && data?.hebrewDescription) {
+        const newText = data.hebrewDescription.trim();
+        await supabase.from("captured_posts").update({ modified_text: newText }).eq("id", post.id);
+        setCapturedPosts(prev => prev.map(p => p.id === post.id ? { ...p, modified_text: newText } : p));
+        setTextChoice(prev => ({ ...prev, [post.id]: 'rewrite' }));
+        toast({ title: "✨ ניסוח מחדש הושלם" });
+      } else {
+        toast({ title: "שגיאה בניסוח מחדש", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "שגיאה בניסוח מחדש", variant: "destructive" });
+    } finally {
+      setRewritingPostId(null);
+    }
+  };
+
+  // OpenAI rewrite with cycling versions
+  const handleOpenAIRewrite = async (post: CapturedPost) => {
+    setRewritingOpenAIPostId(post.id);
+    try {
+      const currentVersion = (openaiVersionMap[post.id] || 0) % 3 + 1;
+      const textToRewrite = post.modified_text || post.original_text || "";
+      const { data, error } = await supabase.functions.invoke("rewrite-openai", {
+        body: { text: textToRewrite, version: currentVersion },
+      });
+      if (error) throw error;
+      if (data?.success && data?.rewrittenText) {
+        const newText = data.rewrittenText.trim();
+        await supabase.from("captured_posts").update({ modified_text: newText }).eq("id", post.id);
+        setCapturedPosts(prev => prev.map(p => p.id === post.id ? { ...p, modified_text: newText } : p));
+        setTextChoice(prev => ({ ...prev, [post.id]: 'rewrite' }));
+        setOpenaiVersionMap(prev => ({ ...prev, [post.id]: currentVersion }));
+        toast({ title: `✨ OpenAI גרסה ${currentVersion} הושלמה` });
+      } else {
+        toast({ title: data?.error || "שגיאה בניסוח OpenAI", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "שגיאה בניסוח OpenAI", variant: "destructive" });
+    } finally {
+      setRewritingOpenAIPostId(null);
+    }
+  };
+
   const togglePostSelection = (postId: string) => {
     setSelectedPostIds(prev => {
       const next = new Set(prev);
