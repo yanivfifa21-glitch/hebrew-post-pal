@@ -444,6 +444,7 @@ const Settings = () => {
           : DEFAULT_AI_REWRITE_TEMPLATE);
         // Custom emoji toggle
         setUseCustomEmoji((data as any).use_custom_emoji !== false);
+        setOpenaiApiKey((data as any).openai_api_key || '');
       } else {
         // No settings yet - use defaults
         setCustomAiPrompt(DEFAULT_PROMPT);
