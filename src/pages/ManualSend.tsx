@@ -1084,9 +1084,12 @@ export default function ManualSend() {
         if (!rewriteResult.data?.success) throw new Error(rewriteResult.data?.error || "שגיאה בניסוח מחדש");
         newMessage = rewriteResult.data.rewrittenText.trim();
         // Strip any link/CTA the AI may have added (we'll add our own affiliate link)
-        newMessage = newMessage.replace(/🔗\s*להזמנה\s*>>?\s*https?:\/\/\S+/gi, '').trim();
-        newMessage = newMessage.replace(/👇\s*(?:לרכישה|להזמנה|להזמנה מאליאקספרס)\s*\n?https?:\/\/\S+/gi, '').trim();
-        newMessage = newMessage.replace(/https?:\/\/(?:s\.click\.aliexpress\.com|a\.aliexpress\.com|www\.aliexpress\.com|aliexpress\.com)\S+/gi, '').trim();
+        newMessage = newMessage.replace(/🔗\s*להזמנה\s*>>?\s*\S*/gi, '').trim();
+        newMessage = newMessage.replace(/👇\s*(?:לרכישה|להזמנה|להזמנה מאליאקספרס)\s*\n?\S*/gi, '').trim();
+        newMessage = newMessage.replace(/https?:\/\/(?:s\.click\.aliexpress\.com|a\.aliexpress\.com|www\.aliexpress\.com|aliexpress\.com)\S*/gi, '').trim();
+        newMessage = newMessage.replace(/(?:aliexpress\.com)\S*/gi, '').trim();
+        // Clean up trailing empty lines
+        newMessage = newMessage.replace(/\n{3,}/g, '\n\n').trim();
       }
 
       // Append orders/rating from product data if not in text
