@@ -1059,7 +1059,7 @@ export default function ManualSend() {
           productData = {
             orders: p.orders_count,
             rating: p.rating,
-            link: aliLink,
+            // Don't pass link - we'll append affiliate link ourselves
           };
         }
         rewritePromise = supabase.functions.invoke("rewrite-openai", {
