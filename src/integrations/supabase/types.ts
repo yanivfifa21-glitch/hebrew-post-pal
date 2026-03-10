@@ -145,6 +145,7 @@ export type Database = {
           created_at: string
           custom_ai_prompt: string | null
           default_auto_approve: boolean
+          gemini_api_key: string | null
           id: string
           interval_end_time: string | null
           interval_start_time: string | null
@@ -183,6 +184,7 @@ export type Database = {
           created_at?: string
           custom_ai_prompt?: string | null
           default_auto_approve?: boolean
+          gemini_api_key?: string | null
           id?: string
           interval_end_time?: string | null
           interval_start_time?: string | null
@@ -221,6 +223,7 @@ export type Database = {
           created_at?: string
           custom_ai_prompt?: string | null
           default_auto_approve?: boolean
+          gemini_api_key?: string | null
           id?: string
           interval_end_time?: string | null
           interval_start_time?: string | null
