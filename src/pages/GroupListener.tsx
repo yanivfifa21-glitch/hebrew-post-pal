@@ -582,7 +582,7 @@ const GroupListener = () => {
       const currentVersion = (openaiVersionMap[stateKey] || 0) % 3 + 1;
       const textToRewrite = post.modified_text || post.original_text || "";
       
-      // Try to fetch product data from AliExpress API
+      // Try to fetch product data from AliExpress API (only orders/rating/link - price only if in original text)
       let productData: any = null;
       const productUrl = post.original_url || post.modified_url || "";
       if (productUrl && /aliexpress/i.test(productUrl)) {
@@ -592,12 +592,18 @@ const GroupListener = () => {
           });
           if (productInfo?.success && productInfo?.data) {
             const p = productInfo.data;
+            // Check if the original text already contains a price ($ or ₪ or מחיר)
+            const originalText = post.original_text || post.modified_text || "";
+            const hasPriceInText = /\$\s*\d|₪\s*\d|\d\s*\$|\d\s*₪|מחיר/i.test(originalText);
             productData = {
-              price: p.price,
               orders: p.orders_count,
               rating: p.rating,
               link: post.modified_url || productUrl,
             };
+            // Only include price if it was already mentioned in the original post
+            if (hasPriceInText) {
+              productData.price = p.price;
+            }
           }
         } catch (e) {
           console.log("[GroupListener] Could not fetch product data, continuing without it");

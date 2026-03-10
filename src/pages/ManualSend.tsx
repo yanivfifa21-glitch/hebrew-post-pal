@@ -969,7 +969,7 @@ export default function ManualSend() {
       const versionKey = provider;
       const currentVersion = (externalRewriteVersion[versionKey] || 0) % 3 + 1;
       
-      // Try to fetch product data from AliExpress API
+      // Try to fetch product data from AliExpress API (only orders/rating/link - price only if in original text)
       let productData: any = null;
       const urlMatch = message.match(/https?:\/\/[^\s]*aliexpress[^\s]*/i) || message.match(/https?:\/\/s\.click\.aliexpress\.com[^\s]*/i);
       if (urlMatch) {
@@ -979,12 +979,17 @@ export default function ManualSend() {
           });
           if (productInfo?.success && productInfo?.data) {
             const p = productInfo.data;
+            // Check if the original text already contains a price
+            const hasPriceInText = /\$\s*\d|₪\s*\d|\d\s*\$|\d\s*₪|מחיר/i.test(message);
             productData = {
-              price: p.price,
               orders: p.orders_count,
               rating: p.rating,
               link: urlMatch[0],
             };
+            // Only include price if it was already mentioned in the original text
+            if (hasPriceInText) {
+              productData.price = p.price;
+            }
           }
         } catch (e) {
           console.log("[ManualSend] Could not fetch product data, continuing without it");
