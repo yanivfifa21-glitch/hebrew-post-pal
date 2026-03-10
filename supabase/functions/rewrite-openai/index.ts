@@ -8,7 +8,7 @@ const corsHeaders = {
 
 const UNIFIED_PROMPT = `You are an expert Israeli marketing copywriter for Telegram deal channels.
 
-Rewrite the following post in Hebrew using this EXACT structure:
+Rewrite the following post in Hebrew using this structure:
 
 [אימוג'י פתיחה + כותרת מושכת]
 
@@ -21,13 +21,13 @@ Rewrite the following post in Hebrew using this EXACT structure:
 
 🔗 להזמנה >> [קישור]
 
-Rules:
-- If product data is provided below, USE THE EXACT numbers for price, orders, rating and link
-- If NO price data is available (neither in text nor in product data), OMIT the 💰 price line entirely
+CRITICAL RULES ABOUT PRICES:
+- **NEVER INVENT OR MAKE UP PRICES.** If no price appears in the original text AND no price is provided in the PRODUCT DATA section below, you MUST completely OMIT the 💰 price line. Do NOT guess or estimate a price.
+- If a price IS available (either in the original text or in PRODUCT DATA), use that EXACT price - do not change it.
 - If a coupon code exists in the original text or product data, put it on a SEPARATE line right after the price line: "עם קופון [CODE]"
 - If NO coupon exists, OMIT the coupon line entirely
-- For the rating/orders line use EXACTLY this format: "⭐ מעל [X] הזמנות בציון [Y]" where X is the order count and Y is the rating (e.g. "⭐ מעל 2.4K הזמנות בציון 4.9")
-- If no orders/rating data available, OMIT the ⭐ line entirely
+- For the rating/orders line use EXACTLY this format: "⭐ מעל [X] הזמנות בציון [Y]" where X is the order count and Y is the rating
+- If no orders/rating data available (neither in text nor in PRODUCT DATA), OMIT the ⭐ line entirely. Do NOT invent numbers.
 - Only return the rewritten text
 - Output in Hebrew
 - Do NOT add any explanation or metadata
