@@ -573,14 +573,16 @@ const GroupListener = () => {
     }
   };
 
-  // OpenAI rewrite with cycling versions
-  const handleOpenAIRewrite = async (post: CapturedPost) => {
-    setRewritingOpenAIPostId(post.id);
+  // OpenAI/Gemini rewrite with cycling versions
+  const handleExternalRewrite = async (post: CapturedPost, provider: 'openai' | 'gemini') => {
+    const stateKey = `${provider}_${post.id}`;
+    if (provider === 'openai') setRewritingOpenAIPostId(post.id);
+    else setRewritingPostId(`gemini_${post.id}`);
     try {
-      const currentVersion = (openaiVersionMap[post.id] || 0) % 3 + 1;
+      const currentVersion = (openaiVersionMap[stateKey] || 0) % 3 + 1;
       const textToRewrite = post.modified_text || post.original_text || "";
       const { data, error } = await supabase.functions.invoke("rewrite-openai", {
-        body: { text: textToRewrite, version: currentVersion },
+        body: { text: textToRewrite, version: currentVersion, provider },
       });
       if (error) throw error;
       if (data?.success && data?.rewrittenText) {
@@ -588,15 +590,17 @@ const GroupListener = () => {
         await supabase.from("captured_posts").update({ modified_text: newText }).eq("id", post.id);
         setCapturedPosts(prev => prev.map(p => p.id === post.id ? { ...p, modified_text: newText } : p));
         setTextChoice(prev => ({ ...prev, [post.id]: 'rewrite' }));
-        setOpenaiVersionMap(prev => ({ ...prev, [post.id]: currentVersion }));
-        toast({ title: `✨ OpenAI גרסה ${currentVersion} הושלמה` });
+        setOpenaiVersionMap(prev => ({ ...prev, [stateKey]: currentVersion }));
+        const label = provider === 'openai' ? 'OpenAI' : 'Gemini';
+        toast({ title: `✨ ${label} גרסה ${currentVersion} הושלמה` });
       } else {
-        toast({ title: data?.error || "שגיאה בניסוח OpenAI", variant: "destructive" });
+        toast({ title: data?.error || `שגיאה בניסוח ${provider}`, variant: "destructive" });
       }
     } catch {
-      toast({ title: "שגיאה בניסוח OpenAI", variant: "destructive" });
+      toast({ title: `שגיאה בניסוח ${provider}`, variant: "destructive" });
     } finally {
-      setRewritingOpenAIPostId(null);
+      if (provider === 'openai') setRewritingOpenAIPostId(null);
+      else setRewritingPostId(null);
     }
   };
 
