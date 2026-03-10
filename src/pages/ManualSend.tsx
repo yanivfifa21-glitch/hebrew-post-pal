@@ -1260,6 +1260,30 @@ export default function ManualSend() {
                       {isRewritingWithAffiliate ? "מעבד..." : "נסח מחדש + לינק אפיליאייט"}
                     </span>
                   </Button>
+
+                  {/* External AI Rewrite Buttons */}
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleExternalRewrite('openai')}
+                      disabled={isRewritingExternal || !message.trim()}
+                      className="flex-1 gap-2 border-green-500/50 text-green-600 hover:bg-green-50"
+                    >
+                      {isRewritingExternal ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      <span className="font-hebrew">נסח מחדש – OpenAI {externalRewriteVersion['openai'] ? `(v${externalRewriteVersion['openai']})` : ''}</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleExternalRewrite('gemini')}
+                      disabled={isRewritingExternal || !message.trim()}
+                      className="flex-1 gap-2 border-blue-500/50 text-blue-600 hover:bg-blue-50"
+                    >
+                      {isRewritingExternal ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      <span className="font-hebrew">נסח מחדש – Gemini {externalRewriteVersion['gemini'] ? `(v${externalRewriteVersion['gemini']})` : ''}</span>
+                    </Button>
+                  </div>
                 </div>
                 
                 <Textarea
