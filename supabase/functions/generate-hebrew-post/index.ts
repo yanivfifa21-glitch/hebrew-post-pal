@@ -278,11 +278,35 @@ serve(async (req) => {
       return new Response(JSON.stringify(payload), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // Try to use the user's own API key first (so credits come from their account)
+    const effectiveUserId = isServiceRole ? (userId || null) : user!.id;
+    let userGeminiKey: string | null = null;
+    let userOpenaiKey: string | null = null;
+
+    if (effectiveUserId && effectiveUserId !== "service-role") {
+      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+      const { data: settings } = await supabaseAdmin
+        .from("app_settings")
+        .select("gemini_api_key, openai_api_key")
+        .eq("user_id", effectiveUserId)
+        .maybeSingle();
+
+      if (settings?.gemini_api_key) userGeminiKey = settings.gemini_api_key;
+      if (settings?.openai_api_key) userOpenaiKey = settings.openai_api_key;
+    }
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      const payload: ApiErr = { success: false, error: "AI is not configured" };
+    
+    const useUserGemini = !!userGeminiKey;
+    const useUserOpenai = !useUserGemini && !!userOpenaiKey;
+    const useLovable = !useUserGemini && !useUserOpenai;
+
+    if (useLovable && !LOVABLE_API_KEY) {
+      const payload: ApiErr = { success: false, error: "AI is not configured. Please add your Gemini or OpenAI API key in Settings." };
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+
+    console.log(`[generate-hebrew-post] AI provider: ${useUserGemini ? "user-gemini" : useUserOpenai ? "user-openai" : "lovable-gateway"}`);
 
     // Choose prompt based on mode
     let systemPrompt: string;
@@ -329,34 +353,75 @@ ${t}`;
 
     console.log("[generate-hebrew-post] Generating for user:", user.email);
 
-    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-      }),
-    });
+    // Build the AI request based on provider
+    let resp: Response;
+
+    if (useUserGemini) {
+      // Use user's own Gemini API key directly
+      resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${userGeminiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            { role: "user", parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] },
+          ],
+        }),
+      });
+    } else if (useUserOpenai) {
+      // Use user's own OpenAI API key directly
+      resp = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${userOpenaiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+        }),
+      });
+    } else {
+      // Fallback: Lovable AI gateway (owner's credits)
+      resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+        }),
+      });
+    }
 
     if (!resp.ok) {
       const txt = await resp.text();
-      const payload: ApiErr = {
-        success: false,
-        error: resp.status === 429 ? "AI rate limit - try again in a minute" : resp.status === 402 ? "AI credits required" : "AI error",
-        code: String(resp.status),
-      };
-      console.error("AI gateway error:", resp.status, txt);
+      const errMsg = resp.status === 429 ? "AI rate limit - try again in a minute" 
+        : resp.status === 402 ? "AI credits required" 
+        : useUserGemini ? "Gemini API error - check your API key" 
+        : useUserOpenai ? "OpenAI API error - check your API key" 
+        : "AI error";
+      const payload: ApiErr = { success: false, error: errMsg, code: String(resp.status) };
+      console.error("AI error:", resp.status, txt);
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const data = await resp.json();
-    let content = data?.choices?.[0]?.message?.content;
+    
+    // Parse response based on provider format
+    let content: string | undefined;
+    if (useUserGemini) {
+      content = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    } else {
+      content = data?.choices?.[0]?.message?.content;
+    }
 
     if (!content) {
       const payload: ApiErr = { success: false, error: "AI returned empty response" };
