@@ -403,17 +403,25 @@ ${t}`;
 
     if (!resp.ok) {
       const txt = await resp.text();
-      const payload: ApiErr = {
-        success: false,
-        error: resp.status === 429 ? "AI rate limit - try again in a minute" : resp.status === 402 ? "AI credits required" : "AI error",
-        code: String(resp.status),
-      };
-      console.error("AI gateway error:", resp.status, txt);
+      const errMsg = resp.status === 429 ? "AI rate limit - try again in a minute" 
+        : resp.status === 402 ? "AI credits required" 
+        : useUserGemini ? "Gemini API error - check your API key" 
+        : useUserOpenai ? "OpenAI API error - check your API key" 
+        : "AI error";
+      const payload: ApiErr = { success: false, error: errMsg, code: String(resp.status) };
+      console.error("AI error:", resp.status, txt);
       return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const data = await resp.json();
-    let content = data?.choices?.[0]?.message?.content;
+    
+    // Parse response based on provider format
+    let content: string | undefined;
+    if (useUserGemini) {
+      content = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    } else {
+      content = data?.choices?.[0]?.message?.content;
+    }
 
     if (!content) {
       const payload: ApiErr = { success: false, error: "AI returned empty response" };
