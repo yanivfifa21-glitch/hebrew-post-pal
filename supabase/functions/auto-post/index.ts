@@ -698,18 +698,19 @@ serve(async (req) => {
           continue;
         }
 
-        // 15-minute lockout for general queue
+        // 15-minute lockout + concurrent execution guard for general queue
         const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
         const { data: recentSent } = await supabase
           .from("products")
-          .select("id, updated_at")
+          .select("id, updated_at, status")
           .eq("user_id", userId)
-          .eq("status", "Sent")
-          .eq("sent_via", "auto")
+          .in("status", ["Sent", "processing"])
+          .in("sent_via", ["auto"])
           .gte("updated_at", fifteenMinutesAgo)
           .limit(1);
 
         if (recentSent && recentSent.length > 0) {
+          console.log(`[auto-post] User ${userId} [General]: Lockout active (${recentSent[0].status})`);
           continue;
         }
 
