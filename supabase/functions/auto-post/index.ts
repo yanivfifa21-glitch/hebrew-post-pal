@@ -836,17 +836,18 @@ serve(async (req) => {
           }
         }
 
-        // 15-minute lockout
+        // 15-minute lockout + concurrent execution guard
         const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
         const { data: recentSent } = await supabase
           .from("products")
-          .select("id, updated_at")
+          .select("id, updated_at, status")
           .eq("user_id", userId)
-          .eq("status", "Sent")
+          .in("status", ["Sent", "processing"])
           .gte("updated_at", fifteenMinutesAgo)
           .limit(1);
 
         if (recentSent && recentSent.length > 0) {
+          console.log(`[auto-post] User ${userId}: Lockout active (${recentSent[0].status} at ${recentSent[0].updated_at})`);
           results.push({ userId, status: "already_sent_this_slot" });
           continue;
         }
