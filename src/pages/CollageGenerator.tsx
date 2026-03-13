@@ -374,6 +374,7 @@ const CollageGenerator = () => {
       if (successCount > 0) {
         setSendDialogOpen(false);
         setSelectedAccounts(new Set());
+        setImportSelectedMap(new Map());
       }
     } catch (err: any) {
       console.error("[collage-send] General error:", err);
