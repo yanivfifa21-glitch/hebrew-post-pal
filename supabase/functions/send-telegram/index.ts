@@ -72,6 +72,10 @@ async function sendTelegramMessage(
     const isVideo = mediaType === 'video' || 
       imageUrl.match(/\.(mp4|mov|avi|webm|mkv)(\?|$)/i) !== null;
     
+    // Telegram caption limit: 1024 chars for photos/videos
+    const CAPTION_LIMIT = 1024;
+    const captionTooLong = caption.length > CAPTION_LIMIT;
+    
     if (isVideo) {
       console.log("[send-telegram] Downloading video for upload...");
       try {
@@ -82,8 +86,10 @@ async function sendTelegramMessage(
 
         const formData = new FormData();
         formData.append("chat_id", chatId);
-        formData.append("caption", caption);
-        formData.append("parse_mode", "HTML");
+        if (!captionTooLong) {
+          formData.append("caption", caption);
+          formData.append("parse_mode", "HTML");
+        }
         formData.append("video", videoBlob, "video.mp4");
         formData.append("supports_streaming", "true");
 
@@ -91,41 +97,73 @@ async function sendTelegramMessage(
           `https://api.telegram.org/bot${botToken}/sendVideo`,
           { method: "POST", body: formData }
         );
-        return await response.json();
+        const result = await response.json();
+        
+        // If caption was too long, send text as separate message
+        if (captionTooLong && result.ok) {
+          console.log("[send-telegram] Caption too long, sending text as separate message");
+          await sendTextOnly(botToken, chatId, caption);
+        }
+        return result;
       } catch (downloadErr) {
         console.error("[send-telegram] Video download failed, trying URL method:", downloadErr);
+        const body: any = { chat_id: chatId, video: imageUrl, supports_streaming: true };
+        if (!captionTooLong) {
+          body.caption = caption;
+          body.parse_mode = "HTML";
+        }
         const response = await fetch(
           `https://api.telegram.org/bot${botToken}/sendVideo`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chat_id: chatId, video: imageUrl, caption, parse_mode: "HTML", supports_streaming: true }),
+            body: JSON.stringify(body),
           }
         );
-        return await response.json();
+        const result = await response.json();
+        if (captionTooLong && result.ok) {
+          await sendTextOnly(botToken, chatId, caption);
+        }
+        return result;
       }
     } else {
+      const body: any = { chat_id: chatId, photo: imageUrl };
+      if (!captionTooLong) {
+        body.caption = caption;
+        body.parse_mode = "HTML";
+      }
       const response = await fetch(
         `https://api.telegram.org/bot${botToken}/sendPhoto`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chat_id: chatId, photo: imageUrl, caption, parse_mode: "HTML" }),
+          body: JSON.stringify(body),
         }
       );
-      return await response.json();
+      const result = await response.json();
+      
+      // If caption was too long, send text as separate message after the photo
+      if (captionTooLong && result.ok) {
+        console.log("[send-telegram] Caption too long, sending text as separate message");
+        await sendTextOnly(botToken, chatId, caption);
+      }
+      return result;
     }
   } else {
-    const response = await fetch(
-      `https://api.telegram.org/bot${botToken}/sendMessage`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId, text: caption, parse_mode: "HTML" }),
-      }
-    );
-    return await response.json();
+    return await sendTextOnly(botToken, chatId, caption);
   }
+}
+
+async function sendTextOnly(botToken: string, chatId: string, text: string): Promise<any> {
+  const response = await fetch(
+    `https://api.telegram.org/bot${botToken}/sendMessage`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" }),
+    }
+  );
+  return await response.json();
 }
 
 // Send album (media group) via Telegram
