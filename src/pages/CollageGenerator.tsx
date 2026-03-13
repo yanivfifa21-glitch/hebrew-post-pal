@@ -533,7 +533,10 @@ const CollageGenerator = () => {
                             <p className="text-center text-muted-foreground py-6 text-sm">אין חשבונות מוגדרים</p>
                           ) : (
                             <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                              {accounts.map(acc => (
+                              <p className="text-xs text-muted-foreground">הקולאז׳ נשלח רק לוואטסאפ (טלגרם מוגבל ל-1024 תווים לכיתוב)</p>
+                              {accounts.filter(a => a.account_type === "whatsapp").length === 0 ? (
+                                <p className="text-center text-muted-foreground py-4 text-sm">אין חשבונות וואטסאפ מוגדרים</p>
+                              ) : accounts.filter(a => a.account_type === "whatsapp").map(acc => (
                                 <label
                                   key={acc.id}
                                   className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer border transition-colors ${
@@ -545,7 +548,7 @@ const CollageGenerator = () => {
                                     onCheckedChange={() => toggleAccount(acc.id)}
                                   />
                                   <div className="flex items-center gap-2 flex-1 min-w-0">
-                                    <span className="text-lg">{acc.account_type === "telegram" ? "📱" : "💬"}</span>
+                                    <span className="text-lg">💬</span>
                                     <span className="text-sm font-medium truncate">{acc.account_name}</span>
                                     {!acc.is_active && (
                                       <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">לא פעיל</span>
