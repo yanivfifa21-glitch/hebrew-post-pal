@@ -3,9 +3,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
-import { PackageOpen, Loader2 } from "lucide-react";
+import { PackageOpen, Loader2, Search } from "lucide-react";
 
 export interface DBProduct {
   id: string;
@@ -100,28 +101,49 @@ export function ProductImportDialog({ onImport, maxProducts = 6 }: ProductImport
   const [products, setProducts] = useState<DBProduct[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [searchTimeout, setSearchTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchProducts = async (query: string = "") => {
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setLoading(false); return; }
+    
+    let q = supabase
+      .from("products")
+      .select("id, title, price, image_url, affiliate_link, hebrew_description")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+
+    if (query.trim()) {
+      q = q.or(`title.ilike.%${query.trim()}%,hebrew_description.ilike.%${query.trim()}%`);
+    } else {
+      q = q.limit(50);
+    }
+
+    const { data, error } = await q;
+    if (error) {
+      toast({ title: "שגיאה בטעינת מוצרים", variant: "destructive" });
+    } else {
+      setProducts(data || []);
+    }
+    setLoading(false);
+  };
 
   useEffect(() => {
     if (!open) return;
-    setLoading(true);
     setSelected(new Set());
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data, error } = await supabase
-        .from("products")
-        .select("id, title, price, image_url, affiliate_link, hebrew_description")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(50);
-      if (error) {
-        toast({ title: "שגיאה בטעינת מוצרים", variant: "destructive" });
-      } else {
-        setProducts(data || []);
-      }
-      setLoading(false);
-    })();
+    setSearch("");
+    fetchProducts();
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (searchTimeout) clearTimeout(searchTimeout);
+    const t = setTimeout(() => fetchProducts(search), 300);
+    setSearchTimeout(t);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const toggle = (id: string) => {
     setSelected(prev => {
@@ -155,6 +177,16 @@ export function ProductImportDialog({ onImport, maxProducts = 6 }: ProductImport
         <DialogHeader>
           <DialogTitle>בחר מוצרים לקולאז׳ (עד {maxProducts})</DialogTitle>
         </DialogHeader>
+
+        <div className="relative">
+          <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="חפש לפי שם או תיאור..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pr-9"
+          />
+        </div>
 
         {loading ? (
           <div className="flex justify-center py-8">
