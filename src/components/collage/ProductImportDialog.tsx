@@ -20,6 +20,8 @@ export interface DBProduct {
 interface ProductImportDialogProps {
   onImport: (products: DBProduct[]) => void;
   maxProducts?: number;
+  selectedMap: Map<string, DBProduct>;
+  onSelectedMapChange: (map: Map<string, DBProduct>) => void;
 }
 
 /** Extract a short product name from hebrew_description (first meaningful line) */
