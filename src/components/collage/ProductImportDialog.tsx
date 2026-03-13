@@ -98,10 +98,9 @@ export function extractLinkFromDesc(hebrewDesc: string | null): string {
   return match ? match[1] : "";
 }
 
-export function ProductImportDialog({ onImport, maxProducts = 6 }: ProductImportDialogProps) {
+export function ProductImportDialog({ onImport, maxProducts = 6, selectedMap, onSelectedMapChange }: ProductImportDialogProps) {
   const [open, setOpen] = useState(false);
   const [products, setProducts] = useState<DBProduct[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [searchTimeout, setSearchTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
