@@ -100,28 +100,49 @@ export function ProductImportDialog({ onImport, maxProducts = 6 }: ProductImport
   const [products, setProducts] = useState<DBProduct[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [searchTimeout, setSearchTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchProducts = async (query: string = "") => {
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setLoading(false); return; }
+    
+    let q = supabase
+      .from("products")
+      .select("id, title, price, image_url, affiliate_link, hebrew_description")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+
+    if (query.trim()) {
+      q = q.or(`title.ilike.%${query.trim()}%,hebrew_description.ilike.%${query.trim()}%`);
+    } else {
+      q = q.limit(50);
+    }
+
+    const { data, error } = await q;
+    if (error) {
+      toast({ title: "שגיאה בטעינת מוצרים", variant: "destructive" });
+    } else {
+      setProducts(data || []);
+    }
+    setLoading(false);
+  };
 
   useEffect(() => {
     if (!open) return;
-    setLoading(true);
     setSelected(new Set());
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data, error } = await supabase
-        .from("products")
-        .select("id, title, price, image_url, affiliate_link, hebrew_description")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(50);
-      if (error) {
-        toast({ title: "שגיאה בטעינת מוצרים", variant: "destructive" });
-      } else {
-        setProducts(data || []);
-      }
-      setLoading(false);
-    })();
+    setSearch("");
+    fetchProducts();
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (searchTimeout) clearTimeout(searchTimeout);
+    const t = setTimeout(() => fetchProducts(search), 300);
+    setSearchTimeout(t);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const toggle = (id: string) => {
     setSelected(prev => {
