@@ -20,6 +20,8 @@ export interface DBProduct {
 interface ProductImportDialogProps {
   onImport: (products: DBProduct[]) => void;
   maxProducts?: number;
+  selectedMap: Map<string, DBProduct>;
+  onSelectedMapChange: (map: Map<string, DBProduct>) => void;
 }
 
 /** Extract a short product name from hebrew_description (first meaningful line) */
@@ -96,10 +98,9 @@ export function extractLinkFromDesc(hebrewDesc: string | null): string {
   return match ? match[1] : "";
 }
 
-export function ProductImportDialog({ onImport, maxProducts = 6 }: ProductImportDialogProps) {
+export function ProductImportDialog({ onImport, maxProducts = 6, selectedMap, onSelectedMapChange }: ProductImportDialogProps) {
   const [open, setOpen] = useState(false);
   const [products, setProducts] = useState<DBProduct[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [searchTimeout, setSearchTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
@@ -132,7 +133,6 @@ export function ProductImportDialog({ onImport, maxProducts = 6 }: ProductImport
 
   useEffect(() => {
     if (!open) return;
-    setSelected(new Set());
     setSearch("");
     fetchProducts();
   }, [open]);
@@ -146,21 +146,20 @@ export function ProductImportDialog({ onImport, maxProducts = 6 }: ProductImport
   }, [search]);
 
   const toggle = (id: string) => {
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else if (next.size < maxProducts) {
-        next.add(id);
-      } else {
-        toast({ title: `ניתן לבחור עד ${maxProducts} מוצרים` });
-      }
-      return next;
-    });
+    const next = new Map(selectedMap);
+    if (next.has(id)) {
+      next.delete(id);
+    } else if (next.size < maxProducts) {
+      const product = products.find(p => p.id === id);
+      if (product) next.set(id, product);
+    } else {
+      toast({ title: `ניתן לבחור עד ${maxProducts} מוצרים` });
+    }
+    onSelectedMapChange(next);
   };
 
   const handleImport = () => {
-    const items = products.filter(p => selected.has(p.id));
+    const items = Array.from(selectedMap.values());
     onImport(items);
     setOpen(false);
   };
@@ -204,11 +203,11 @@ export function ProductImportDialog({ onImport, maxProducts = 6 }: ProductImport
                   <label
                     key={p.id}
                     className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer border transition-colors ${
-                      selected.has(p.id) ? "border-primary bg-primary/5" : "border-transparent hover:bg-muted/40"
+                      selectedMap.has(p.id) ? "border-primary bg-primary/5" : "border-transparent hover:bg-muted/40"
                     }`}
                   >
                     <Checkbox
-                      checked={selected.has(p.id)}
+                      checked={selectedMap.has(p.id)}
                       onCheckedChange={() => toggle(p.id)}
                     />
                     {p.image_url && (
@@ -233,9 +232,9 @@ export function ProductImportDialog({ onImport, maxProducts = 6 }: ProductImport
         )}
 
         <div className="flex justify-between items-center pt-2">
-          <span className="text-xs text-muted-foreground">{selected.size}/{maxProducts} נבחרו</span>
-          <Button onClick={handleImport} disabled={selected.size === 0} size="sm">
-            ייבא {selected.size > 0 ? `(${selected.size})` : ""}
+          <span className="text-xs text-muted-foreground">{selectedMap.size}/{maxProducts} נבחרו</span>
+          <Button onClick={handleImport} disabled={selectedMap.size === 0} size="sm">
+            ייבא {selectedMap.size > 0 ? `(${selectedMap.size})` : ""}
           </Button>
         </div>
       </DialogContent>
