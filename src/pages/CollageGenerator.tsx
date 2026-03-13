@@ -393,7 +393,7 @@ const CollageGenerator = () => {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-xl md:text-2xl font-bold gradient-text">יוצר קולאז׳</h1>
           <div className="flex gap-2">
-            <ProductImportDialog onImport={handleImportProducts} maxProducts={PRODUCT_COUNT} />
+            <ProductImportDialog onImport={handleImportProducts} maxProducts={PRODUCT_COUNT} selectedMap={importSelectedMap} onSelectedMapChange={setImportSelectedMap} />
             <Button
               variant="gradient"
               size="sm"
