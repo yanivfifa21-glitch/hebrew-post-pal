@@ -133,7 +133,6 @@ export function ProductImportDialog({ onImport, maxProducts = 6, selectedMap, on
 
   useEffect(() => {
     if (!open) return;
-    setSelected(new Set());
     setSearch("");
     fetchProducts();
   }, [open]);
