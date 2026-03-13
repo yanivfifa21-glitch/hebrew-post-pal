@@ -207,7 +207,7 @@ export function ProductImportDialog({ onImport, maxProducts = 6, selectedMap, on
                     }`}
                   >
                     <Checkbox
-                      checked={selected.has(p.id)}
+                      checked={selectedMap.has(p.id)}
                       onCheckedChange={() => toggle(p.id)}
                     />
                     {p.image_url && (
