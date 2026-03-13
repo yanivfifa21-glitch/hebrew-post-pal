@@ -232,9 +232,9 @@ export function ProductImportDialog({ onImport, maxProducts = 6, selectedMap, on
         )}
 
         <div className="flex justify-between items-center pt-2">
-          <span className="text-xs text-muted-foreground">{selected.size}/{maxProducts} נבחרו</span>
-          <Button onClick={handleImport} disabled={selected.size === 0} size="sm">
-            ייבא {selected.size > 0 ? `(${selected.size})` : ""}
+          <span className="text-xs text-muted-foreground">{selectedMap.size}/{maxProducts} נבחרו</span>
+          <Button onClick={handleImport} disabled={selectedMap.size === 0} size="sm">
+            ייבא {selectedMap.size > 0 ? `(${selectedMap.size})` : ""}
           </Button>
         </div>
       </DialogContent>
