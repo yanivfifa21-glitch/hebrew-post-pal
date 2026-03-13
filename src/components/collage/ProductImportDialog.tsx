@@ -203,7 +203,7 @@ export function ProductImportDialog({ onImport, maxProducts = 6, selectedMap, on
                   <label
                     key={p.id}
                     className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer border transition-colors ${
-                      selected.has(p.id) ? "border-primary bg-primary/5" : "border-transparent hover:bg-muted/40"
+                      selectedMap.has(p.id) ? "border-primary bg-primary/5" : "border-transparent hover:bg-muted/40"
                     }`}
                   >
                     <Checkbox
