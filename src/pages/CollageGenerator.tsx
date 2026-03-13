@@ -87,6 +87,7 @@ const CollageGenerator = () => {
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
   const [isSending, setIsSending] = useState(false);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
+  const [importSelectedMap, setImportSelectedMap] = useState<Map<string, DBProduct>>(new Map());
 
   const fetchAccounts = useCallback(async () => {
     setLoadingAccounts(true);
