@@ -44,6 +44,7 @@ const Coupons = () => {
 
   // Test area
   const [testText, setTestText] = useState("");
+  const [detectedSlots, setDetectedSlots] = useState<DetectedCouponSlot[]>([]);
   const [previewResult, setPreviewResult] = useState<{
     original: string;
     updated: string;
