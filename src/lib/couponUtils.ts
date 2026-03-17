@@ -142,8 +142,10 @@ export function detectCouponsInText(text: string): DetectedCouponSlot[] {
   return slots.slice(0, 2);
 }
 
-// --- COUPON REPLACEMENT (Slot-based with detected codes) ---
-// Takes detected slots and replaces them with new codes.
+// --- COUPON REPLACEMENT (Only Slot 2 / affiliate coupon gets replaced) ---
+// Coupon 1 = store coupon (NEVER replaced)
+// Coupon 2 = affiliate coupon (THIS gets replaced)
+// If only 1 coupon detected, it IS the affiliate coupon and gets replaced.
 export function replaceCouponsWithSlots(
   text: string,
   detectedSlots: DetectedCouponSlot[],
@@ -157,18 +159,22 @@ export function replaceCouponsWithSlots(
   let updatedText = text;
   const replacements: string[] = [];
 
-  // Slot 1: replace first detected code with newCode
-  const slot1 = detectedSlots[0];
-  const slot1Regex = new RegExp(slot1.code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-  updatedText = updatedText.replace(slot1Regex, newCode);
-  replacements.push(`${slot1.code} → ${newCode}`);
-
-  // Slot 2: replace second detected code with newCode2 (or newCode if no code2)
-  if (detectedSlots.length >= 2) {
-    const slot2 = detectedSlots[1];
-    const slot2Regex = new RegExp(slot2.code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-    updatedText = updatedText.replace(slot2Regex, newCode2 || newCode);
-    replacements.push(`${slot2.code} → ${newCode2 || newCode}`);
+  if (detectedSlots.length === 1) {
+    // Only one coupon found - this is the affiliate coupon, replace it
+    const slot = detectedSlots[0];
+    const regex = new RegExp(slot.code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    updatedText = updatedText.replace(regex, newCode);
+    replacements.push(`${slot.code} → ${newCode}`);
+  } else {
+    // Two coupons: Slot 1 = store coupon (keep!), Slot 2 = affiliate coupon (replace!)
+    const storeCoupon = detectedSlots[0];
+    const affiliateCoupon = detectedSlots[1];
+    
+    // Only replace Slot 2 (affiliate coupon)
+    const regex = new RegExp(affiliateCoupon.code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    updatedText = updatedText.replace(regex, newCode2 || newCode);
+    replacements.push(`${affiliateCoupon.code} → ${newCode2 || newCode}`);
+    replacements.push(`${storeCoupon.code} (קופון חנות - לא הוחלף)`);
   }
 
   return { updatedText, replacements };
