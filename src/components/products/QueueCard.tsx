@@ -357,28 +357,13 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelec
           <StockBadge product={product} onStockChecked={onStockChecked} />
 
           {/* Detected Coupons Display */}
-          {detectedCoupons.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 text-xs" dir="rtl">
-              <Ticket className="h-3.5 w-3.5 text-muted-foreground" />
-              {detectedCoupons.length === 1 ? (
-                <Badge variant="secondary" className="font-mono text-xs">
-                  קופון: {detectedCoupons[0].code}
-                  <span className="text-muted-foreground mr-1">(יוחלף)</span>
-                </Badge>
-              ) : (
-                <>
-                  <Badge variant="outline" className="font-mono text-xs border-muted-foreground/30">
-                    קופון 1: {detectedCoupons[0].code}
-                    <span className="text-muted-foreground mr-1">(חנות - נשאר)</span>
-                  </Badge>
-                  <Badge variant="secondary" className="font-mono text-xs">
-                    קופון 2: {detectedCoupons[1].code}
-                    <span className="text-muted-foreground mr-1">(יוחלף)</span>
-                  </Badge>
-                </>
-              )}
-            </div>
-          )}
+          <CouponBadges
+            text={hebrewDescription}
+            onTextUpdated={(newText) => {
+              setHebrewDescription(newText);
+              setHasUnsavedChanges(true);
+            }}
+          />
           {/* Editable Hebrew Description */}
           <div className="relative">
             <Textarea
