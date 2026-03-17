@@ -108,79 +108,81 @@ export function findBestCoupon(priceUsd: number, coupons: Coupon[]): Coupon | nu
 }
 
 // --- COUPON REPLACEMENT (Slot-based) ---
-// Finds coupon codes in text by looking for known coupon patterns.
-// Slot 1 = first code found, Slot 2 = second code found.
-// Replaces with the best matching coupon's code/code2.
+// Strategy:
+// 1. First check for explicit markers: COUPON1/COUPON2 or קופון1/קופון2
+// 2. Then scan coupon keyword lines for uppercase codes
+// Slot 1 = first code, Slot 2 = second code.
 export function replaceCouponInText(
   text: string, 
   newCode: string, 
   newCode2?: string
 ): { updatedText: string; replacedCode: string | null; mode: string } {
-  // Find ALL coupon-like codes in the text
-  // Strategy: look for codes near coupon keywords, or standalone uppercase codes
-  const foundCodes: { code: string; index: number }[] = [];
-  
-  // Pattern 1: Code after coupon keyword
-  const keywordPattern = /(?:קופון|קופונים|הקופון|הקופונים|קוד|הקוד|code|coupon|CODE|COUPON)\s*[:：]?\s*([A-Za-z][A-Za-z0-9]{2,19})/gi;
-  let match;
-  while ((match = keywordPattern.exec(text)) !== null) {
-    foundCodes.push({ code: match[1].toUpperCase(), index: match.index });
+  // --- Strategy 1: Explicit markers ---
+  const markerSlot1 = /(?:COUPON1|קופון1)/gi;
+  const markerSlot2 = /(?:COUPON2|קופון2)/gi;
+  if (markerSlot1.test(text)) {
+    let updatedText = text.replace(/(?:COUPON1|קופון1)/gi, newCode);
+    const replacements = [`קופון1 → ${newCode}`];
+    if (markerSlot2.test(text) && newCode2) {
+      updatedText = updatedText.replace(/(?:COUPON2|קופון2)/gi, newCode2);
+      replacements.push(`קופון2 → ${newCode2}`);
+    } else if (markerSlot2.test(updatedText)) {
+      updatedText = updatedText.replace(/(?:COUPON2|קופון2)/gi, newCode);
+      replacements.push(`קופון2 → ${newCode}`);
+    }
+    return { updatedText, replacedCode: "COUPON1", mode: `מרקר: ${replacements.join(' | ')}` };
   }
 
-  // Pattern 2: Standalone all-caps codes (4+ chars) on lines with coupon keywords
-  const couponKeywords = /(?:קופון|קופונים|הקופון|הקופונים|קוד|הקוד|code|coupon)/i;
+  // --- Strategy 2: Find codes on coupon-keyword lines ---
+  const foundCodes: { code: string; index: number }[] = [];
+  
+  // Coupon keywords (broad match - includes "הנחה" which often appears with codes)
+  const couponKeywords = /(?:קופון|קופונים|הקופון|הקופונים|קוד|הקוד|code|coupon|הנחה)/i;
+  
   const lines = text.split('\n');
   let charOffset = 0;
   for (const line of lines) {
     if (couponKeywords.test(line)) {
-      const standalonePattern = /\b([A-Z][A-Z0-9]{3,19})\b/g;
-      while ((match = standalonePattern.exec(line)) !== null) {
-        const code = match[1];
+      // Find all uppercase codes (3+ chars starting with letter) on this line
+      const codePattern = /\b([A-Za-z][A-Za-z0-9]{2,19})\b/g;
+      let match;
+      while ((match = codePattern.exec(line)) !== null) {
+        const code = match[1].toUpperCase();
+        // Skip common Hebrew-adjacent false positives and short generic words
+        if (/^(USD|ILS|NIS|CODE|COUPON|HTTP|HTTPS|COM|WWW)$/i.test(code)) continue;
         if (!foundCodes.some(f => f.code === code)) {
           foundCodes.push({ code, index: charOffset + match.index });
         }
       }
     }
-    charOffset += line.length + 1; // +1 for \n
+    charOffset += line.length + 1;
   }
 
   // Sort by position in text
   foundCodes.sort((a, b) => a.index - b.index);
 
-  // Deduplicate: get unique codes in order of first appearance
-  const uniqueCodes: string[] = [];
-  for (const fc of foundCodes) {
-    if (!uniqueCodes.includes(fc.code)) uniqueCodes.push(fc.code);
-  }
-
-  if (uniqueCodes.length === 0) {
+  if (foundCodes.length === 0) {
     return { updatedText: text, replacedCode: null, mode: "לא נמצא קוד קופון בטקסט" };
   }
 
   let updatedText = text;
   const replacements: string[] = [];
 
-  // Slot 1: Replace first unique code with newCode
-  const slot1Code = uniqueCodes[0];
+  // Slot 1: Replace first code with newCode
+  const slot1Code = foundCodes[0].code;
   const slot1Regex = new RegExp(slot1Code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
   updatedText = updatedText.replace(slot1Regex, newCode);
   replacements.push(`${slot1Code} → ${newCode}`);
 
-  // Slot 2: Replace second unique code with newCode2 (if exists)
-  if (uniqueCodes.length >= 2 && newCode2) {
-    const slot2Code = uniqueCodes[1];
+  // Slot 2: Replace second code with newCode2 (or newCode if no code2)
+  if (foundCodes.length >= 2) {
+    const slot2Code = foundCodes[1].code;
     const slot2Regex = new RegExp(slot2Code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-    updatedText = updatedText.replace(slot2Regex, newCode2);
-    replacements.push(`${slot2Code} → ${newCode2}`);
-  } else if (uniqueCodes.length >= 2 && !newCode2) {
-    // No code2 available, replace second slot with same code
-    const slot2Code = uniqueCodes[1];
-    const slot2Regex = new RegExp(slot2Code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-    updatedText = updatedText.replace(slot2Regex, newCode);
-    replacements.push(`${slot2Code} → ${newCode}`);
+    updatedText = updatedText.replace(slot2Regex, newCode2 || newCode);
+    replacements.push(`${slot2Code} → ${newCode2 || newCode}`);
   }
 
-  const mode = uniqueCodes.length === 1 
+  const mode = foundCodes.length === 1 
     ? `קופון יחיד: ${replacements[0]}` 
     : `קופון כפול: ${replacements.join(' | ')}`;
 
