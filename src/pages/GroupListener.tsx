@@ -912,6 +912,18 @@ const GroupListener = () => {
                               {getPostFinalText(post, hasRewrite ? (choice || 'original') : 'original')}
                             </p>
                           </div>
+                          {/* Coupon Badges */}
+                          <div className="px-2">
+                            <CouponBadges
+                              text={getPostFinalText(post, hasRewrite ? (choice || 'original') : 'original')}
+                              onTextUpdated={async (newText) => {
+                                await supabase.from("captured_posts").update({ modified_text: newText }).eq("id", post.id);
+                                setCapturedPosts(prev => prev.map(p => p.id === post.id ? { ...p, modified_text: newText } : p));
+                                setTextChoice(prev => ({ ...prev, [post.id]: 'rewrite' }));
+                              }}
+                              compact
+                            />
+                          </div>
                           {/* Actions */}
                           <div className="flex gap-1 p-2 pt-0 flex-wrap">
                             <Button variant="gradient" size="sm" className="h-7 text-[10px] gap-1 flex-1" onClick={() => openQueueDialog(post)} disabled={isBulkProcessing || post.status === "queued"}>
