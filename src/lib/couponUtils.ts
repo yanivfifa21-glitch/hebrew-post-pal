@@ -15,14 +15,17 @@ export interface CouponCampaign {
   coupons: Coupon[];
 }
 
+export interface DetectedCouponSlot {
+  code: string;
+  index: number;  // position in text
+}
+
 // --- BULK IMPORT PARSER ---
-// Parses text like: "3$ מעל 15$ – ILMAR1 / ILAFF1"
 export function parseBulkCoupons(text: string): Coupon[] {
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
   const result: Coupon[] = [];
 
   for (const line of lines) {
-    // Extract all dollar amounts from the line
     const dollarAmounts: number[] = [];
     const dollarPattern = /(\d+(?:\.\d+)?)\s*\$/g;
     const dollarPattern2 = /\$\s*(\d+(?:\.\d+)?)/g;
@@ -38,12 +41,9 @@ export function parseBulkCoupons(text: string): Coupon[] {
 
     if (dollarAmounts.length < 2) continue;
 
-    // First amount = discount, second = min spend
     const discount = Math.min(...dollarAmounts);
     const minSpend = Math.max(...dollarAmounts);
 
-    // Extract coupon codes: uppercase alphanumeric, 3+ chars
-    // Look after – or - or : for codes
     const codesSection = line.replace(/.*[–\-:]\s*/, '');
     const codePattern = /([A-Za-z][A-Za-z0-9]{2,19})/g;
     const codes: string[] = [];
@@ -66,7 +66,6 @@ export function parseBulkCoupons(text: string): Coupon[] {
 
 // --- PRICE DETECTION LOGIC ---
 export function detectReferencePrice(text: string, exchangeRate: number): { priceUsd: number | null; source: string } {
-  // Step A: Look for USD prices ($XX, $XX.XX)
   const usdMatches = text.match(/\$\s?(\d+(?:[.,]\d{1,2})?)/g);
   if (usdMatches && usdMatches.length > 0) {
     const prices = usdMatches.map(m => parseFloat(m.replace(/\$/g, '').replace(',', '.').trim()));
@@ -74,7 +73,6 @@ export function detectReferencePrice(text: string, exchangeRate: number): { pric
     if (isFinite(lowest)) return { priceUsd: lowest, source: `$ (USD) - $${lowest}` };
   }
 
-  // Step B: Look for ILS prices (₪XX, XX₪, XX ש"ח, XX שח, XX שקל, XX שקלים)
   const ilsPatterns = [
     /₪\s?(\d+(?:[.,]\d{1,2})?)/g,
     /(\d+(?:[.,]\d{1,2})?)\s?₪/g,
@@ -107,92 +105,98 @@ export function findBestCoupon(priceUsd: number, coupons: Coupon[]): Coupon | nu
   return eligible.length > 0 ? eligible[0] : null;
 }
 
-// --- COUPON REPLACEMENT (Slot-based) ---
-// Strategy:
-// 1. First check for explicit markers: COUPON1/COUPON2 or קופון1/קופון2
-// 2. Then scan coupon keyword lines for uppercase codes
-// Slot 1 = first code, Slot 2 = second code.
-export function replaceCouponInText(
-  text: string, 
-  newCode: string, 
-  newCode2?: string
-): { updatedText: string; replacedCode: string | null; mode: string } {
-  // --- Strategy 1: Explicit markers ---
-  const markerSlot1 = /(?:COUPON1|קופון1)/gi;
-  const markerSlot2 = /(?:COUPON2|קופון2)/gi;
-  if (markerSlot1.test(text)) {
-    let updatedText = text.replace(/(?:COUPON1|קופון1)/gi, newCode);
-    const replacements = [`קופון1 → ${newCode}`];
-    if (markerSlot2.test(text) && newCode2) {
-      updatedText = updatedText.replace(/(?:COUPON2|קופון2)/gi, newCode2);
-      replacements.push(`קופון2 → ${newCode2}`);
-    } else if (markerSlot2.test(updatedText)) {
-      updatedText = updatedText.replace(/(?:COUPON2|קופון2)/gi, newCode);
-      replacements.push(`קופון2 → ${newCode}`);
-    }
-    return { updatedText, replacedCode: "COUPON1", mode: `מרקר: ${replacements.join(' | ')}` };
-  }
+// --- COUPON DETECTION ---
+// Detects coupon codes in text. Returns up to 2 slots.
+// Scans lines with coupon-related keywords for Latin alphanumeric codes.
+const BLACKLIST = /^(USD|ILS|NIS|CODE|COUPON|HTTP|HTTPS|COM|WWW|OFF|NEW|TOP|APP|HOT|BIG|BUY|GET|VIP|PRO|MAX|SALE|FREE|BEST|SHOP|DEAL|LINK)$/i;
 
-  // --- Strategy 2: Find codes on coupon-keyword lines ---
-  const foundCodes: { code: string; index: number }[] = [];
+export function detectCouponsInText(text: string): DetectedCouponSlot[] {
+  if (!text?.trim()) return [];
   
-  // Coupon keywords (broad match - includes "הנחה" which often appears with codes)
-  const couponKeywords = /(?:קופון|קופונים|הקופון|הקופונים|קוד|הקוד|code|coupon|הנחה)/i;
-  
+  const slots: DetectedCouponSlot[] = [];
   const lines = text.split('\n');
   let charOffset = 0;
+
+  // Keywords that indicate a coupon line
+  const couponKeywords = /(?:קופון|קופונים|הקופון|קוד|הקוד|code|coupon|הנחה|discount|promo)/i;
+
   for (const line of lines) {
     if (couponKeywords.test(line)) {
-      // Find all uppercase codes (3+ chars starting with letter) on this line
-      const codePattern = /\b([A-Za-z][A-Za-z0-9]{2,19})\b/g;
+      // Find Latin alphanumeric codes (3+ chars, starts with letter)
+      // Use a pattern that doesn't rely on \b for Hebrew compatibility
+      const codePattern = /(?:^|[\s:;,/|()–\-])([A-Za-z][A-Za-z0-9]{2,19})(?=$|[\s:;,/|()–\-])/g;
       let match;
       while ((match = codePattern.exec(line)) !== null) {
         const code = match[1].toUpperCase();
-        // Skip common Hebrew-adjacent false positives and short generic words
-        if (/^(USD|ILS|NIS|CODE|COUPON|HTTP|HTTPS|COM|WWW)$/i.test(code)) continue;
-        if (!foundCodes.some(f => f.code === code)) {
-          foundCodes.push({ code, index: charOffset + match.index });
+        if (BLACKLIST.test(code)) continue;
+        if (!slots.some(s => s.code === code)) {
+          slots.push({ code, index: charOffset + match.index });
         }
       }
     }
     charOffset += line.length + 1;
   }
 
-  // Sort by position in text
-  foundCodes.sort((a, b) => a.index - b.index);
+  // Sort by position, return up to 2
+  slots.sort((a, b) => a.index - b.index);
+  return slots.slice(0, 2);
+}
 
-  if (foundCodes.length === 0) {
-    return { updatedText: text, replacedCode: null, mode: "לא נמצא קוד קופון בטקסט" };
+// --- COUPON REPLACEMENT (Slot-based with detected codes) ---
+// Takes detected slots and replaces them with new codes.
+export function replaceCouponsWithSlots(
+  text: string,
+  detectedSlots: DetectedCouponSlot[],
+  newCode: string,
+  newCode2?: string
+): { updatedText: string; replacements: string[] } {
+  if (detectedSlots.length === 0) {
+    return { updatedText: text, replacements: [] };
   }
 
   let updatedText = text;
   const replacements: string[] = [];
 
-  // Slot 1: Replace first code with newCode
-  const slot1Code = foundCodes[0].code;
-  const slot1Regex = new RegExp(slot1Code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+  // Slot 1: replace first detected code with newCode
+  const slot1 = detectedSlots[0];
+  const slot1Regex = new RegExp(slot1.code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
   updatedText = updatedText.replace(slot1Regex, newCode);
-  replacements.push(`${slot1Code} → ${newCode}`);
+  replacements.push(`${slot1.code} → ${newCode}`);
 
-  // Slot 2: Replace second code with newCode2 (or newCode if no code2)
-  if (foundCodes.length >= 2) {
-    const slot2Code = foundCodes[1].code;
-    const slot2Regex = new RegExp(slot2Code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+  // Slot 2: replace second detected code with newCode2 (or newCode if no code2)
+  if (detectedSlots.length >= 2) {
+    const slot2 = detectedSlots[1];
+    const slot2Regex = new RegExp(slot2.code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
     updatedText = updatedText.replace(slot2Regex, newCode2 || newCode);
-    replacements.push(`${slot2Code} → ${newCode2 || newCode}`);
+    replacements.push(`${slot2.code} → ${newCode2 || newCode}`);
   }
 
-  const mode = foundCodes.length === 1 
-    ? `קופון יחיד: ${replacements[0]}` 
+  return { updatedText, replacements };
+}
+
+// --- LEGACY WRAPPER (used by Queue bulk update) ---
+export function replaceCouponInText(
+  text: string,
+  newCode: string,
+  newCode2?: string
+): { updatedText: string; replacedCode: string | null; mode: string } {
+  const detected = detectCouponsInText(text);
+  if (detected.length === 0) {
+    return { updatedText: text, replacedCode: null, mode: "לא נמצא קוד קופון בטקסט" };
+  }
+
+  const { updatedText, replacements } = replaceCouponsWithSlots(text, detected, newCode, newCode2);
+  const mode = detected.length === 1
+    ? `קופון יחיד: ${replacements[0]}`
     : `קופון כפול: ${replacements.join(' | ')}`;
 
-  return { updatedText, replacedCode: slot1Code, mode };
+  return { updatedText, replacedCode: detected[0].code, mode };
 }
 
 // --- APPLY COUPON TO TEXT ---
 export function applyCouponToText(
-  text: string, 
-  coupons: Coupon[], 
+  text: string,
+  coupons: Coupon[],
   exchangeRate: number
 ): { updatedText: string; applied: boolean; info: string } {
   if (!text?.trim() || coupons.length === 0) {
@@ -209,10 +213,11 @@ export function applyCouponToText(
     return { updatedText: text, applied: false, info: `מחיר $${priceUsd} - אין קופון מתאים` };
   }
 
-  const { updatedText, replacedCode, mode } = replaceCouponInText(text, bestCoupon.code, bestCoupon.code2);
-  if (!replacedCode) {
-    return { updatedText: text, applied: false, info: mode };
+  const detected = detectCouponsInText(text);
+  if (detected.length === 0) {
+    return { updatedText: text, applied: false, info: "לא נמצא קוד קופון בטקסט" };
   }
 
-  return { updatedText, applied: true, info: `${mode}` };
+  const { updatedText, replacements } = replaceCouponsWithSlots(text, detected, bestCoupon.code, bestCoupon.code2);
+  return { updatedText, applied: true, info: replacements.join(' | ') };
 }
