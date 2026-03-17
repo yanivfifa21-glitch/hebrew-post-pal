@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { ZoneSelector } from "@/components/products/ZoneSelector";
+import { CouponBadges } from "@/components/products/CouponBadges";
 import { 
   Send, 
   Image as ImageIcon, 
