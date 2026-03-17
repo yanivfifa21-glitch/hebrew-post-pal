@@ -1038,6 +1038,16 @@ const GroupListener = () => {
                           </div>
                         ) : null}
 
+                        {/* Coupon Badges */}
+                        <CouponBadges
+                          text={getPostFinalText(post, hasRewrite ? (choice || 'original') : 'original')}
+                          onTextUpdated={async (newText) => {
+                            await supabase.from("captured_posts").update({ modified_text: newText }).eq("id", post.id);
+                            setCapturedPosts(prev => prev.map(p => p.id === post.id ? { ...p, modified_text: newText } : p));
+                            setTextChoice(prev => ({ ...prev, [post.id]: 'rewrite' }));
+                          }}
+                        />
+
                         {/* URLs - old vs new */}
                         <div className="flex flex-col gap-1 text-xs">
                           {post.original_url && (
