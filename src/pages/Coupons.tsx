@@ -8,10 +8,11 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
-import { Trash2, Plus, Ticket, DollarSign, ArrowRightLeft, Eye, Save, Wand2 } from "lucide-react";
+import { Trash2, Plus, Ticket, DollarSign, ArrowRightLeft, Eye, Save, Wand2, Upload } from "lucide-react";
 import { 
-  detectReferencePrice, findBestCoupon, replaceCouponInText, 
+  detectReferencePrice, findBestCoupon, replaceCouponInText, parseBulkCoupons,
   type Coupon, type CouponCampaign 
 } from "@/lib/couponUtils";
 
@@ -35,6 +36,11 @@ const Coupons = () => {
   const [coupons, setCoupons] = useState<Coupon[]>([
     { code: "", discount_usd: 0, min_spend_usd: 0 }
   ]);
+
+  // Bulk import
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [bulkPreview, setBulkPreview] = useState<Coupon[]>([]);
 
   // Test area
   const [testText, setTestText] = useState("");
@@ -121,6 +127,24 @@ const Coupons = () => {
     setCoupons(prev => prev.map((c, idx) => idx === i ? { ...c, [field]: val } : c));
   };
 
+  // Bulk import handlers
+  const handleBulkParse = () => {
+    const parsed = parseBulkCoupons(bulkText);
+    setBulkPreview(parsed);
+    if (parsed.length === 0) {
+      toast({ title: "לא זוהו קופונים", description: "בדוק שהפורמט נכון", variant: "destructive" });
+    }
+  };
+
+  const handleBulkApply = () => {
+    if (bulkPreview.length === 0) return;
+    setCoupons(bulkPreview);
+    setBulkDialogOpen(false);
+    setBulkText("");
+    setBulkPreview([]);
+    toast({ title: `✅ ${bulkPreview.length} קופונים יובאו בהצלחה` });
+  };
+
   const handleTestReplace = () => {
     if (!testText.trim()) return;
     const validCoupons = coupons.filter(c => c.code.trim() !== "");
@@ -151,7 +175,7 @@ const Coupons = () => {
       return;
     }
 
-    const { updatedText, replacedCode, mode } = replaceCouponInText(testText, bestCoupon.code);
+    const { updatedText, replacedCode, mode } = replaceCouponInText(testText, bestCoupon.code, bestCoupon.code2);
     setPreviewResult({
       original: testText,
       updated: updatedText,
@@ -225,24 +249,39 @@ const Coupons = () => {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label className="text-base font-semibold">קופונים</Label>
-                <Button variant="outline" size="sm" onClick={addCoupon}>
-                  <Plus className="h-4 w-4 ml-1" />
-                  הוסף קופון
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setBulkDialogOpen(true)}>
+                    <Upload className="h-4 w-4 ml-1" />
+                    ייבוא מהיר
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={addCoupon}>
+                    <Plus className="h-4 w-4 ml-1" />
+                    הוסף קופון
+                  </Button>
+                </div>
               </div>
 
               {coupons.map((coupon, i) => (
                 <div key={i} className="flex items-end gap-2 p-3 rounded-lg border border-border/50 bg-card/50">
                   <div className="flex-1 space-y-1">
-                    <Label className="text-xs text-muted-foreground">קוד קופון</Label>
+                    <Label className="text-xs text-muted-foreground">קוד 1 (ראשי)</Label>
                     <Input
                       value={coupon.code}
                       onChange={e => updateCoupon(i, "code", e.target.value.toUpperCase())}
-                      placeholder="ILFEB4"
+                      placeholder="ILMAR1"
                       className="font-mono"
                     />
                   </div>
-                  <div className="w-28 space-y-1">
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-xs text-muted-foreground">קוד 2 (משני)</Label>
+                    <Input
+                      value={coupon.code2 || ""}
+                      onChange={e => updateCoupon(i, "code2", e.target.value.toUpperCase())}
+                      placeholder="ILAFF1"
+                      className="font-mono"
+                    />
+                  </div>
+                  <div className="w-24 space-y-1">
                     <Label className="text-xs text-muted-foreground">הנחה ($)</Label>
                     <Input
                       type="number"
@@ -251,7 +290,7 @@ const Coupons = () => {
                       placeholder="10"
                     />
                   </div>
-                  <div className="w-28 space-y-1">
+                  <div className="w-24 space-y-1">
                     <Label className="text-xs text-muted-foreground">מינימום ($)</Label>
                     <Input
                       type="number"
@@ -273,7 +312,7 @@ const Coupons = () => {
 
               {coupons.length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-4">
-                  אין קופונים - לחץ "הוסף קופון" להתחיל
+                  אין קופונים - לחץ "הוסף קופון" או "ייבוא מהיר"
                 </p>
               )}
             </div>
@@ -318,7 +357,9 @@ const Coupons = () => {
                   {previewResult.matchedCoupon && (
                     <Badge className="gap-1 bg-primary/15 text-primary border-primary/30">
                       <Ticket className="h-3 w-3" />
-                      {previewResult.matchedCoupon.code} (${previewResult.matchedCoupon.discount_usd} off)
+                      {previewResult.matchedCoupon.code}
+                      {previewResult.matchedCoupon.code2 && ` / ${previewResult.matchedCoupon.code2}`}
+                      {` ($${previewResult.matchedCoupon.discount_usd} off)`}
                     </Badge>
                   )}
                   <Badge variant={previewResult.replacedCode ? "default" : "secondary"} className="gap-1">
@@ -346,6 +387,53 @@ const Coupons = () => {
             )}
           </CardContent>
         </Card>
+
+        {/* Bulk Import Dialog */}
+        <Dialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen}>
+          <DialogContent className="max-w-lg" dir="rtl">
+            <DialogHeader>
+              <DialogTitle>ייבוא מהיר של קופונים</DialogTitle>
+              <DialogDescription>
+                הדבק את רשימת הקופונים בפורמט חופשי, לדוגמא:
+                <br />
+                <code className="text-xs bg-muted px-1 rounded">3$ מעל 15$ – ILMAR1 / ILAFF1</code>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <Textarea
+                value={bulkText}
+                onChange={e => setBulkText(e.target.value)}
+                placeholder={`3$ מעל 15$ – ILMAR1 / ILAFF1\n5$ מעל 30$ – ILMAR2 / ILAFF2\n7$ מעל 49$ – ILMAR3 / ILAFF3`}
+                className="min-h-[180px] text-sm font-mono"
+                dir="ltr"
+              />
+              <Button onClick={handleBulkParse} className="w-full" variant="outline">
+                <Eye className="h-4 w-4 ml-2" />
+                זהה קופונים
+              </Button>
+
+              {bulkPreview.length > 0 && (
+                <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                  <Label className="text-sm font-semibold">זוהו {bulkPreview.length} קופונים:</Label>
+                  {bulkPreview.map((c, i) => (
+                    <div key={i} className="flex items-center gap-2 text-sm p-2 rounded border border-border/50 bg-muted/30">
+                      <Badge variant="outline" className="font-mono">{c.code}</Badge>
+                      {c.code2 && <Badge variant="outline" className="font-mono">{c.code2}</Badge>}
+                      <span className="text-muted-foreground">${c.discount_usd} הנחה מעל ${c.min_spend_usd}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setBulkDialogOpen(false)}>ביטול</Button>
+              <Button onClick={handleBulkApply} disabled={bulkPreview.length === 0}>
+                <Upload className="h-4 w-4 ml-2" />
+                החל {bulkPreview.length} קופונים
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </MainLayout>
   );
