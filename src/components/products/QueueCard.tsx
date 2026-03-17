@@ -7,8 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StockBadge } from "@/components/products/StockBadge";
-import { Rocket, Trash2, Loader2, ExternalLink, Star, ShoppingCart, Copy, Check, Clock, RotateCcw, Edit, Save, X, Ticket } from "lucide-react";
-import { detectCouponsInText, DetectedCouponSlot } from "@/lib/couponUtils";
+import { Rocket, Trash2, Loader2, ExternalLink, Star, ShoppingCart, Copy, Check, Clock, RotateCcw, Edit, Save, X } from "lucide-react";
+import { CouponBadges } from "@/components/products/CouponBadges";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -27,7 +27,6 @@ interface QueueCardProps {
 export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelected = false, onSelectionChange, showCheckbox = false, onStockChecked }: QueueCardProps) => {
   const [hebrewDescription, setHebrewDescription] = useState(product.hebrew_description || "");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const detectedCoupons: DetectedCouponSlot[] = detectCouponsInText(hebrewDescription);
   const [isSending, setIsSending] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isReturning, setIsReturning] = useState(false);
@@ -358,28 +357,13 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelec
           <StockBadge product={product} onStockChecked={onStockChecked} />
 
           {/* Detected Coupons Display */}
-          {detectedCoupons.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 text-xs" dir="rtl">
-              <Ticket className="h-3.5 w-3.5 text-muted-foreground" />
-              {detectedCoupons.length === 1 ? (
-                <Badge variant="secondary" className="font-mono text-xs">
-                  קופון: {detectedCoupons[0].code}
-                  <span className="text-muted-foreground mr-1">(יוחלף)</span>
-                </Badge>
-              ) : (
-                <>
-                  <Badge variant="outline" className="font-mono text-xs border-muted-foreground/30">
-                    קופון 1: {detectedCoupons[0].code}
-                    <span className="text-muted-foreground mr-1">(חנות - נשאר)</span>
-                  </Badge>
-                  <Badge variant="secondary" className="font-mono text-xs">
-                    קופון 2: {detectedCoupons[1].code}
-                    <span className="text-muted-foreground mr-1">(יוחלף)</span>
-                  </Badge>
-                </>
-              )}
-            </div>
-          )}
+          <CouponBadges
+            text={hebrewDescription}
+            onTextUpdated={(newText) => {
+              setHebrewDescription(newText);
+              setHasUnsavedChanges(true);
+            }}
+          />
           {/* Editable Hebrew Description */}
           <div className="relative">
             <Textarea

@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { ZoneSelector } from "@/components/products/ZoneSelector";
+import { CouponBadges } from "@/components/products/CouponBadges";
 import { 
   Send, 
   Image as ImageIcon, 
@@ -1363,6 +1364,9 @@ export default function ManualSend() {
                   className="min-h-[150px] font-hebrew text-right resize-none"
                   dir="rtl"
                 />
+
+                {/* Coupon Badges */}
+                <CouponBadges text={message} onTextUpdated={(newText) => setMessage(newText)} />
 
                 {/* Media */}
                 <div className="space-y-3">

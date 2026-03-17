@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { StockBadge } from "@/components/products/StockBadge";
+import { CouponBadges } from "@/components/products/CouponBadges";
 import {
   Plus, Trash2, Loader2, Eye, EyeOff, Check, X, Edit,
   Headphones, Copy, Settings, Wifi, WifiOff, Filter,
@@ -911,6 +912,18 @@ const GroupListener = () => {
                               {getPostFinalText(post, hasRewrite ? (choice || 'original') : 'original')}
                             </p>
                           </div>
+                          {/* Coupon Badges */}
+                          <div className="px-2">
+                            <CouponBadges
+                              text={getPostFinalText(post, hasRewrite ? (choice || 'original') : 'original')}
+                              onTextUpdated={async (newText) => {
+                                await supabase.from("captured_posts").update({ modified_text: newText }).eq("id", post.id);
+                                setCapturedPosts(prev => prev.map(p => p.id === post.id ? { ...p, modified_text: newText } : p));
+                                setTextChoice(prev => ({ ...prev, [post.id]: 'rewrite' }));
+                              }}
+                              compact
+                            />
+                          </div>
                           {/* Actions */}
                           <div className="flex gap-1 p-2 pt-0 flex-wrap">
                             <Button variant="gradient" size="sm" className="h-7 text-[10px] gap-1 flex-1" onClick={() => openQueueDialog(post)} disabled={isBulkProcessing || post.status === "queued"}>
@@ -1024,6 +1037,16 @@ const GroupListener = () => {
                             <p className="whitespace-pre-wrap">{getPostFinalText(post, 'original')}</p>
                           </div>
                         ) : null}
+
+                        {/* Coupon Badges */}
+                        <CouponBadges
+                          text={getPostFinalText(post, hasRewrite ? (choice || 'original') : 'original')}
+                          onTextUpdated={async (newText) => {
+                            await supabase.from("captured_posts").update({ modified_text: newText }).eq("id", post.id);
+                            setCapturedPosts(prev => prev.map(p => p.id === post.id ? { ...p, modified_text: newText } : p));
+                            setTextChoice(prev => ({ ...prev, [post.id]: 'rewrite' }));
+                          }}
+                        />
 
                         {/* URLs - old vs new */}
                         <div className="flex flex-col gap-1 text-xs">
