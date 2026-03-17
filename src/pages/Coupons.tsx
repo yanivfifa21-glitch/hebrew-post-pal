@@ -12,8 +12,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { toast } from "@/hooks/use-toast";
 import { Trash2, Plus, Ticket, DollarSign, ArrowRightLeft, Eye, Save, Wand2, Upload } from "lucide-react";
 import { 
-  detectReferencePrice, findBestCoupon, replaceCouponInText, parseBulkCoupons,
-  type Coupon, type CouponCampaign 
+  detectReferencePrice, findBestCoupon, detectCouponsInText, replaceCouponsWithSlots, parseBulkCoupons,
+  type Coupon, type CouponCampaign, type DetectedCouponSlot
 } from "@/lib/couponUtils";
 
 interface Campaign {
