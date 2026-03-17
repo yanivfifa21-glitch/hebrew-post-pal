@@ -364,12 +364,23 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelec
               setHasUnsavedChanges(true);
             }}
           />
-          {/* Hebrew Description (read-only display) */}
-          {hebrewDescription && (
+          {/* Hebrew Description */}
+          {isEditing ? (
+            <div>
+              <Label className="text-xs">תיאור בעברית</Label>
+              <Textarea
+                value={hebrewDescription}
+                onChange={(e) => setHebrewDescription(e.target.value)}
+                className="mt-1 min-h-[120px] text-sm text-right font-hebrew resize-none"
+                dir="rtl"
+                placeholder="תיאור בעברית..."
+              />
+            </div>
+          ) : hebrewDescription ? (
             <div className="bg-muted/30 rounded-lg p-3 text-sm text-right font-hebrew border border-border/50 max-h-[120px] overflow-y-auto" dir="rtl">
               <p className="whitespace-pre-wrap text-muted-foreground">{hebrewDescription}</p>
             </div>
-          )}
+          ) : null}
           <div className="flex gap-1 justify-end">
             <Button
               variant="ghost"
