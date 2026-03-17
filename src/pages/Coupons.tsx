@@ -368,8 +368,38 @@ const Coupons = () => {
               בדוק והצג תצוגה מקדימה
             </Button>
 
+            {/* Detected Coupon Slots Box */}
+            {detectedSlots.length > 0 && (
+              <div className="p-3 rounded-lg border-2 border-dashed border-primary/40 bg-primary/5 space-y-2">
+                <Label className="text-sm font-semibold flex items-center gap-2">
+                  <Ticket className="h-4 w-4 text-primary" />
+                  קופונים שזוהו בפוסט:
+                </Label>
+                <div className="flex flex-wrap gap-3">
+                  {detectedSlots.map((slot, i) => (
+                    <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-background border border-border">
+                      <Badge variant="outline" className="text-xs">סלוט {i + 1}</Badge>
+                      <span className="font-mono font-bold text-sm">{slot.code}</span>
+                      {previewResult?.matchedCoupon && (
+                        <span className="text-xs text-muted-foreground">
+                          → <span className="font-mono text-primary font-bold">
+                            {i === 0 ? previewResult.matchedCoupon.code : (previewResult.matchedCoupon.code2 || previewResult.matchedCoupon.code)}
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {testText.trim() && detectedSlots.length === 0 && previewResult && (
+              <div className="p-3 rounded-lg border border-destructive/30 bg-destructive/5 text-sm text-destructive">
+                ⚠️ לא זוהו קודי קופון בפוסט. ודא שיש שורה עם מילות מפתח: קופון, קוד, הנחה, code
+              </div>
+            )}
+
             {previewResult && (
-              <div className="space-y-4 mt-4">
+              <div className="space-y-4 mt-2">
                 {/* Detection info */}
                 <div className="flex flex-wrap gap-2">
                   <Badge variant="outline" className="gap-1">
