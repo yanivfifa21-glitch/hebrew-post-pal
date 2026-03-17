@@ -151,6 +151,10 @@ const Coupons = () => {
     const validCoupons = coupons.filter(c => c.code.trim() !== "");
     const { priceUsd, source } = detectReferencePrice(testText, exchangeRate);
 
+    // Step 1: Detect coupon codes in text
+    const detected = detectCouponsInText(testText);
+    setDetectedSlots(detected);
+
     if (priceUsd === null || validCoupons.length === 0) {
       setPreviewResult({
         original: testText,
@@ -176,14 +180,31 @@ const Coupons = () => {
       return;
     }
 
-    const { updatedText, replacedCode, mode } = replaceCouponInText(testText, bestCoupon.code, bestCoupon.code2);
+    if (detected.length === 0) {
+      setPreviewResult({
+        original: testText,
+        updated: testText,
+        priceInfo: source,
+        matchedCoupon: bestCoupon,
+        replacementMode: "לא זוהו קודי קופון בטקסט",
+        replacedCode: null,
+      });
+      return;
+    }
+
+    // Step 2: Replace using detected slots
+    const { updatedText, replacements } = replaceCouponsWithSlots(testText, detected, bestCoupon.code, bestCoupon.code2);
+    const mode = detected.length === 1
+      ? `קופון יחיד: ${replacements[0]}`
+      : `קופון כפול: ${replacements.join(' | ')}`;
+
     setPreviewResult({
       original: testText,
       updated: updatedText,
       priceInfo: source,
       matchedCoupon: bestCoupon,
       replacementMode: mode,
-      replacedCode,
+      replacedCode: detected[0].code,
     });
   };
 
