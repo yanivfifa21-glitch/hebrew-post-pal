@@ -12,8 +12,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { toast } from "@/hooks/use-toast";
 import { Trash2, Plus, Ticket, DollarSign, ArrowRightLeft, Eye, Save, Wand2, Upload } from "lucide-react";
 import { 
-  detectReferencePrice, findBestCoupon, replaceCouponInText, parseBulkCoupons,
-  type Coupon, type CouponCampaign 
+  detectReferencePrice, findBestCoupon, detectCouponsInText, replaceCouponsWithSlots, parseBulkCoupons,
+  type Coupon, type CouponCampaign, type DetectedCouponSlot
 } from "@/lib/couponUtils";
 
 interface Campaign {
@@ -44,6 +44,7 @@ const Coupons = () => {
 
   // Test area
   const [testText, setTestText] = useState("");
+  const [detectedSlots, setDetectedSlots] = useState<DetectedCouponSlot[]>([]);
   const [previewResult, setPreviewResult] = useState<{
     original: string;
     updated: string;
@@ -150,6 +151,10 @@ const Coupons = () => {
     const validCoupons = coupons.filter(c => c.code.trim() !== "");
     const { priceUsd, source } = detectReferencePrice(testText, exchangeRate);
 
+    // Step 1: Detect coupon codes in text
+    const detected = detectCouponsInText(testText);
+    setDetectedSlots(detected);
+
     if (priceUsd === null || validCoupons.length === 0) {
       setPreviewResult({
         original: testText,
@@ -175,14 +180,31 @@ const Coupons = () => {
       return;
     }
 
-    const { updatedText, replacedCode, mode } = replaceCouponInText(testText, bestCoupon.code, bestCoupon.code2);
+    if (detected.length === 0) {
+      setPreviewResult({
+        original: testText,
+        updated: testText,
+        priceInfo: source,
+        matchedCoupon: bestCoupon,
+        replacementMode: "לא זוהו קודי קופון בטקסט",
+        replacedCode: null,
+      });
+      return;
+    }
+
+    // Step 2: Replace using detected slots
+    const { updatedText, replacements } = replaceCouponsWithSlots(testText, detected, bestCoupon.code, bestCoupon.code2);
+    const mode = detected.length === 1
+      ? `קופון יחיד: ${replacements[0]}`
+      : `קופון כפול: ${replacements.join(' | ')}`;
+
     setPreviewResult({
       original: testText,
       updated: updatedText,
       priceInfo: source,
       matchedCoupon: bestCoupon,
       replacementMode: mode,
-      replacedCode,
+      replacedCode: detected[0].code,
     });
   };
 
@@ -346,8 +368,38 @@ const Coupons = () => {
               בדוק והצג תצוגה מקדימה
             </Button>
 
+            {/* Detected Coupon Slots Box */}
+            {detectedSlots.length > 0 && (
+              <div className="p-3 rounded-lg border-2 border-dashed border-primary/40 bg-primary/5 space-y-2">
+                <Label className="text-sm font-semibold flex items-center gap-2">
+                  <Ticket className="h-4 w-4 text-primary" />
+                  קופונים שזוהו בפוסט:
+                </Label>
+                <div className="flex flex-wrap gap-3">
+                  {detectedSlots.map((slot, i) => (
+                    <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-background border border-border">
+                      <Badge variant="outline" className="text-xs">סלוט {i + 1}</Badge>
+                      <span className="font-mono font-bold text-sm">{slot.code}</span>
+                      {previewResult?.matchedCoupon && (
+                        <span className="text-xs text-muted-foreground">
+                          → <span className="font-mono text-primary font-bold">
+                            {i === 0 ? previewResult.matchedCoupon.code : (previewResult.matchedCoupon.code2 || previewResult.matchedCoupon.code)}
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {testText.trim() && detectedSlots.length === 0 && previewResult && (
+              <div className="p-3 rounded-lg border border-destructive/30 bg-destructive/5 text-sm text-destructive">
+                ⚠️ לא זוהו קודי קופון בפוסט. ודא שיש שורה עם מילות מפתח: קופון, קוד, הנחה, code
+              </div>
+            )}
+
             {previewResult && (
-              <div className="space-y-4 mt-4">
+              <div className="space-y-4 mt-2">
                 {/* Detection info */}
                 <div className="flex flex-wrap gap-2">
                   <Badge variant="outline" className="gap-1">
