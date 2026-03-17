@@ -27,7 +27,6 @@ interface QueueCardProps {
 export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelected = false, onSelectionChange, showCheckbox = false, onStockChecked }: QueueCardProps) => {
   const [hebrewDescription, setHebrewDescription] = useState(product.hebrew_description || "");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const detectedCoupons: DetectedCouponSlot[] = detectCouponsInText(hebrewDescription);
   const [isSending, setIsSending] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isReturning, setIsReturning] = useState(false);
