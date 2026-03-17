@@ -364,65 +364,26 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelec
               setHasUnsavedChanges(true);
             }}
           />
-          {/* Editable Hebrew Description */}
-          <div className="relative">
-            <Textarea
-              value={hebrewDescription}
-              onChange={(e) => {
-                setHebrewDescription(e.target.value);
-                if (e.target.value !== (product.hebrew_description || "")) {
-                  setHasUnsavedChanges(true);
-                } else {
-                  setHasUnsavedChanges(false);
-                }
-              }}
-              className="min-h-[120px] text-sm text-right font-hebrew bg-muted/30 border-border/50 focus:border-primary/50 resize-none pr-10"
-              dir="rtl"
-              placeholder="תיאור בעברית..."
-            />
-            <div className="absolute top-2 left-2 flex gap-1">
-              {hasUnsavedChanges && !isEditing && (
-                <Button
-                  variant="gradient"
-                  size="sm"
-                  onClick={async () => {
-                    setIsSaving(true);
-                    try {
-                      const { error } = await supabase
-                        .from("products")
-                        .update({ hebrew_description: hebrewDescription })
-                        .eq("id", product.id);
-                      if (error) throw error;
-                      product.hebrew_description = hebrewDescription;
-                      setHasUnsavedChanges(false);
-                      toast({ title: "✅ נשמר!" });
-                    } catch {
-                      toast({ title: "שמירה נכשלה", variant: "destructive" });
-                    } finally {
-                      setIsSaving(false);
-                    }
-                  }}
-                  disabled={isSaving}
-                  className="h-7 text-xs"
-                >
-                  {isSaving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
-                  שמור
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleCopyToClipboard}
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                title="Copy to clipboard"
-              >
-                {isCopied ? (
-                  <Check className="h-4 w-4 text-success" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-              </Button>
+          {/* Hebrew Description (read-only display) */}
+          {hebrewDescription && (
+            <div className="bg-muted/30 rounded-lg p-3 text-sm text-right font-hebrew border border-border/50 max-h-[120px] overflow-y-auto" dir="rtl">
+              <p className="whitespace-pre-wrap text-muted-foreground">{hebrewDescription}</p>
             </div>
+          )}
+          <div className="flex gap-1 justify-end">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleCopyToClipboard}
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              title="Copy to clipboard"
+            >
+              {isCopied ? (
+                <Check className="h-4 w-4 text-success" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+            </Button>
           </div>
 
           {/* Action Buttons */}
