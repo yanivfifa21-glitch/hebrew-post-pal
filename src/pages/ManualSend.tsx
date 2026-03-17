@@ -1365,6 +1365,9 @@ export default function ManualSend() {
                   dir="rtl"
                 />
 
+                {/* Coupon Badges */}
+                <CouponBadges text={message} onTextUpdated={(newText) => setMessage(newText)} />
+
                 {/* Media */}
                 <div className="space-y-3">
                   <Label className="font-hebrew">מדיה (אופציונלי)</Label>
