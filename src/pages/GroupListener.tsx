@@ -15,7 +15,7 @@ import {
   Plus, Trash2, Loader2, Eye, EyeOff, Check, X, Edit,
   Headphones, Copy, Settings, Wifi, WifiOff, Filter,
   CheckCircle, XCircle, Link, Sparkles, Send, ChevronDown, ListPlus,
-  LayoutGrid, LayoutList, ChevronLeft, ChevronRight
+  LayoutGrid, LayoutList, ChevronLeft, ChevronRight, ClipboardPaste, Replace
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
