@@ -15,7 +15,7 @@ import {
   Plus, Trash2, Loader2, Eye, EyeOff, Check, X, Edit,
   Headphones, Copy, Settings, Wifi, WifiOff, Filter,
   CheckCircle, XCircle, Link, Sparkles, Send, ChevronDown, ListPlus,
-  LayoutGrid, LayoutList, ChevronLeft, ChevronRight
+  LayoutGrid, LayoutList, ChevronLeft, ChevronRight, ClipboardPaste, Replace
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -85,6 +85,9 @@ const GroupListener = () => {
   const [rewritingPostId, setRewritingPostId] = useState<string | null>(null);
   const [rewritingOpenAIPostId, setRewritingOpenAIPostId] = useState<string | null>(null);
   const [openaiVersionMap, setOpenaiVersionMap] = useState<Record<string, number>>({});
+  // Replace rewrite dialog
+  const [replacePostId, setReplacePostId] = useState<string | null>(null);
+  const [replaceText, setReplaceText] = useState("");
 
   useEffect(() => {
     fetchGroups();
@@ -908,9 +911,27 @@ const GroupListener = () => {
                           )}
                           {/* Text */}
                           <div className="p-2 flex-1 min-h-0">
-                            <p className="text-xs text-muted-foreground line-clamp-4 whitespace-pre-wrap" dir="rtl">
-                              {getPostFinalText(post, hasRewrite ? (choice || 'original') : 'original')}
-                            </p>
+                            <div className="flex items-start justify-between gap-1">
+                              <p className="text-xs text-muted-foreground line-clamp-4 whitespace-pre-wrap flex-1" dir="rtl">
+                                {getPostFinalText(post, hasRewrite ? (choice || 'original') : 'original')}
+                              </p>
+                              <div className="flex flex-col gap-0.5 flex-shrink-0">
+                                <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => {
+                                  navigator.clipboard.writeText(getPostFinalText(post, hasRewrite ? (choice || 'original') : 'original'));
+                                  toast({ title: "הועתק!" });
+                                }}>
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                                {hasRewrite && (
+                                  <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => {
+                                    setReplacePostId(post.id);
+                                    setReplaceText("");
+                                  }}>
+                                    <Edit className="h-3 w-3" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
                           </div>
                           {/* Coupon Badges */}
                           <div className="px-2">
@@ -1028,6 +1049,20 @@ const GroupListener = () => {
                                   <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/40 flex-shrink-0" />
                                 )}
                                 <span className="text-xs font-semibold">✨ מנוסח מחדש</span>
+                                <div className="flex gap-1 mr-auto" onClick={(e) => e.stopPropagation()}>
+                                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => {
+                                    navigator.clipboard.writeText(post.modified_text || "");
+                                    toast({ title: "הועתק!", description: "הטקסט המנוסח הועתק ללוח" });
+                                  }}>
+                                    <Copy className="h-3 w-3" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => {
+                                    setReplacePostId(post.id);
+                                    setReplaceText("");
+                                  }}>
+                                    <Edit className="h-3 w-3" />
+                                  </Button>
+                                </div>
                               </div>
                               <p className="text-xs mr-7 whitespace-pre-wrap">{post.modified_text}</p>
                             </label>
@@ -1531,6 +1566,49 @@ const GroupListener = () => {
             </div>
           </div>
         )}
+
+        {/* Replace rewrite dialog */}
+        <Dialog open={!!replacePostId} onOpenChange={(open) => { if (!open) setReplacePostId(null); }}>
+          <DialogContent className="max-w-md" dir="rtl">
+            <DialogHeader>
+              <DialogTitle className="font-hebrew">החלף ניסוח מחדש</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <Textarea
+                value={replaceText}
+                onChange={(e) => setReplaceText(e.target.value)}
+                placeholder="הדבק כאן את הטקסט החדש..."
+                className="min-h-[150px] text-sm font-hebrew"
+                dir="rtl"
+              />
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" className="gap-1" onClick={async () => {
+                  try {
+                    const text = await navigator.clipboard.readText();
+                    setReplaceText(text);
+                    toast({ title: "הודבק!", description: "הטקסט הודבק מהלוח" });
+                  } catch {
+                    toast({ title: "שגיאה", description: "לא ניתן לקרוא מהלוח", variant: "destructive" });
+                  }
+                }}>
+                  <ClipboardPaste className="h-3 w-3" />
+                  הדבק
+                </Button>
+                <Button variant="gradient" size="sm" className="gap-1 flex-1" disabled={!replaceText.trim()} onClick={async () => {
+                  if (!replacePostId || !replaceText.trim()) return;
+                  await supabase.from("captured_posts").update({ modified_text: replaceText.trim() }).eq("id", replacePostId);
+                  setCapturedPosts(prev => prev.map(p => p.id === replacePostId ? { ...p, modified_text: replaceText.trim() } : p));
+                  setTextChoice(prev => ({ ...prev, [replacePostId]: 'rewrite' }));
+                  toast({ title: "הוחלף!", description: "הניסוח מחדש הוחלף בהצלחה" });
+                  setReplacePostId(null);
+                }}>
+                  <Replace className="h-3 w-3" />
+                  החלף
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </MainLayout>
   );
