@@ -1548,6 +1548,49 @@ const GroupListener = () => {
             </div>
           </div>
         )}
+
+        {/* Replace rewrite dialog */}
+        <Dialog open={!!replacePostId} onOpenChange={(open) => { if (!open) setReplacePostId(null); }}>
+          <DialogContent className="max-w-md" dir="rtl">
+            <DialogHeader>
+              <DialogTitle className="font-hebrew">החלף ניסוח מחדש</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <Textarea
+                value={replaceText}
+                onChange={(e) => setReplaceText(e.target.value)}
+                placeholder="הדבק כאן את הטקסט החדש..."
+                className="min-h-[150px] text-sm font-hebrew"
+                dir="rtl"
+              />
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" className="gap-1" onClick={async () => {
+                  try {
+                    const text = await navigator.clipboard.readText();
+                    setReplaceText(text);
+                    toast({ title: "הודבק!", description: "הטקסט הודבק מהלוח" });
+                  } catch {
+                    toast({ title: "שגיאה", description: "לא ניתן לקרוא מהלוח", variant: "destructive" });
+                  }
+                }}>
+                  <ClipboardPaste className="h-3 w-3" />
+                  הדבק
+                </Button>
+                <Button variant="gradient" size="sm" className="gap-1 flex-1" disabled={!replaceText.trim()} onClick={async () => {
+                  if (!replacePostId || !replaceText.trim()) return;
+                  await supabase.from("captured_posts").update({ modified_text: replaceText.trim() }).eq("id", replacePostId);
+                  setCapturedPosts(prev => prev.map(p => p.id === replacePostId ? { ...p, modified_text: replaceText.trim() } : p));
+                  setTextChoice(prev => ({ ...prev, [replacePostId]: 'rewrite' }));
+                  toast({ title: "הוחלף!", description: "הניסוח מחדש הוחלף בהצלחה" });
+                  setReplacePostId(null);
+                }}>
+                  <Replace className="h-3 w-3" />
+                  החלף
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </MainLayout>
   );
