@@ -911,9 +911,27 @@ const GroupListener = () => {
                           )}
                           {/* Text */}
                           <div className="p-2 flex-1 min-h-0">
-                            <p className="text-xs text-muted-foreground line-clamp-4 whitespace-pre-wrap" dir="rtl">
-                              {getPostFinalText(post, hasRewrite ? (choice || 'original') : 'original')}
-                            </p>
+                            <div className="flex items-start justify-between gap-1">
+                              <p className="text-xs text-muted-foreground line-clamp-4 whitespace-pre-wrap flex-1" dir="rtl">
+                                {getPostFinalText(post, hasRewrite ? (choice || 'original') : 'original')}
+                              </p>
+                              <div className="flex flex-col gap-0.5 flex-shrink-0">
+                                <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => {
+                                  navigator.clipboard.writeText(getPostFinalText(post, hasRewrite ? (choice || 'original') : 'original'));
+                                  toast({ title: "הועתק!" });
+                                }}>
+                                  <Copy className="h-3 w-3" />
+                                </Button>
+                                {hasRewrite && (
+                                  <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => {
+                                    setReplacePostId(post.id);
+                                    setReplaceText("");
+                                  }}>
+                                    <Edit className="h-3 w-3" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
                           </div>
                           {/* Coupon Badges */}
                           <div className="px-2">
