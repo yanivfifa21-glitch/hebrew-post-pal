@@ -85,6 +85,9 @@ const GroupListener = () => {
   const [rewritingPostId, setRewritingPostId] = useState<string | null>(null);
   const [rewritingOpenAIPostId, setRewritingOpenAIPostId] = useState<string | null>(null);
   const [openaiVersionMap, setOpenaiVersionMap] = useState<Record<string, number>>({});
+  // Replace rewrite dialog
+  const [replacePostId, setReplacePostId] = useState<string | null>(null);
+  const [replaceText, setReplaceText] = useState("");
 
   useEffect(() => {
     fetchGroups();
