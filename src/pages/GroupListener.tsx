@@ -1031,6 +1031,20 @@ const GroupListener = () => {
                                   <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/40 flex-shrink-0" />
                                 )}
                                 <span className="text-xs font-semibold">✨ מנוסח מחדש</span>
+                                <div className="flex gap-1 mr-auto" onClick={(e) => e.stopPropagation()}>
+                                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => {
+                                    navigator.clipboard.writeText(post.modified_text || "");
+                                    toast({ title: "הועתק!", description: "הטקסט המנוסח הועתק ללוח" });
+                                  }}>
+                                    <Copy className="h-3 w-3" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => {
+                                    setReplacePostId(post.id);
+                                    setReplaceText("");
+                                  }}>
+                                    <Edit className="h-3 w-3" />
+                                  </Button>
+                                </div>
                               </div>
                               <p className="text-xs mr-7 whitespace-pre-wrap">{post.modified_text}</p>
                             </label>
