@@ -100,52 +100,69 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
   const mediaType = product.media_type || 'image';
   const isVideo = mediaType === 'video' || (imageUrl && imageUrl.match(/\.(mp4|mov|avi|webm|mkv)(\?|$)/i) !== null);
 
-  // Helper: attempt sending with given parse_mode, return response
+  // Helper: attempt sending with given parse_mode
   async function trySend(parseMode: string | null, caption: string): Promise<boolean> {
     if (imageUrl) {
-      if (isVideo) {
-        try {
-          const videoResponse = await fetch(imageUrl);
-          if (!videoResponse.ok) throw new Error(`Failed to download video: ${videoResponse.status}`);
-          const videoBlob = await videoResponse.blob();
-          const formData = new FormData();
-          formData.append("chat_id", chatId);
-          formData.append("caption", caption);
-          if (parseMode) formData.append("parse_mode", parseMode);
-          formData.append("video", videoBlob, "video.mp4");
+      // Always download and upload as blob to avoid Cloudflare/CDN blocks
+      try {
+        const mediaResponse = await fetch(imageUrl);
+        if (!mediaResponse.ok) throw new Error(`Failed to download media: ${mediaResponse.status}`);
+        const mediaBlob = await mediaResponse.blob();
+        
+        const formData = new FormData();
+        formData.append("chat_id", chatId);
+        formData.append("caption", caption);
+        if (parseMode) formData.append("parse_mode", parseMode);
+        
+        let endpoint: string;
+        if (isVideo) {
+          formData.append("video", mediaBlob, "video.mp4");
           formData.append("supports_streaming", "true");
-          const res = await fetch(`https://api.telegram.org/bot${token}/sendVideo`, { method: "POST", body: formData });
-          if (res.ok) return true;
-          const errText = await res.text();
-          console.log(`[auto-post] Video FormData failed (${parseMode}): ${errText}`);
-          // Try URL method
-          const body: any = { chat_id: chatId, video: imageUrl, caption, supports_streaming: true };
-          if (parseMode) body.parse_mode = parseMode;
-          const res2 = await fetch(`https://api.telegram.org/bot${token}/sendVideo`, {
-            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-          });
-          if (res2.ok) return true;
-          await res2.text();
-          return false;
-        } catch {
-          const body: any = { chat_id: chatId, video: imageUrl, caption, supports_streaming: true };
-          if (parseMode) body.parse_mode = parseMode;
-          const res = await fetch(`https://api.telegram.org/bot${token}/sendVideo`, {
-            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-          });
-          if (res.ok) return true;
-          await res.text();
-          return false;
+          endpoint = `https://api.telegram.org/bot${token}/sendVideo`;
+        } else {
+          formData.append("photo", mediaBlob, "image.jpg");
+          endpoint = `https://api.telegram.org/bot${token}/sendPhoto`;
         }
-      } else {
-        const body: any = { chat_id: chatId, photo: imageUrl, caption };
-        if (parseMode) body.parse_mode = parseMode;
-        const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-        });
+        
+        const res = await fetch(endpoint, { method: "POST", body: formData });
         if (res.ok) return true;
         const errText = await res.text();
-        console.log(`[auto-post] Photo failed (${parseMode}): ${errText}`);
+        console.log(`[auto-post] Blob upload failed (${parseMode}): ${errText}`);
+        
+        // Fallback: try URL method in case blob upload had issues
+        const urlBody: any = { chat_id: chatId, caption };
+        if (parseMode) urlBody.parse_mode = parseMode;
+        if (isVideo) {
+          urlBody.video = imageUrl;
+          urlBody.supports_streaming = true;
+        } else {
+          urlBody.photo = imageUrl;
+        }
+        const res2 = await fetch(
+          `https://api.telegram.org/bot${token}/${isVideo ? 'sendVideo' : 'sendPhoto'}`,
+          { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(urlBody) }
+        );
+        if (res2.ok) return true;
+        const errText2 = await res2.text();
+        console.log(`[auto-post] URL method also failed (${parseMode}): ${errText2}`);
+        return false;
+      } catch (dlErr) {
+        console.log(`[auto-post] Media download failed: ${dlErr}, trying URL method...`);
+        // Fallback to URL method
+        const urlBody: any = { chat_id: chatId, caption };
+        if (parseMode) urlBody.parse_mode = parseMode;
+        if (isVideo) {
+          urlBody.video = imageUrl;
+          urlBody.supports_streaming = true;
+        } else {
+          urlBody.photo = imageUrl;
+        }
+        const res = await fetch(
+          `https://api.telegram.org/bot${token}/${isVideo ? 'sendVideo' : 'sendPhoto'}`,
+          { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(urlBody) }
+        );
+        if (res.ok) return true;
+        await res.text();
         return false;
       }
     } else {
@@ -168,21 +185,6 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
   console.log("[auto-post] HTML send failed, retrying as plain text...");
   const plainText = stripHtmlTags(text);
   if (await trySend(null, plainText)) return;
-  
-  // If media sending failed, try sending as text-only (no image) as last resort
-  if (imageUrl) {
-    console.log("[auto-post] Media send failed, falling back to text-only message...");
-    const textBody: any = { chat_id: chatId, text: plainText };
-    const textRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(textBody)
-    });
-    if (textRes.ok) {
-      console.log("[auto-post] ✓ Text-only fallback succeeded");
-      return;
-    }
-    const textErr = await textRes.text();
-    console.log(`[auto-post] Text-only fallback also failed: ${textErr}`);
-  }
   
   throw new Error("שליחה לטלגרם נכשלה גם עם HTML וגם כטקסט רגיל");
 }
