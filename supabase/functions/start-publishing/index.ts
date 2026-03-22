@@ -73,70 +73,75 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
   const imageUrl = product.image_url;
   const mediaType = product.media_type || 'image';
   
-  // Determine if video based on media_type or file extension
   const isVideo = mediaType === 'video' || 
     (imageUrl && imageUrl.match(/\.(mp4|mov|avi|webm|mkv)(\?|$)/i) !== null);
   
   // Send with media if available
   if (imageUrl) {
-    let url: string;
-    const body: any = { chat_id: chatId, parse_mode: "HTML" };
-    
-    if (isVideo) {
-      url = `https://api.telegram.org/bot${token}/sendVideo`;
-      body.video = imageUrl;
-      body.caption = text;
-    } else {
-      url = `https://api.telegram.org/bot${token}/sendPhoto`;
-      body.photo = imageUrl;
-      body.caption = text;
+    // Try blob upload first to avoid Cloudflare/CDN blocks on Telegram servers
+    try {
+      const mediaResponse = await fetch(imageUrl);
+      if (!mediaResponse.ok) throw new Error(`Download failed: ${mediaResponse.status}`);
+      const mediaBlob = await mediaResponse.blob();
+      
+      const formData = new FormData();
+      formData.append("chat_id", chatId);
+      formData.append("caption", text);
+      formData.append("parse_mode", "HTML");
+      
+      if (isVideo) {
+        formData.append("video", mediaBlob, "video.mp4");
+        formData.append("supports_streaming", "true");
+      } else {
+        formData.append("photo", mediaBlob, "image.jpg");
+      }
+      
+      const endpoint = `https://api.telegram.org/bot${token}/${isVideo ? 'sendVideo' : 'sendPhoto'}`;
+      const res = await fetch(endpoint, { method: "POST", body: formData });
+      
+      if (res.ok) return;
+      
+      const errText = await res.text();
+      console.log(`[sendToTelegram] Blob upload failed: ${errText}`);
+    } catch (dlErr) {
+      console.log(`[sendToTelegram] Blob approach failed: ${dlErr}`);
     }
-
-    // First attempt
+    
+    // Fallback: try URL method with retry
+    const urlBody: any = { chat_id: chatId, parse_mode: "HTML" };
+    if (isVideo) {
+      urlBody.video = imageUrl;
+      urlBody.caption = text;
+      urlBody.supports_streaming = true;
+    } else {
+      urlBody.photo = imageUrl;
+      urlBody.caption = text;
+    }
+    
+    const url = `https://api.telegram.org/bot${token}/${isVideo ? 'sendVideo' : 'sendPhoto'}`;
     let res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(urlBody),
     });
     
-    if (res.ok) {
-      return; // Success with media
-    }
+    if (res.ok) return;
     
-    // First attempt failed - wait 2 seconds and retry once
     const firstError = await res.text();
-    console.log(`[sendToTelegram] First attempt failed, retrying in 2s. Error: ${firstError}`);
+    console.log(`[sendToTelegram] URL method failed, retrying in 2s. Error: ${firstError}`);
     
     await new Promise(resolve => setTimeout(resolve, 2000));
     
     res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(urlBody),
     });
     
-    if (res.ok) {
-      console.log(`[sendToTelegram] Retry succeeded`);
-      return; // Success on retry
-    }
+    if (res.ok) return;
     
-    // Both attempts failed - fallback to text-only message
     const secondError = await res.text();
-    console.log(`[sendToTelegram] Media failed, falling back to text-only. Error: ${secondError}`);
-    
-    const fallbackRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text }),
-    });
-    
-    if (fallbackRes.ok) {
-      console.log(`[sendToTelegram] ✓ Text-only fallback succeeded`);
-      return;
-    }
-    
-    const fallbackError = await fallbackRes.text();
-    throw new Error(`שליחה נכשלה גם עם מדיה וגם כטקסט: ${fallbackError}`);
+    throw new Error(`שליחת ${isVideo ? 'וידאו' : 'תמונה'} נכשלה: ${secondError}`);
   }
   
   // No media - send as text message
