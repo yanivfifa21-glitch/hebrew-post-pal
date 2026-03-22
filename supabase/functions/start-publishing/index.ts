@@ -120,9 +120,23 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
       return; // Success on retry
     }
     
-    // Both attempts failed - throw error (don't send without image)
+    // Both attempts failed - fallback to text-only message
     const secondError = await res.text();
-    throw new Error(`שליחת ${isVideo ? 'וידאו' : 'תמונה'} נכשלה: ${secondError}`);
+    console.log(`[sendToTelegram] Media failed, falling back to text-only. Error: ${secondError}`);
+    
+    const fallbackRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text }),
+    });
+    
+    if (fallbackRes.ok) {
+      console.log(`[sendToTelegram] ✓ Text-only fallback succeeded`);
+      return;
+    }
+    
+    const fallbackError = await fallbackRes.text();
+    throw new Error(`שליחה נכשלה גם עם מדיה וגם כטקסט: ${fallbackError}`);
   }
   
   // No media - send as text message
