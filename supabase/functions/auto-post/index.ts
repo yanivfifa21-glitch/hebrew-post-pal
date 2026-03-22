@@ -169,6 +169,21 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
   const plainText = stripHtmlTags(text);
   if (await trySend(null, plainText)) return;
   
+  // If media sending failed, try sending as text-only (no image) as last resort
+  if (imageUrl) {
+    console.log("[auto-post] Media send failed, falling back to text-only message...");
+    const textBody: any = { chat_id: chatId, text: plainText };
+    const textRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(textBody)
+    });
+    if (textRes.ok) {
+      console.log("[auto-post] ✓ Text-only fallback succeeded");
+      return;
+    }
+    const textErr = await textRes.text();
+    console.log(`[auto-post] Text-only fallback also failed: ${textErr}`);
+  }
+  
   throw new Error("שליחה לטלגרם נכשלה גם עם HTML וגם כטקסט רגיל");
 }
 
