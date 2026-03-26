@@ -127,6 +127,40 @@ async function sendTelegramMessage(
         return result;
       }
     } else {
+      // Try blob upload first to avoid CDN/Cloudflare blocks
+      console.log("[send-telegram] Trying blob upload for photo...");
+      try {
+        const photoResponse = await fetch(imageUrl);
+        if (!photoResponse.ok) throw new Error(`Download failed: ${photoResponse.status}`);
+        const photoBlob = await photoResponse.blob();
+
+        const formData = new FormData();
+        formData.append("chat_id", chatId);
+        if (!captionTooLong) {
+          formData.append("caption", caption);
+          formData.append("parse_mode", "HTML");
+        }
+        formData.append("photo", photoBlob, "image.jpg");
+
+        const response = await fetch(
+          `https://api.telegram.org/bot${botToken}/sendPhoto`,
+          { method: "POST", body: formData }
+        );
+        const result = await response.json();
+
+        if (result.ok) {
+          if (captionTooLong) {
+            console.log("[send-telegram] Caption too long, sending text as separate message");
+            await sendTextOnly(botToken, chatId, caption);
+          }
+          return result;
+        }
+        console.log("[send-telegram] Blob upload failed:", result.description);
+      } catch (dlErr) {
+        console.log("[send-telegram] Photo blob approach failed:", dlErr);
+      }
+
+      // Fallback: URL method
       const body: any = { chat_id: chatId, photo: imageUrl };
       if (!captionTooLong) {
         body.caption = caption;
@@ -142,7 +176,6 @@ async function sendTelegramMessage(
       );
       const result = await response.json();
       
-      // If caption was too long, send text as separate message after the photo
       if (captionTooLong && result.ok) {
         console.log("[send-telegram] Caption too long, sending text as separate message");
         await sendTextOnly(botToken, chatId, caption);
