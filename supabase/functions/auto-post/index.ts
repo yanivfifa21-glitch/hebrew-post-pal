@@ -779,11 +779,17 @@ serve(async (req) => {
         // Try up to 3 products from general queue
         let generalSent = false;
         for (const product of unassignedProducts.slice(0, 3)) {
-          await supabase
+          const { data: genLock } = await supabase
             .from("products")
             .update({ status: "processing" })
             .eq("id", product.id)
-            .eq("status", "Scheduled");
+            .eq("status", "Scheduled")
+            .select("id");
+
+          if (!genLock || genLock.length === 0) {
+            console.log(`[auto-post] User ${userId} [General]: Product ${product.id} already locked, skipping`);
+            continue;
+          }
 
           // Stock check before publish
           const stockOk2 = await prePublishStockCheck(supabase, product, stockCheckEnabled);
