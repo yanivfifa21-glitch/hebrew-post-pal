@@ -600,12 +600,18 @@ serve(async (req) => {
             const product = zoneProduct.products;
             console.log(`[auto-post] ${zoneLabel}: Trying product ${product.id}...`);
 
-            // Lock the zone_product
-            await supabase
+            // Lock the zone_product (atomic - verify lock was acquired)
+            const { data: lockData } = await supabase
               .from("zone_products")
               .update({ status: "processing" })
               .eq("id", zoneProduct.id)
-              .eq("status", "Scheduled");
+              .eq("status", "Scheduled")
+              .select("id");
+
+            if (!lockData || lockData.length === 0) {
+              console.log(`[auto-post] ${zoneLabel}: Product ${product.id} already locked by another run, skipping`);
+              continue;
+            }
 
             // Stock check before publish
             const stockOk = await prePublishStockCheck(supabase, product, stockCheckEnabled);
