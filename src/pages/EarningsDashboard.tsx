@@ -383,6 +383,114 @@ const EarningsDashboard = () => {
           </div>
         </div>
 
+        {/* Live Orders + Notification Settings */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Live Orders Card */}
+          <Card className="lg:col-span-2">
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Zap className="h-5 w-5 text-yellow-500" />
+                הזמנות Live (24 שעות)
+              </CardTitle>
+              <Button variant="outline" size="sm" onClick={handleManualSync} disabled={liveLoading} className="gap-1.5">
+                <RefreshCw className={`h-3.5 w-3.5 ${liveLoading ? "animate-spin" : ""}`} />
+                סנכרון
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {liveLoading && liveOrders.length === 0 ? (
+                <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm">טוען...</span>
+                </div>
+              ) : liveOrders.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 gap-2">
+                  <Package className="h-10 w-10 text-muted-foreground/30" />
+                  <p className="text-muted-foreground text-sm">אין הזמנות חדשות ב-24 שעות אחרונות</p>
+                  <p className="text-muted-foreground/60 text-xs">הפעל התראות כדי לקבל עדכונים אוטומטיים</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                  {liveOrders.map((order, idx) => (
+                    <div key={order.id || idx} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border border-border/50">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{order.product_title || `הזמנה #${order.order_id}`}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {order.order_status} • {new Date(order.created_at).toLocaleString("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}
+                        </p>
+                      </div>
+                      <div className="text-left mr-3">
+                        <p className="text-sm font-bold text-primary">${(parseFloat(order.estimated_commission) || 0).toFixed(2)}</p>
+                        <p className="text-xs text-muted-foreground">${(parseFloat(order.paid_amount) || 0).toFixed(2)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Notification Settings Card */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <BellRing className="h-5 w-5 text-primary" />
+                  התראות
+                </CardTitle>
+                <Switch
+                  checked={notifSettings.is_enabled}
+                  onCheckedChange={(checked) => setNotifSettings(prev => ({ ...prev, is_enabled: checked }))}
+                />
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Chat ID טלגרם</Label>
+                  <Input
+                    placeholder="הזן Chat ID לקבלת התראות"
+                    value={notifSettings.telegram_chat_id}
+                    onChange={(e) => setNotifSettings(prev => ({ ...prev, telegram_chat_id: e.target.value }))}
+                    className="text-sm"
+                    dir="ltr"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">סוג התראות</Label>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="notify_per_order"
+                      checked={notifSettings.notify_per_order}
+                      onCheckedChange={(checked) => setNotifSettings(prev => ({ ...prev, notify_per_order: !!checked }))}
+                    />
+                    <label htmlFor="notify_per_order" className="text-sm cursor-pointer">הודעה על כל הזמנה</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="notify_daily"
+                      checked={notifSettings.notify_daily_report}
+                      onCheckedChange={(checked) => setNotifSettings(prev => ({ ...prev, notify_daily_report: !!checked }))}
+                    />
+                    <label htmlFor="notify_daily" className="text-sm cursor-pointer">דו"ח יומי (09:00)</label>
+                  </div>
+                </div>
+              </div>
+
+              <Button
+                onClick={handleSaveNotifSettings}
+                disabled={notifSaving}
+                className="w-full gap-2"
+                size="sm"
+              >
+                {notifSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}
+                שמור הגדרות
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+
         {/* Error State */}
         {error && !isLoading && (
           <Card className="border-destructive/50 bg-destructive/5">
