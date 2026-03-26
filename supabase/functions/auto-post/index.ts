@@ -600,12 +600,18 @@ serve(async (req) => {
             const product = zoneProduct.products;
             console.log(`[auto-post] ${zoneLabel}: Trying product ${product.id}...`);
 
-            // Lock the zone_product
-            await supabase
+            // Lock the zone_product (atomic - verify lock was acquired)
+            const { data: lockData } = await supabase
               .from("zone_products")
               .update({ status: "processing" })
               .eq("id", zoneProduct.id)
-              .eq("status", "Scheduled");
+              .eq("status", "Scheduled")
+              .select("id");
+
+            if (!lockData || lockData.length === 0) {
+              console.log(`[auto-post] ${zoneLabel}: Product ${product.id} already locked by another run, skipping`);
+              continue;
+            }
 
             // Stock check before publish
             const stockOk = await prePublishStockCheck(supabase, product, stockCheckEnabled);
@@ -773,11 +779,17 @@ serve(async (req) => {
         // Try up to 3 products from general queue
         let generalSent = false;
         for (const product of unassignedProducts.slice(0, 3)) {
-          await supabase
+          const { data: genLock } = await supabase
             .from("products")
             .update({ status: "processing" })
             .eq("id", product.id)
-            .eq("status", "Scheduled");
+            .eq("status", "Scheduled")
+            .select("id");
+
+          if (!genLock || genLock.length === 0) {
+            console.log(`[auto-post] User ${userId} [General]: Product ${product.id} already locked, skipping`);
+            continue;
+          }
 
           // Stock check before publish
           const stockOk2 = await prePublishStockCheck(supabase, product, stockCheckEnabled);
@@ -897,11 +909,17 @@ serve(async (req) => {
 
         let legacySent = false;
         for (const product of candidates) {
-          await supabase
+          const { data: legacyLock } = await supabase
             .from("products")
             .update({ status: "processing" })
             .eq("id", product.id)
-            .eq("status", "Scheduled");
+            .eq("status", "Scheduled")
+            .select("id");
+
+          if (!legacyLock || legacyLock.length === 0) {
+            console.log(`[auto-post] User ${userId}: Product ${product.id} already locked, skipping`);
+            continue;
+          }
 
           // Stock check before publish
           const stockOk3 = await prePublishStockCheck(supabase, product, stockCheckEnabled);
