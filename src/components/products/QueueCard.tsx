@@ -212,7 +212,7 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelec
     try {
       const { error } = await supabase
         .from("products")
-        .update({ status: "Scheduled" })
+        .update({ status: "Scheduled", created_at: new Date().toISOString() })
         .eq("id", product.id);
 
       if (error) throw error;
