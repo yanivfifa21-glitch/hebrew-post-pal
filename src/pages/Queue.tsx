@@ -123,10 +123,10 @@ const Queue = () => {
     setIsReturningBulk(true);
     try {
       const ids = Array.from(selectedManualProducts);
-      // Sort selected products by updated_at DESC so last-sent gets latest scheduled_time (goes to end of queue)
+      // Sort selected products by updated_at ASC so last-sent gets latest created_at (goes to end of queue)
       const selectedItems = products
         .filter(p => ids.includes(p.id))
-        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+        .sort((a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime());
       
       for (let i = 0; i < selectedItems.length; i++) {
         const newCreatedAt = new Date(Date.now() + (i + 1) * 1000).toISOString();
