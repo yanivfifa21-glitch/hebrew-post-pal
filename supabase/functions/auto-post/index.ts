@@ -909,11 +909,17 @@ serve(async (req) => {
 
         let legacySent = false;
         for (const product of candidates) {
-          await supabase
+          const { data: legacyLock } = await supabase
             .from("products")
             .update({ status: "processing" })
             .eq("id", product.id)
-            .eq("status", "Scheduled");
+            .eq("status", "Scheduled")
+            .select("id");
+
+          if (!legacyLock || legacyLock.length === 0) {
+            console.log(`[auto-post] User ${userId}: Product ${product.id} already locked, skipping`);
+            continue;
+          }
 
           // Stock check before publish
           const stockOk3 = await prePublishStockCheck(supabase, product, stockCheckEnabled);
