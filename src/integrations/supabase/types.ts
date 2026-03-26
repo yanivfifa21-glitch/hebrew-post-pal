@@ -427,6 +427,42 @@ export type Database = {
         }
         Relationships: []
       }
+      earnings_notification_settings: {
+        Row: {
+          created_at: string
+          id: string
+          is_enabled: boolean
+          last_sync_at: string | null
+          notify_daily_report: boolean
+          notify_per_order: boolean
+          telegram_chat_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_enabled?: boolean
+          last_sync_at?: string | null
+          notify_daily_report?: boolean
+          notify_per_order?: boolean
+          telegram_chat_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_enabled?: boolean
+          last_sync_at?: string | null
+          notify_daily_report?: boolean
+          notify_per_order?: boolean
+          telegram_chat_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       encryption_config: {
         Row: {
           created_at: string | null
@@ -688,6 +724,48 @@ export type Database = {
           updated_at?: string
           user_id?: string
           webhook_active?: boolean
+        }
+        Relationships: []
+      }
+      tracked_orders: {
+        Row: {
+          created_at: string
+          estimated_commission: number | null
+          id: string
+          notified_at: string | null
+          order_created_at: string | null
+          order_id: string
+          order_status: string | null
+          paid_amount: number | null
+          product_id: string | null
+          product_title: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          estimated_commission?: number | null
+          id?: string
+          notified_at?: string | null
+          order_created_at?: string | null
+          order_id: string
+          order_status?: string | null
+          paid_amount?: number | null
+          product_id?: string | null
+          product_title?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          estimated_commission?: number | null
+          id?: string
+          notified_at?: string | null
+          order_created_at?: string | null
+          order_id?: string
+          order_status?: string | null
+          paid_amount?: number | null
+          product_id?: string | null
+          product_title?: string | null
+          user_id?: string
         }
         Relationships: []
       }
