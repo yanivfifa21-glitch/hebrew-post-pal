@@ -123,11 +123,19 @@ const Queue = () => {
     setIsReturningBulk(true);
     try {
       const ids = Array.from(selectedManualProducts);
-      const { error } = await supabase
-        .from("products")
-        .update({ status: "Scheduled" })
-        .in("id", ids);
-      if (error) throw error;
+      // Sort selected products by updated_at DESC so last-sent gets latest scheduled_time (goes to end of queue)
+      const selectedItems = products
+        .filter(p => ids.includes(p.id))
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+      
+      for (let i = 0; i < selectedItems.length; i++) {
+        const scheduledTime = new Date(Date.now() + (i + 1) * 1000).toISOString();
+        const { error } = await supabase
+          .from("products")
+          .update({ status: "Scheduled", scheduled_time: scheduledTime })
+          .eq("id", selectedItems[i].id);
+        if (error) throw error;
+      }
       setProducts((prev) =>
         prev.map((p) => ids.includes(p.id) ? { ...p, status: "Scheduled" as Product["status"] } : p)
       );
