@@ -99,6 +99,123 @@ const EarningsDashboard = () => {
   const [period, setPeriod] = useState<Period>("last_week");
   const [addingProductIds, setAddingProductIds] = useState<Set<string>>(new Set());
 
+  // Notification settings state
+  const [notifSettings, setNotifSettings] = useState({
+    is_enabled: false,
+    telegram_chat_id: "",
+    notify_per_order: true,
+    notify_daily_report: true,
+  });
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifSaving, setNotifSaving] = useState(false);
+  const [showNotifSettings, setShowNotifSettings] = useState(false);
+
+  // Live orders state
+  const [liveOrders, setLiveOrders] = useState<any[]>([]);
+  const [liveLoading, setLiveLoading] = useState(false);
+
+  // Fetch notification settings
+  useEffect(() => {
+    const fetchNotifSettings = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data } = await supabase
+        .from("earnings_notification_settings")
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (data) {
+        setNotifSettings({
+          is_enabled: data.is_enabled,
+          telegram_chat_id: data.telegram_chat_id || "",
+          notify_per_order: data.notify_per_order,
+          notify_daily_report: data.notify_daily_report,
+        });
+      }
+    };
+    fetchNotifSettings();
+  }, []);
+
+  // Fetch live orders (last 24h from tracked_orders)
+  useEffect(() => {
+    const fetchLiveOrders = async () => {
+      setLiveLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLiveLoading(false); return; }
+
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data } = await supabase
+        .from("tracked_orders")
+        .select("*")
+        .eq("user_id", user.id)
+        .gte("created_at", yesterday)
+        .order("created_at", { ascending: false });
+
+      setLiveOrders(data || []);
+      setLiveLoading(false);
+    };
+    fetchLiveOrders();
+
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchLiveOrders, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleSaveNotifSettings = async () => {
+    setNotifSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { error } = await supabase
+        .from("earnings_notification_settings")
+        .upsert({
+          user_id: user.id,
+          ...notifSettings,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id" });
+
+      if (error) throw error;
+      toast({ title: "✅ הגדרות התראות נשמרו!" });
+    } catch (err) {
+      toast({
+        title: "שגיאה בשמירה",
+        description: err instanceof Error ? err.message : "שגיאה",
+        variant: "destructive",
+      });
+    } finally {
+      setNotifSaving(false);
+    }
+  };
+
+  const handleManualSync = async () => {
+    setLiveLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("sync-live-orders");
+      if (error) throw error;
+      toast({ title: "✅ סנכרון הושלם!", description: `${data?.results?.[0]?.new_orders || 0} הזמנות חדשות` });
+
+      // Refresh live orders
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { data: orders } = await supabase
+          .from("tracked_orders")
+          .select("*")
+          .eq("user_id", user.id)
+          .gte("created_at", yesterday)
+          .order("created_at", { ascending: false });
+        setLiveOrders(orders || []);
+      }
+    } catch (err) {
+      toast({ title: "שגיאה בסנכרון", variant: "destructive" });
+    } finally {
+      setLiveLoading(false);
+    }
+  };
+
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ["affiliate-earnings", period],
     queryFn: () => fetchEarnings(period),
