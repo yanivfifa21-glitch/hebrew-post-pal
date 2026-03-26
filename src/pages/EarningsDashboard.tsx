@@ -355,7 +355,7 @@ const EarningsDashboard = () => {
               <span className="gradient-text">דשבורד רווחים</span>
             </h1>
             <p className="text-muted-foreground mt-1 text-sm">
-              נתוני הרווחים שלך מפורטל השיווק של AliExpress (עיכוב של יומיים באזור זמן PST)
+              מעקב הזמנות בזמן אמת + סיכום רווחים מפורטל השיווק של AliExpress
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
