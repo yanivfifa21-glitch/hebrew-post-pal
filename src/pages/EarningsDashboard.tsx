@@ -411,10 +411,20 @@ const EarningsDashboard = () => {
                 </div>
               ) : (
                 <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                  {liveOrders.map((order, idx) => (
+                  {liveOrders
+                    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                    .map((order, idx) => {
+                    const productLink = order.product_id ? `https://www.aliexpress.com/item/${order.product_id}.html` : null;
+                    return (
                     <div key={order.id || idx} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border border-border/50">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{order.product_title || `הזמנה #${order.order_id}`}</p>
+                        {productLink ? (
+                          <a href={productLink} target="_blank" rel="noopener noreferrer" className="text-sm font-medium truncate block text-primary hover:underline">
+                            {order.product_title || `הזמנה #${order.order_id}`}
+                          </a>
+                        ) : (
+                          <p className="text-sm font-medium truncate">{order.product_title || `הזמנה #${order.order_id}`}</p>
+                        )}
                         <p className="text-xs text-muted-foreground">
                           {order.order_status} • {new Date(order.created_at).toLocaleString("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}
                         </p>
@@ -424,7 +434,8 @@ const EarningsDashboard = () => {
                         <p className="text-xs text-muted-foreground">${(parseFloat(order.paid_amount) || 0).toFixed(2)}</p>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
