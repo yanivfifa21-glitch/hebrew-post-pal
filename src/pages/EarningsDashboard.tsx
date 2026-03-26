@@ -1,10 +1,14 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -14,6 +18,7 @@ import {
 import {
   DollarSign, ShoppingCart, CheckCircle2, TrendingUp, RefreshCw,
   Calendar, Package, AlertTriangle, Loader2, Plus, Trophy,
+  Bell, BellRing, Settings2, Zap,
 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -93,6 +98,123 @@ async function fetchEarnings(period: Period): Promise<EarningsResponse> {
 const EarningsDashboard = () => {
   const [period, setPeriod] = useState<Period>("last_week");
   const [addingProductIds, setAddingProductIds] = useState<Set<string>>(new Set());
+
+  // Notification settings state
+  const [notifSettings, setNotifSettings] = useState({
+    is_enabled: false,
+    telegram_chat_id: "",
+    notify_per_order: true,
+    notify_daily_report: true,
+  });
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifSaving, setNotifSaving] = useState(false);
+  const [showNotifSettings, setShowNotifSettings] = useState(false);
+
+  // Live orders state
+  const [liveOrders, setLiveOrders] = useState<any[]>([]);
+  const [liveLoading, setLiveLoading] = useState(false);
+
+  // Fetch notification settings
+  useEffect(() => {
+    const fetchNotifSettings = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data } = await supabase
+        .from("earnings_notification_settings")
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (data) {
+        setNotifSettings({
+          is_enabled: data.is_enabled,
+          telegram_chat_id: data.telegram_chat_id || "",
+          notify_per_order: data.notify_per_order,
+          notify_daily_report: data.notify_daily_report,
+        });
+      }
+    };
+    fetchNotifSettings();
+  }, []);
+
+  // Fetch live orders (last 24h from tracked_orders)
+  useEffect(() => {
+    const fetchLiveOrders = async () => {
+      setLiveLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLiveLoading(false); return; }
+
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data } = await supabase
+        .from("tracked_orders")
+        .select("*")
+        .eq("user_id", user.id)
+        .gte("created_at", yesterday)
+        .order("created_at", { ascending: false });
+
+      setLiveOrders(data || []);
+      setLiveLoading(false);
+    };
+    fetchLiveOrders();
+
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchLiveOrders, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleSaveNotifSettings = async () => {
+    setNotifSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { error } = await supabase
+        .from("earnings_notification_settings")
+        .upsert({
+          user_id: user.id,
+          ...notifSettings,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id" });
+
+      if (error) throw error;
+      toast({ title: "✅ הגדרות התראות נשמרו!" });
+    } catch (err) {
+      toast({
+        title: "שגיאה בשמירה",
+        description: err instanceof Error ? err.message : "שגיאה",
+        variant: "destructive",
+      });
+    } finally {
+      setNotifSaving(false);
+    }
+  };
+
+  const handleManualSync = async () => {
+    setLiveLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("sync-live-orders");
+      if (error) throw error;
+      toast({ title: "✅ סנכרון הושלם!", description: `${data?.results?.[0]?.new_orders || 0} הזמנות חדשות` });
+
+      // Refresh live orders
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { data: orders } = await supabase
+          .from("tracked_orders")
+          .select("*")
+          .eq("user_id", user.id)
+          .gte("created_at", yesterday)
+          .order("created_at", { ascending: false });
+        setLiveOrders(orders || []);
+      }
+    } catch (err) {
+      toast({ title: "שגיאה בסנכרון", variant: "destructive" });
+    } finally {
+      setLiveLoading(false);
+    }
+  };
 
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ["affiliate-earnings", period],
@@ -259,6 +381,114 @@ const EarningsDashboard = () => {
               <RefreshCw className={`h-4 w-4 ${spinning ? "animate-spin" : ""}`} />
             </Button>
           </div>
+        </div>
+
+        {/* Live Orders + Notification Settings */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Live Orders Card */}
+          <Card className="lg:col-span-2">
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Zap className="h-5 w-5 text-yellow-500" />
+                הזמנות Live (24 שעות)
+              </CardTitle>
+              <Button variant="outline" size="sm" onClick={handleManualSync} disabled={liveLoading} className="gap-1.5">
+                <RefreshCw className={`h-3.5 w-3.5 ${liveLoading ? "animate-spin" : ""}`} />
+                סנכרון
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {liveLoading && liveOrders.length === 0 ? (
+                <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm">טוען...</span>
+                </div>
+              ) : liveOrders.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 gap-2">
+                  <Package className="h-10 w-10 text-muted-foreground/30" />
+                  <p className="text-muted-foreground text-sm">אין הזמנות חדשות ב-24 שעות אחרונות</p>
+                  <p className="text-muted-foreground/60 text-xs">הפעל התראות כדי לקבל עדכונים אוטומטיים</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                  {liveOrders.map((order, idx) => (
+                    <div key={order.id || idx} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border border-border/50">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{order.product_title || `הזמנה #${order.order_id}`}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {order.order_status} • {new Date(order.created_at).toLocaleString("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}
+                        </p>
+                      </div>
+                      <div className="text-left mr-3">
+                        <p className="text-sm font-bold text-primary">${(parseFloat(order.estimated_commission) || 0).toFixed(2)}</p>
+                        <p className="text-xs text-muted-foreground">${(parseFloat(order.paid_amount) || 0).toFixed(2)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Notification Settings Card */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <BellRing className="h-5 w-5 text-primary" />
+                  התראות
+                </CardTitle>
+                <Switch
+                  checked={notifSettings.is_enabled}
+                  onCheckedChange={(checked) => setNotifSettings(prev => ({ ...prev, is_enabled: checked }))}
+                />
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Chat ID טלגרם</Label>
+                  <Input
+                    placeholder="הזן Chat ID לקבלת התראות"
+                    value={notifSettings.telegram_chat_id}
+                    onChange={(e) => setNotifSettings(prev => ({ ...prev, telegram_chat_id: e.target.value }))}
+                    className="text-sm"
+                    dir="ltr"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">סוג התראות</Label>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="notify_per_order"
+                      checked={notifSettings.notify_per_order}
+                      onCheckedChange={(checked) => setNotifSettings(prev => ({ ...prev, notify_per_order: !!checked }))}
+                    />
+                    <label htmlFor="notify_per_order" className="text-sm cursor-pointer">הודעה על כל הזמנה</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="notify_daily"
+                      checked={notifSettings.notify_daily_report}
+                      onCheckedChange={(checked) => setNotifSettings(prev => ({ ...prev, notify_daily_report: !!checked }))}
+                    />
+                    <label htmlFor="notify_daily" className="text-sm cursor-pointer">דו"ח יומי (09:00)</label>
+                  </div>
+                </div>
+              </div>
+
+              <Button
+                onClick={handleSaveNotifSettings}
+                disabled={notifSaving}
+                className="w-full gap-2"
+                size="sm"
+              >
+                {notifSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}
+                שמור הגדרות
+              </Button>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Error State */}
