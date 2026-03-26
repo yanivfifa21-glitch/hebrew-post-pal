@@ -129,10 +129,10 @@ const Queue = () => {
         .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
       
       for (let i = 0; i < selectedItems.length; i++) {
-        const scheduledTime = new Date(Date.now() + (i + 1) * 1000).toISOString();
+        const newCreatedAt = new Date(Date.now() + (i + 1) * 1000).toISOString();
         const { error } = await supabase
           .from("products")
-          .update({ status: "Scheduled", scheduled_time: scheduledTime })
+          .update({ status: "Scheduled", created_at: newCreatedAt })
           .eq("id", selectedItems[i].id);
         if (error) throw error;
       }
