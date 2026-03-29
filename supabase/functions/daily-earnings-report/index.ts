@@ -71,9 +71,31 @@ serve(async (req) => {
       try {
         if (!settings.telegram_chat_id) continue;
 
-        // Get credentials for bot token
+        // Get bot token - first try user_credentials, then fall back to messaging_accounts
+        let botToken: string | null = null;
         const { data: creds } = await supabase.rpc("get_decrypted_user_credentials", { p_user_id: settings.user_id });
-        if (!creds || creds.error || !creds.telegram_bot_token) continue;
+        if (creds && !creds.error && creds.telegram_bot_token) {
+          botToken = creds.telegram_bot_token;
+        } else {
+          // Fall back to first active telegram messaging account
+          const { data: accounts } = await supabase
+            .from("messaging_accounts")
+            .select("id")
+            .eq("user_id", settings.user_id)
+            .eq("account_type", "telegram")
+            .eq("is_active", true)
+            .limit(1);
+          if (accounts && accounts.length > 0) {
+            const { data: accCreds } = await supabase.rpc("get_decrypted_messaging_account_credentials", {
+              p_account_id: accounts[0].id,
+              p_user_id: settings.user_id,
+            });
+            if (accCreds && !accCreds.error && accCreds.telegram_bot_token) {
+              botToken = accCreds.telegram_bot_token;
+            }
+          }
+        }
+        if (!botToken) continue;
 
         // Get orders from last 24 hours
         const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -115,7 +137,7 @@ serve(async (req) => {
           msg += `\nלא היו הזמנות חדשות ב-24 שעות האחרונות.`;
         }
 
-        await sendTelegramMessage(creds.telegram_bot_token, settings.telegram_chat_id, msg);
+        await sendTelegramMessage(botToken, settings.telegram_chat_id, msg);
         results.push({ user_id: settings.user_id, sent: true, orders: orderCount });
       } catch (userErr) {
         console.error(`Daily report error for ${settings.user_id}:`, userErr);
