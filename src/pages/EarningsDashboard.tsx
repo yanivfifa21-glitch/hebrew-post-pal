@@ -507,9 +507,49 @@ const EarningsDashboard = () => {
                       checked={notifSettings.notify_daily_report}
                       onCheckedChange={(checked) => setNotifSettings(prev => ({ ...prev, notify_daily_report: !!checked }))}
                     />
-                    <label htmlFor="notify_daily" className="text-sm cursor-pointer">דו"ח יומי (09:00)</label>
+                    <label htmlFor="notify_daily" className="text-sm cursor-pointer">דו"ח יומי</label>
                   </div>
+                  {notifSettings.notify_daily_report && (
+                    <div className="space-y-1.5 pr-6">
+                      <Label className="text-xs text-muted-foreground">שעת שליחה</Label>
+                      <Select
+                        value={String(notifSettings.report_hour)}
+                        onValueChange={(val) => setNotifSettings(prev => ({ ...prev, report_hour: parseInt(val) }))}
+                      >
+                        <SelectTrigger className="h-8 text-sm" dir="ltr">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent dir="ltr">
+                          {Array.from({ length: 24 }, (_, i) => (
+                            <SelectItem key={i} value={String(i)}>
+                              {String(i).padStart(2, "0")}:00
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
+
+                {telegramAccounts.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">בוט שולח</Label>
+                    <Select
+                      value={notifSettings.bot_account_id || "auto"}
+                      onValueChange={(val) => setNotifSettings(prev => ({ ...prev, bot_account_id: val === "auto" ? "" : val }))}
+                    >
+                      <SelectTrigger className="h-8 text-sm">
+                        <SelectValue placeholder="אוטומטי" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="auto">אוטומטי (ראשון פעיל)</SelectItem>
+                        {telegramAccounts.map(acc => (
+                          <SelectItem key={acc.id} value={acc.id}>{acc.account_name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
 
               <Button
