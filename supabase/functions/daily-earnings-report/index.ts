@@ -137,7 +137,7 @@ serve(async (req) => {
           msg += `\nלא היו הזמנות חדשות ב-24 שעות האחרונות.`;
         }
 
-        await sendTelegramMessage(creds.telegram_bot_token, settings.telegram_chat_id, msg);
+        await sendTelegramMessage(botToken, settings.telegram_chat_id, msg);
         results.push({ user_id: settings.user_id, sent: true, orders: orderCount });
       } catch (userErr) {
         console.error(`Daily report error for ${settings.user_id}:`, userErr);
