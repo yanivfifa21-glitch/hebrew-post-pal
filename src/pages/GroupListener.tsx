@@ -631,7 +631,39 @@ const GroupListener = () => {
     }
   };
 
-  // Bulk delete posts
+  // Cleanup: delete all pending posts except the newest 100
+  const handleCleanupPending = async () => {
+    setIsBulkProcessing(true);
+    try {
+      // Fetch all pending_review posts ordered by captured_at desc
+      const { data: allPending, error: fetchErr } = await supabase
+        .from("captured_posts")
+        .select("id")
+        .eq("status", "pending_review")
+        .order("captured_at", { ascending: false });
+      if (fetchErr) throw fetchErr;
+      if (!allPending || allPending.length <= 100) {
+        toast({ title: "אין פוסטים למחיקה", description: "יש 100 או פחות פוסטים ממתינים" });
+        return;
+      }
+      const idsToDelete = allPending.slice(100).map(p => p.id);
+      // Delete in batches of 500
+      for (let i = 0; i < idsToDelete.length; i += 500) {
+        const batch = idsToDelete.slice(i, i + 500);
+        const { error } = await supabase.from("captured_posts").delete().in("id", batch);
+        if (error) throw error;
+      }
+      toast({ title: `🗑️ ${idsToDelete.length} פוסטים ישנים נמחקו`, description: "נשארו 100 האחרונים" });
+      fetchCapturedPosts();
+      setSelectedPostIds(new Set());
+    } catch {
+      toast({ title: "שגיאה בניקוי", variant: "destructive" });
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+   // Bulk delete posts
   const handleBulkDelete = async () => {
     if (selectedPostIds.size === 0) return;
     setIsBulkProcessing(true);
@@ -832,6 +864,12 @@ const GroupListener = () => {
                     {capturedPosts.length > 50 && (
                       <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={selectFirst50}>
                         בחר 50
+                      </Button>
+                    )}
+                    {capturedPosts.length > 100 && postFilter === "pending_review" && (
+                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1 text-destructive border-destructive/30 hover:bg-destructive/10" onClick={handleCleanupPending} disabled={isBulkProcessing}>
+                        {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                        השאר 100 אחרונים
                       </Button>
                     )}
                   </div>
