@@ -278,7 +278,7 @@ serve(async (req) => {
                   `💎 עמלה: $${order.estimated_commission.toFixed(2)}\n` +
                   `📋 סטטוס: ${order.order_status}\n` +
                   `🔢 מזהה: ${order.order_id}`;
-                await sendTelegramNotification(botToken, notifData.telegram_chat_id, msg);
+                await sendTelegramNotification(notifBotToken, notifData.telegram_chat_id, msg);
               }
             }
           }
