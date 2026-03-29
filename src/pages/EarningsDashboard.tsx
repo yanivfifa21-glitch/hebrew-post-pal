@@ -185,13 +185,20 @@ const EarningsDashboard = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
+      const upsertData: any = {
+          user_id: user.id,
+          is_enabled: notifSettings.is_enabled,
+          telegram_chat_id: notifSettings.telegram_chat_id,
+          notify_per_order: notifSettings.notify_per_order,
+          notify_daily_report: notifSettings.notify_daily_report,
+          report_hour: notifSettings.report_hour,
+          bot_account_id: notifSettings.bot_account_id || null,
+          updated_at: new Date().toISOString(),
+      };
+
       const { error } = await supabase
         .from("earnings_notification_settings")
-        .upsert({
-          user_id: user.id,
-          ...notifSettings,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "user_id" });
+        .upsert(upsertData, { onConflict: "user_id" });
 
       if (error) throw error;
       toast({ title: "✅ הגדרות התראות נשמרו!" });
