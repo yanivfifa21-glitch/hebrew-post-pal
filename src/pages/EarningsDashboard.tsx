@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -105,7 +106,10 @@ const EarningsDashboard = () => {
     telegram_chat_id: "",
     notify_per_order: true,
     notify_daily_report: true,
+    report_hour: 9,
+    bot_account_id: "" as string,
   });
+  const [telegramAccounts, setTelegramAccounts] = useState<{ id: string; account_name: string }[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
   const [notifSaving, setNotifSaving] = useState(false);
   const [showNotifSettings, setShowNotifSettings] = useState(false);
@@ -114,17 +118,20 @@ const EarningsDashboard = () => {
   const [liveOrders, setLiveOrders] = useState<any[]>([]);
   const [liveLoading, setLiveLoading] = useState(false);
 
-  // Fetch notification settings
+  // Fetch notification settings + telegram accounts
   useEffect(() => {
     const fetchNotifSettings = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data } = await supabase
-        .from("earnings_notification_settings")
-        .select("*")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      const [{ data }, { data: accounts }] = await Promise.all([
+        supabase
+          .from("earnings_notification_settings")
+          .select("*")
+          .eq("user_id", user.id)
+          .maybeSingle(),
+        supabase.rpc("get_my_messaging_accounts_safe"),
+      ]);
 
       if (data) {
         setNotifSettings({
@@ -132,7 +139,16 @@ const EarningsDashboard = () => {
           telegram_chat_id: data.telegram_chat_id || "",
           notify_per_order: data.notify_per_order,
           notify_daily_report: data.notify_daily_report,
+          report_hour: (data as any).report_hour ?? 9,
+          bot_account_id: (data as any).bot_account_id || "",
         });
+      }
+
+      if (accounts) {
+        setTelegramAccounts(
+          (accounts as any[]).filter((a: any) => a.account_type === "telegram" && a.is_active)
+            .map((a: any) => ({ id: a.id, account_name: a.account_name }))
+        );
       }
     };
     fetchNotifSettings();
@@ -169,13 +185,20 @@ const EarningsDashboard = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
+      const upsertData: any = {
+          user_id: user.id,
+          is_enabled: notifSettings.is_enabled,
+          telegram_chat_id: notifSettings.telegram_chat_id,
+          notify_per_order: notifSettings.notify_per_order,
+          notify_daily_report: notifSettings.notify_daily_report,
+          report_hour: notifSettings.report_hour,
+          bot_account_id: notifSettings.bot_account_id || null,
+          updated_at: new Date().toISOString(),
+      };
+
       const { error } = await supabase
         .from("earnings_notification_settings")
-        .upsert({
-          user_id: user.id,
-          ...notifSettings,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "user_id" });
+        .upsert(upsertData, { onConflict: "user_id" });
 
       if (error) throw error;
       toast({ title: "✅ הגדרות התראות נשמרו!" });
@@ -484,9 +507,49 @@ const EarningsDashboard = () => {
                       checked={notifSettings.notify_daily_report}
                       onCheckedChange={(checked) => setNotifSettings(prev => ({ ...prev, notify_daily_report: !!checked }))}
                     />
-                    <label htmlFor="notify_daily" className="text-sm cursor-pointer">דו"ח יומי (09:00)</label>
+                    <label htmlFor="notify_daily" className="text-sm cursor-pointer">דו"ח יומי</label>
                   </div>
+                  {notifSettings.notify_daily_report && (
+                    <div className="space-y-1.5 pr-6">
+                      <Label className="text-xs text-muted-foreground">שעת שליחה</Label>
+                      <Select
+                        value={String(notifSettings.report_hour)}
+                        onValueChange={(val) => setNotifSettings(prev => ({ ...prev, report_hour: parseInt(val) }))}
+                      >
+                        <SelectTrigger className="h-8 text-sm" dir="ltr">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent dir="ltr">
+                          {Array.from({ length: 24 }, (_, i) => (
+                            <SelectItem key={i} value={String(i)}>
+                              {String(i).padStart(2, "0")}:00
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
+
+                {telegramAccounts.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">בוט שולח</Label>
+                    <Select
+                      value={notifSettings.bot_account_id || "auto"}
+                      onValueChange={(val) => setNotifSettings(prev => ({ ...prev, bot_account_id: val === "auto" ? "" : val }))}
+                    >
+                      <SelectTrigger className="h-8 text-sm">
+                        <SelectValue placeholder="אוטומטי" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="auto">אוטומטי (ראשון פעיל)</SelectItem>
+                        {telegramAccounts.map(acc => (
+                          <SelectItem key={acc.id} value={acc.id}>{acc.account_name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
 
               <Button

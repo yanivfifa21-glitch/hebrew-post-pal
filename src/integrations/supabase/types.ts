@@ -429,34 +429,40 @@ export type Database = {
       }
       earnings_notification_settings: {
         Row: {
+          bot_account_id: string | null
           created_at: string
           id: string
           is_enabled: boolean
           last_sync_at: string | null
           notify_daily_report: boolean
           notify_per_order: boolean
+          report_hour: number
           telegram_chat_id: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
+          bot_account_id?: string | null
           created_at?: string
           id?: string
           is_enabled?: boolean
           last_sync_at?: string | null
           notify_daily_report?: boolean
           notify_per_order?: boolean
+          report_hour?: number
           telegram_chat_id?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
+          bot_account_id?: string | null
           created_at?: string
           id?: string
           is_enabled?: boolean
           last_sync_at?: string | null
           notify_daily_report?: boolean
           notify_per_order?: boolean
+          report_hour?: number
           telegram_chat_id?: string | null
           updated_at?: string
           user_id?: string
