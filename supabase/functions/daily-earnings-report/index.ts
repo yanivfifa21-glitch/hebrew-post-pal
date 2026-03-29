@@ -6,12 +6,18 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-function getIsraelHour(): number {
+function getIsraelTime(): { hour: number; minute: number } {
   const now = new Date();
-  const tf = new Intl.DateTimeFormat('en-GB', {
+  const hourFmt = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Asia/Jerusalem', hour: '2-digit', hour12: false
   });
-  return parseInt(tf.format(now));
+  const minFmt = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jerusalem', minute: '2-digit', hour12: false
+  });
+  return {
+    hour: parseInt(hourFmt.format(now)),
+    minute: parseInt(minFmt.format(now)),
+  };
 }
 
 async function sendTelegramMessage(botToken: string, chatId: string, message: string) {
@@ -37,20 +43,8 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Only run at 9:00 Israel time (cron runs every minute)
-    const israelHour = getIsraelHour();
+    const { hour: israelHour, minute: israelMinute } = getIsraelTime();
     const now = new Date();
-    const tf = new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Asia/Jerusalem', minute: '2-digit', hour12: false
-    });
-    const israelMinute = parseInt(tf.format(now));
-    
-    // Only execute at 9:00 (allow 9:00-9:04 window for cron timing)
-    if (israelHour !== 9 || israelMinute > 4) {
-      return new Response(JSON.stringify({ success: true, skipped: true, reason: `Not 9:00 IST (${israelHour}:${israelMinute})` }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
 
     // Get all users with daily report enabled
     const { data: notifSettings } = await supabase
@@ -71,31 +65,57 @@ serve(async (req) => {
       try {
         if (!settings.telegram_chat_id) continue;
 
-        // Get bot token - first try user_credentials, then fall back to messaging_accounts
+        // Check if current hour matches user's configured report_hour (allow 0-4 min window)
+        const userReportHour = settings.report_hour ?? 9;
+        if (israelHour !== userReportHour || israelMinute > 4) {
+          results.push({ user_id: settings.user_id, skipped: true, reason: `Not ${userReportHour}:00 (${israelHour}:${israelMinute})` });
+          continue;
+        }
+
+        // Get bot token - use specific bot_account_id if set, otherwise fallback
         let botToken: string | null = null;
-        const { data: creds } = await supabase.rpc("get_decrypted_user_credentials", { p_user_id: settings.user_id });
-        if (creds && !creds.error && creds.telegram_bot_token) {
-          botToken = creds.telegram_bot_token;
-        } else {
-          // Fall back to first active telegram messaging account
-          const { data: accounts } = await supabase
-            .from("messaging_accounts")
-            .select("id")
-            .eq("user_id", settings.user_id)
-            .eq("account_type", "telegram")
-            .eq("is_active", true)
-            .limit(1);
-          if (accounts && accounts.length > 0) {
-            const { data: accCreds } = await supabase.rpc("get_decrypted_messaging_account_credentials", {
-              p_account_id: accounts[0].id,
-              p_user_id: settings.user_id,
-            });
-            if (accCreds && !accCreds.error && accCreds.telegram_bot_token) {
-              botToken = accCreds.telegram_bot_token;
+
+        if (settings.bot_account_id) {
+          // Use the specific bot account selected by the user
+          const { data: accCreds } = await supabase.rpc("get_decrypted_messaging_account_credentials", {
+            p_account_id: settings.bot_account_id,
+            p_user_id: settings.user_id,
+          });
+          if (accCreds && !accCreds.error && accCreds.telegram_bot_token) {
+            botToken = accCreds.telegram_bot_token;
+          }
+        }
+
+        if (!botToken) {
+          // Fallback: try user_credentials first
+          const { data: creds } = await supabase.rpc("get_decrypted_user_credentials", { p_user_id: settings.user_id });
+          if (creds && !creds.error && creds.telegram_bot_token) {
+            botToken = creds.telegram_bot_token;
+          } else {
+            // Fall back to first active telegram messaging account
+            const { data: accounts } = await supabase
+              .from("messaging_accounts")
+              .select("id")
+              .eq("user_id", settings.user_id)
+              .eq("account_type", "telegram")
+              .eq("is_active", true)
+              .limit(1);
+            if (accounts && accounts.length > 0) {
+              const { data: accCreds } = await supabase.rpc("get_decrypted_messaging_account_credentials", {
+                p_account_id: accounts[0].id,
+                p_user_id: settings.user_id,
+              });
+              if (accCreds && !accCreds.error && accCreds.telegram_bot_token) {
+                botToken = accCreds.telegram_bot_token;
+              }
             }
           }
         }
-        if (!botToken) continue;
+
+        if (!botToken) {
+          results.push({ user_id: settings.user_id, skipped: true, reason: "No bot token found" });
+          continue;
+        }
 
         // Get orders from last 24 hours
         const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
