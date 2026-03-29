@@ -250,8 +250,27 @@ serve(async (req) => {
             .maybeSingle();
 
           if (notifData?.is_enabled && notifData?.notify_per_order && notifData?.telegram_chat_id) {
-            const botToken = creds.telegram_bot_token;
-            if (botToken) {
+            // Get bot token - first try user_credentials, then fall back to messaging_accounts
+            let notifBotToken: string | null = creds.telegram_bot_token || null;
+            if (!notifBotToken) {
+              const { data: tgAccounts } = await supabase
+                .from("messaging_accounts")
+                .select("id")
+                .eq("user_id", userId)
+                .eq("account_type", "telegram")
+                .eq("is_active", true)
+                .limit(1);
+              if (tgAccounts && tgAccounts.length > 0) {
+                const { data: accCreds } = await supabase.rpc("get_decrypted_messaging_account_credentials", {
+                  p_account_id: tgAccounts[0].id,
+                  p_user_id: userId,
+                });
+                if (accCreds && !accCreds.error && accCreds.telegram_bot_token) {
+                  notifBotToken = accCreds.telegram_bot_token;
+                }
+              }
+            }
+            if (notifBotToken) {
               for (const order of newOrders) {
                 const msg = `🛒 <b>הזמנה חדשה!</b>\n\n` +
                   `📦 ${order.product_title || "מוצר"}\n` +
