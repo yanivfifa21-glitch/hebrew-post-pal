@@ -106,7 +106,10 @@ const EarningsDashboard = () => {
     telegram_chat_id: "",
     notify_per_order: true,
     notify_daily_report: true,
+    report_hour: 9,
+    bot_account_id: "" as string,
   });
+  const [telegramAccounts, setTelegramAccounts] = useState<{ id: string; account_name: string }[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
   const [notifSaving, setNotifSaving] = useState(false);
   const [showNotifSettings, setShowNotifSettings] = useState(false);
