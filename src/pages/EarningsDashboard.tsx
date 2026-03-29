@@ -118,17 +118,20 @@ const EarningsDashboard = () => {
   const [liveOrders, setLiveOrders] = useState<any[]>([]);
   const [liveLoading, setLiveLoading] = useState(false);
 
-  // Fetch notification settings
+  // Fetch notification settings + telegram accounts
   useEffect(() => {
     const fetchNotifSettings = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data } = await supabase
-        .from("earnings_notification_settings")
-        .select("*")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      const [{ data }, { data: accounts }] = await Promise.all([
+        supabase
+          .from("earnings_notification_settings")
+          .select("*")
+          .eq("user_id", user.id)
+          .maybeSingle(),
+        supabase.rpc("get_my_messaging_accounts_safe"),
+      ]);
 
       if (data) {
         setNotifSettings({
@@ -136,7 +139,16 @@ const EarningsDashboard = () => {
           telegram_chat_id: data.telegram_chat_id || "",
           notify_per_order: data.notify_per_order,
           notify_daily_report: data.notify_daily_report,
+          report_hour: (data as any).report_hour ?? 9,
+          bot_account_id: (data as any).bot_account_id || "",
         });
+      }
+
+      if (accounts) {
+        setTelegramAccounts(
+          (accounts as any[]).filter((a: any) => a.account_type === "telegram" && a.is_active)
+            .map((a: any) => ({ id: a.id, account_name: a.account_name }))
+        );
       }
     };
     fetchNotifSettings();
