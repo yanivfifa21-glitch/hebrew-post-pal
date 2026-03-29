@@ -866,6 +866,12 @@ const GroupListener = () => {
                         בחר 50
                       </Button>
                     )}
+                    {capturedPosts.length > 100 && postFilter === "pending_review" && (
+                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1 text-destructive border-destructive/30 hover:bg-destructive/10" onClick={handleCleanupPending} disabled={isBulkProcessing}>
+                        {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                        השאר 100 אחרונים
+                      </Button>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <Button variant={viewMode === 'list' ? 'default' : 'outline'} size="icon" className="h-8 w-8" onClick={() => setViewMode('list')}>
