@@ -608,6 +608,12 @@ serve(async (req) => {
             const product = zoneProduct.products;
             console.log(`[auto-post] ${zoneLabel}: Trying product ${product.id}...`);
 
+            // Skip coupon posts if disabled
+            if (!sendCouponPosts && hasCouponInText(product.hebrew_description)) {
+              console.log(`[auto-post] ${zoneLabel}: Skipping product ${product.id} - has coupon (send_coupon_posts=false)`);
+              continue;
+            }
+
             // Lock the zone_product (atomic - verify lock was acquired)
             const { data: lockData } = await supabase
               .from("zone_products")
