@@ -1059,6 +1059,31 @@ const Settings = () => {
               />
             </div>
 
+            {/* Send Coupon Posts Toggle */}
+            <div className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all duration-300 ${
+              sendCouponPosts 
+                ? 'bg-primary/10 border-primary/50' 
+                : 'bg-muted/30 border-border'
+            }`}>
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${sendCouponPosts ? 'bg-primary/20' : 'bg-muted'}`}>
+                  <span className="text-lg">🏷️</span>
+                </div>
+                <div>
+                  <p className="font-semibold text-foreground">שלח פוסטים עם קופון</p>
+                  <p className="text-sm text-muted-foreground">
+                    {sendCouponPosts 
+                      ? "פוסטים עם קופון ישלחו כרגיל" 
+                      : "פוסטים עם קופון ידולגו - יעבור לפוסט הבא"}
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={sendCouponPosts}
+                onCheckedChange={setSendCouponPosts}
+              />
+            </div>
+
             {/* Start Publishing Button */}
             <Button
               onClick={handleStartPublishing}
