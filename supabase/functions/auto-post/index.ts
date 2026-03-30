@@ -793,6 +793,12 @@ serve(async (req) => {
         // Try up to 3 products from general queue
         let generalSent = false;
         for (const product of unassignedProducts.slice(0, 3)) {
+          // Skip coupon posts if disabled
+          if (!sendCouponPosts && hasCouponInText(product.hebrew_description)) {
+            console.log(`[auto-post] User ${userId} [General]: Skipping product ${product.id} - has coupon (send_coupon_posts=false)`);
+            continue;
+          }
+
           const { data: genLock } = await supabase
             .from("products")
             .update({ status: "processing" })
