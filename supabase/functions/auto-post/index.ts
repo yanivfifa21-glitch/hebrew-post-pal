@@ -517,6 +517,7 @@ serve(async (req) => {
       const shabbatStartTime: string = userSettings.shabbat_start_time || '14:00';
       const shabbatEndTime: string = userSettings.shabbat_end_time || '20:00';
       const stockCheckEnabled: boolean = userSettings.stock_check_before_publish !== false; // default true
+      const sendCouponPosts: boolean = userSettings.send_coupon_posts !== false; // default true
 
       // Step A: Check Shabbat mode first (global)
       if (isInShabbatMode(currentDayOfWeek, currentTimeStr, shabbatEnabled, shabbatStartTime, shabbatEndTime)) {
