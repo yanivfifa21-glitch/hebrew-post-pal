@@ -285,6 +285,9 @@ const Settings = () => {
   const [isFetchingRate, setIsFetchingRate] = useState(false);
   const [isStartingPublish, setIsStartingPublish] = useState(false);
 
+  // Send coupon posts toggle
+  const [sendCouponPosts, setSendCouponPosts] = useState(true);
+
   // Custom emoji settings
   const [useCustomEmoji, setUseCustomEmoji] = useState(true);
   const [emojiMappings, setEmojiMappings] = useState<{id: string; emoji: string; custom_emoji_id: string}[]>([]);
