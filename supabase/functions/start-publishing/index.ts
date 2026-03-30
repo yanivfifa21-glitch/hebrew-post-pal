@@ -258,10 +258,23 @@ serve(async (req) => {
     // Check if coupon posts should be sent
     const sendCouponPosts: boolean = settings.send_coupon_posts !== false;
 
-    // Helper to detect coupon in text
+    // Helper to detect coupon in text - looks for actual coupon codes, not just keywords
+    const BLACKLIST = /^(USD|ILS|NIS|CODE|COUPON|HTTP|HTTPS|COM|WWW|OFF|NEW|TOP|APP|HOT|BIG|BUY|GET|VIP|PRO|MAX|SALE|FREE|BEST|SHOP|DEAL|LINK)$/i;
     const hasCouponInText = (text: string | null): boolean => {
-      if (!text) return false;
-      return /קופון|קוד|coupon|code|promo/i.test(text);
+      if (!text?.trim()) return false;
+      const couponKeywords = /(?:קופון|קופונים|הקופון|קוד|הקוד|code|coupon|הנחה|discount|promo)/i;
+      const codePattern = /(?:^|[\s:;,/|()–\-])([A-Za-z][A-Za-z0-9]{2,19})(?=$|[\s:;,/|()–\-])/g;
+      const lines = text.split('\n');
+      for (const line of lines) {
+        if (couponKeywords.test(line)) {
+          let match;
+          codePattern.lastIndex = 0;
+          while ((match = codePattern.exec(line)) !== null) {
+            if (!BLACKLIST.test(match[1].toUpperCase())) return true;
+          }
+        }
+      }
+      return false;
     };
 
     // Fetch scheduled products (get a few to allow skipping coupon ones)
