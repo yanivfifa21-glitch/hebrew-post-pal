@@ -82,6 +82,13 @@ function stripHtmlTags(text: string): string {
     .replace(/<[^>]*>/g, '');
 }
 
+function hasCouponInText(text: string | null): boolean {
+  if (!text) return false;
+  // Detect coupon codes: alphanumeric codes near coupon keywords
+  const couponKeywords = /קופון|קוד|coupon|code|promo/i;
+  return couponKeywords.test(text);
+}
+
 function buildMessage(product: Record<string, unknown>): string {
   const rawDescription = String(product.hebrew_description ?? "").trim();
   const description = escapeHtml(rawDescription);
@@ -517,6 +524,7 @@ serve(async (req) => {
       const shabbatStartTime: string = userSettings.shabbat_start_time || '14:00';
       const shabbatEndTime: string = userSettings.shabbat_end_time || '20:00';
       const stockCheckEnabled: boolean = userSettings.stock_check_before_publish !== false; // default true
+      const sendCouponPosts: boolean = userSettings.send_coupon_posts !== false; // default true
 
       // Step A: Check Shabbat mode first (global)
       if (isInShabbatMode(currentDayOfWeek, currentTimeStr, shabbatEnabled, shabbatStartTime, shabbatEndTime)) {
@@ -599,6 +607,12 @@ serve(async (req) => {
             if (!zoneProduct.products) continue;
             const product = zoneProduct.products;
             console.log(`[auto-post] ${zoneLabel}: Trying product ${product.id}...`);
+
+            // Skip coupon posts if disabled
+            if (!sendCouponPosts && hasCouponInText(product.hebrew_description)) {
+              console.log(`[auto-post] ${zoneLabel}: Skipping product ${product.id} - has coupon (send_coupon_posts=false)`);
+              continue;
+            }
 
             // Lock the zone_product (atomic - verify lock was acquired)
             const { data: lockData } = await supabase
@@ -779,6 +793,12 @@ serve(async (req) => {
         // Try up to 3 products from general queue
         let generalSent = false;
         for (const product of unassignedProducts.slice(0, 3)) {
+          // Skip coupon posts if disabled
+          if (!sendCouponPosts && hasCouponInText(product.hebrew_description)) {
+            console.log(`[auto-post] User ${userId} [General]: Skipping product ${product.id} - has coupon (send_coupon_posts=false)`);
+            continue;
+          }
+
           const { data: genLock } = await supabase
             .from("products")
             .update({ status: "processing" })

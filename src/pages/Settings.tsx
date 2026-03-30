@@ -285,6 +285,9 @@ const Settings = () => {
   const [isFetchingRate, setIsFetchingRate] = useState(false);
   const [isStartingPublish, setIsStartingPublish] = useState(false);
 
+  // Send coupon posts toggle
+  const [sendCouponPosts, setSendCouponPosts] = useState(true);
+
   // Custom emoji settings
   const [useCustomEmoji, setUseCustomEmoji] = useState(true);
   const [emojiMappings, setEmojiMappings] = useState<{id: string; emoji: string; custom_emoji_id: string}[]>([]);
@@ -400,7 +403,7 @@ const Settings = () => {
       // Fetch app settings (non-sensitive data only)
       const { data, error } = await supabase
         .from('app_settings')
-        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, ai_rewrite_template, posting_interval_hours, posting_interval_minutes, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, interval_start_time, interval_end_time, usd_exchange_rate, whatsapp_interval_minutes, telegram_interval_minutes, whatsapp_interval_start_time, whatsapp_interval_end_time, telegram_interval_start_time, telegram_interval_end_time, use_custom_emoji, openai_api_key, gemini_api_key')
+        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, ai_rewrite_template, posting_interval_hours, posting_interval_minutes, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, interval_start_time, interval_end_time, usd_exchange_rate, whatsapp_interval_minutes, telegram_interval_minutes, whatsapp_interval_start_time, whatsapp_interval_end_time, telegram_interval_start_time, telegram_interval_end_time, use_custom_emoji, openai_api_key, gemini_api_key, send_coupon_posts')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -447,6 +450,7 @@ const Settings = () => {
         setUseCustomEmoji((data as any).use_custom_emoji !== false);
         setOpenaiApiKey((data as any).openai_api_key || '');
         setGeminiApiKey((data as any).gemini_api_key || '');
+        setSendCouponPosts((data as any).send_coupon_posts !== false);
       } else {
         // No settings yet - use defaults
         setCustomAiPrompt(DEFAULT_PROMPT);
@@ -529,6 +533,7 @@ const Settings = () => {
         telegram_interval_end_time: useSeparateIntervals ? telegramIntervalEnd : '22:00',
         openai_api_key: openaiApiKey || null,
         gemini_api_key: geminiApiKey || null,
+        send_coupon_posts: sendCouponPosts,
       };
 
       if (settingsId) {
@@ -1051,6 +1056,31 @@ const Settings = () => {
                 checked={automationEnabled}
                 onCheckedChange={setAutomationEnabled}
                 className={automationEnabled ? 'data-[state=checked]:bg-primary shadow-[0_0_10px_rgba(var(--primary),0.5)]' : ''}
+              />
+            </div>
+
+            {/* Send Coupon Posts Toggle */}
+            <div className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all duration-300 ${
+              sendCouponPosts 
+                ? 'bg-primary/10 border-primary/50' 
+                : 'bg-muted/30 border-border'
+            }`}>
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${sendCouponPosts ? 'bg-primary/20' : 'bg-muted'}`}>
+                  <span className="text-lg">🏷️</span>
+                </div>
+                <div>
+                  <p className="font-semibold text-foreground">שלח פוסטים עם קופון</p>
+                  <p className="text-sm text-muted-foreground">
+                    {sendCouponPosts 
+                      ? "פוסטים עם קופון ישלחו כרגיל" 
+                      : "פוסטים עם קופון ידולגו - יעבור לפוסט הבא"}
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={sendCouponPosts}
+                onCheckedChange={setSendCouponPosts}
               />
             </div>
 

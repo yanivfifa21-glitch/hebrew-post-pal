@@ -255,15 +255,23 @@ serve(async (req) => {
       });
     }
 
-    // Fetch the OLDEST product with status 'Scheduled'
-    const { data: product, error: fetchError } = await supabase
+    // Check if coupon posts should be sent
+    const sendCouponPosts: boolean = settings.send_coupon_posts !== false;
+
+    // Helper to detect coupon in text
+    const hasCouponInText = (text: string | null): boolean => {
+      if (!text) return false;
+      return /קופון|קוד|coupon|code|promo/i.test(text);
+    };
+
+    // Fetch scheduled products (get a few to allow skipping coupon ones)
+    const { data: candidates, error: fetchError } = await supabase
       .from("products")
       .select("*")
       .eq("user_id", userId)
       .eq("status", "Scheduled")
       .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
+      .limit(10);
 
     if (fetchError) {
       return new Response(JSON.stringify({ 
@@ -274,10 +282,19 @@ serve(async (req) => {
       });
     }
 
+    // Find first eligible product (skip coupon posts if disabled)
+    const product = (candidates || []).find(p => {
+      if (!sendCouponPosts && hasCouponInText(p.hebrew_description)) {
+        console.log(`[start-publishing] Skipping product ${p.id} - has coupon (send_coupon_posts=false)`);
+        return false;
+      }
+      return true;
+    }) || null;
+
     if (!product) {
       return new Response(JSON.stringify({ 
         success: false, 
-        error: "אין מוצרים בתור - הוסף מוצרים לתור קודם" 
+        error: sendCouponPosts ? "אין מוצרים בתור - הוסף מוצרים לתור קודם" : "אין מוצרים בתור (פוסטים עם קופון מדולגים)" 
       }), { 
         headers: { ...corsHeaders, "Content-Type": "application/json" } 
       });
