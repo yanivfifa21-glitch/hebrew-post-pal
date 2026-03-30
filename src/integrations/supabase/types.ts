@@ -156,6 +156,7 @@ export type Database = {
           posting_interval_minutes: number | null
           posting_times: string[] | null
           publishing_days: number[] | null
+          send_coupon_posts: boolean
           shabbat_end_time: string | null
           shabbat_mode_enabled: boolean | null
           shabbat_start_time: string | null
@@ -195,6 +196,7 @@ export type Database = {
           posting_interval_minutes?: number | null
           posting_times?: string[] | null
           publishing_days?: number[] | null
+          send_coupon_posts?: boolean
           shabbat_end_time?: string | null
           shabbat_mode_enabled?: boolean | null
           shabbat_start_time?: string | null
@@ -234,6 +236,7 @@ export type Database = {
           posting_interval_minutes?: number | null
           posting_times?: string[] | null
           publishing_days?: number[] | null
+          send_coupon_posts?: boolean
           shabbat_end_time?: string | null
           shabbat_mode_enabled?: boolean | null
           shabbat_start_time?: string | null
