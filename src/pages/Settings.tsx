@@ -450,6 +450,7 @@ const Settings = () => {
         setUseCustomEmoji((data as any).use_custom_emoji !== false);
         setOpenaiApiKey((data as any).openai_api_key || '');
         setGeminiApiKey((data as any).gemini_api_key || '');
+        setSendCouponPosts((data as any).send_coupon_posts !== false);
       } else {
         // No settings yet - use defaults
         setCustomAiPrompt(DEFAULT_PROMPT);
