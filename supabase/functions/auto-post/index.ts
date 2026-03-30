@@ -82,6 +82,13 @@ function stripHtmlTags(text: string): string {
     .replace(/<[^>]*>/g, '');
 }
 
+function hasCouponInText(text: string | null): boolean {
+  if (!text) return false;
+  // Detect coupon codes: alphanumeric codes near coupon keywords
+  const couponKeywords = /קופון|קוד|coupon|code|promo/i;
+  return couponKeywords.test(text);
+}
+
 function buildMessage(product: Record<string, unknown>): string {
   const rawDescription = String(product.hebrew_description ?? "").trim();
   const description = escapeHtml(rawDescription);
