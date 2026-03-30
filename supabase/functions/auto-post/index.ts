@@ -83,10 +83,26 @@ function stripHtmlTags(text: string): string {
 }
 
 function hasCouponInText(text: string | null): boolean {
-  if (!text) return false;
-  // Detect coupon codes: alphanumeric codes near coupon keywords
-  const couponKeywords = /קופון|קוד|coupon|code|promo/i;
-  return couponKeywords.test(text);
+  if (!text?.trim()) return false;
+  
+  // Use the same detection logic as detectCouponsInText in couponUtils.ts
+  // Scans lines with coupon keywords for actual alphanumeric coupon codes
+  const BLACKLIST = /^(USD|ILS|NIS|CODE|COUPON|HTTP|HTTPS|COM|WWW|OFF|NEW|TOP|APP|HOT|BIG|BUY|GET|VIP|PRO|MAX|SALE|FREE|BEST|SHOP|DEAL|LINK)$/i;
+  const couponKeywords = /(?:קופון|קופונים|הקופון|קוד|הקוד|code|coupon|הנחה|discount|promo)/i;
+  const codePattern = /(?:^|[\s:;,/|()–\-])([A-Za-z][A-Za-z0-9]{2,19})(?=$|[\s:;,/|()–\-])/g;
+  
+  const lines = text.split('\n');
+  for (const line of lines) {
+    if (couponKeywords.test(line)) {
+      let match;
+      codePattern.lastIndex = 0;
+      while ((match = codePattern.exec(line)) !== null) {
+        const code = match[1].toUpperCase();
+        if (!BLACKLIST.test(code)) return true;
+      }
+    }
+  }
+  return false;
 }
 
 function buildMessage(product: Record<string, unknown>): string {
