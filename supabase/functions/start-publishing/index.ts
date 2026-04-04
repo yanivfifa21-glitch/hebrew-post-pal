@@ -208,13 +208,20 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
     if (res.ok) return;
     
     const secondError = await res.text();
-    console.log(`[sendToTelegram] Media send failed, falling back to text-only: ${secondError}`);
-    await sendTelegramTextMessage(token, chatId, text);
-    return;
+    throw new Error(`שליחת ${isVideo ? 'וידאו' : 'תמונה'} נכשלה: ${secondError}`);
   }
   
   // No media - send as text message
-  await sendTelegramTextMessage(token, chatId, text);
+  const textUrl = `https://api.telegram.org/bot${token}/sendMessage`;
+  const textBody = { chat_id: chatId, parse_mode: "HTML", text };
+  
+  const textRes = await fetch(textUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(textBody),
+  });
+  
+  if (!textRes.ok) throw new Error(await textRes.text());
 }
 
 // WhatsApp sender - supports video
