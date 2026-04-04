@@ -48,6 +48,40 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
+function stripHtmlTags(text: string): string {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/<[^>]*>/g, '');
+}
+
+const COUPON_CODE_BLACKLIST = /^(USD|ILS|NIS|CODE|COUPON|HTTP|HTTPS|COM|WWW|OFF|NEW|TOP|APP|HOT|BIG|BUY|GET|VIP|PRO|MAX|SALE|FREE|BEST|SHOP|DEAL|LINK)$/i;
+
+function detectCouponSlots(text: string | null): string[] {
+  if (!text?.trim()) return [];
+
+  const slots: string[] = [];
+  const lines = text.split('\n');
+  const couponKeywords = /(?:קופון|קופונים|הקופון|קוד|הקוד|code|coupon|הנחה|discount|promo)/i;
+  const codePattern = /(?:^|[\s:;,/|()–\-])([A-Za-z][A-Za-z0-9]{2,19})(?=$|[\s:;,/|()–\-])/g;
+
+  for (const line of lines) {
+    if (!couponKeywords.test(line)) continue;
+
+    codePattern.lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = codePattern.exec(line)) !== null) {
+      const code = match[1].toUpperCase();
+      if (COUPON_CODE_BLACKLIST.test(code)) continue;
+      if (!slots.includes(code)) slots.push(code);
+    }
+  }
+
+  return slots.slice(0, 2);
+}
+
 // Message builder - sends ONLY the content the user wrote in the Hebrew description box
 function buildMessage(product: Record<string, unknown>): string {
   const rawDescription = String(product.hebrew_description ?? "").trim();
@@ -66,6 +100,39 @@ function buildMessage(product: Record<string, unknown>): string {
   }
 
   return parts.join("\n");
+}
+
+async function sendTelegramTextMessage(token: string, chatId: string, htmlText: string) {
+  const attempts = [
+    { parseMode: "HTML", text: htmlText },
+    { parseMode: null, text: stripHtmlTags(htmlText) },
+  ];
+
+  let lastError = "Unknown error";
+
+  for (const attempt of attempts) {
+    const body: Record<string, string> = {
+      chat_id: chatId,
+      text: attempt.text,
+    };
+
+    if (attempt.parseMode) {
+      body.parse_mode = attempt.parseMode;
+    }
+
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (res.ok) return;
+
+    lastError = await res.text();
+    console.log(`[sendToTelegram] Text-only send failed (${attempt.parseMode ?? 'plain'}): ${lastError}`);
+  }
+
+  throw new Error(`שליחת טקסט נכשלה: ${lastError}`);
 }
 
 // Telegram sender - uses HTML parse mode, supports video, retries once on failure
@@ -141,20 +208,13 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
     if (res.ok) return;
     
     const secondError = await res.text();
-    throw new Error(`שליחת ${isVideo ? 'וידאו' : 'תמונה'} נכשלה: ${secondError}`);
+    console.log(`[sendToTelegram] Media send failed, falling back to text-only: ${secondError}`);
+    await sendTelegramTextMessage(token, chatId, text);
+    return;
   }
   
   // No media - send as text message
-  const textUrl = `https://api.telegram.org/bot${token}/sendMessage`;
-  const textBody = { chat_id: chatId, parse_mode: "HTML", text };
-  
-  const textRes = await fetch(textUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(textBody),
-  });
-  
-  if (!textRes.ok) throw new Error(await textRes.text());
+  await sendTelegramTextMessage(token, chatId, text);
 }
 
 // WhatsApp sender - supports video
@@ -257,25 +317,7 @@ serve(async (req) => {
 
     // Check if coupon posts should be sent
     const sendCouponPosts: boolean = settings.send_coupon_posts !== false;
-
-    // Helper to detect coupon in text - looks for actual coupon codes, not just keywords
-    const BLACKLIST = /^(USD|ILS|NIS|CODE|COUPON|HTTP|HTTPS|COM|WWW|OFF|NEW|TOP|APP|HOT|BIG|BUY|GET|VIP|PRO|MAX|SALE|FREE|BEST|SHOP|DEAL|LINK)$/i;
-    const hasCouponInText = (text: string | null): boolean => {
-      if (!text?.trim()) return false;
-      const couponKeywords = /(?:קופון|קופונים|הקופון|קוד|הקוד|code|coupon|הנחה|discount|promo)/i;
-      const codePattern = /(?:^|[\s:;,/|()–\-])([A-Za-z][A-Za-z0-9]{2,19})(?=$|[\s:;,/|()–\-])/g;
-      const lines = text.split('\n');
-      for (const line of lines) {
-        if (couponKeywords.test(line)) {
-          let match;
-          codePattern.lastIndex = 0;
-          while ((match = codePattern.exec(line)) !== null) {
-            if (!BLACKLIST.test(match[1].toUpperCase())) return true;
-          }
-        }
-      }
-      return false;
-    };
+    const hasCouponInText = (text: string | null): boolean => detectCouponSlots(text).length > 0;
 
     // Fetch scheduled products (get a few to allow skipping coupon ones)
     const { data: candidates, error: fetchError } = await supabase
