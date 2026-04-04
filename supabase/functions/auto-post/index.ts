@@ -82,21 +82,34 @@ function stripHtmlTags(text: string): string {
     .replace(/<[^>]*>/g, '');
 }
 
-function hasCouponInText(text: string | null): boolean {
-  if (!text?.trim()) return false;
-  // Same logic as detectCouponsInText: find alphanumeric codes on lines with coupon keywords
-  const BLACKLIST = /^(USD|ILS|NIS|CODE|COUPON|HTTP|HTTPS|COM|WWW|OFF|NEW|TOP|APP|HOT|BIG|BUY|GET|VIP|PRO|MAX|SALE|FREE|BEST|SHOP|DEAL|LINK)$/i;
-  const keywordLine = /(?:קופון|קופונים|הקופון|קוד|הקוד|code|coupon|הנחה|discount|promo)/i;
-  const codePat = /(?:^|[\s:;,/|()–\-])([A-Za-z][A-Za-z0-9]{2,19})(?=$|[\s:;,/|()–\-])/g;
-  for (const line of text.split('\n')) {
-    if (!keywordLine.test(line)) continue;
-    codePat.lastIndex = 0;
-    let m;
-    while ((m = codePat.exec(line)) !== null) {
-      if (!BLACKLIST.test(m[1].toUpperCase())) return true;
+const COUPON_CODE_BLACKLIST = /^(USD|ILS|NIS|CODE|COUPON|HTTP|HTTPS|COM|WWW|OFF|NEW|TOP|APP|HOT|BIG|BUY|GET|VIP|PRO|MAX|SALE|FREE|BEST|SHOP|DEAL|LINK)$/i;
+
+function detectCouponSlots(text: string | null): string[] {
+  if (!text?.trim()) return [];
+
+  const slots: string[] = [];
+  const lines = text.split('\n');
+  const couponKeywords = /(?:קופון|קופונים|הקופון|קוד|הקוד|code|coupon|הנחה|discount|promo)/i;
+  const codePattern = /(?:^|[\s:;,/|()–\-])([A-Za-z][A-Za-z0-9]{2,19})(?=$|[\s:;,/|()–\-])/g;
+
+  for (const line of lines) {
+    if (!couponKeywords.test(line)) continue;
+
+    codePattern.lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = codePattern.exec(line)) !== null) {
+      const code = match[1].toUpperCase();
+      if (COUPON_CODE_BLACKLIST.test(code)) continue;
+      if (!slots.includes(code)) slots.push(code);
     }
   }
-  return false;
+
+  return slots.slice(0, 2);
+}
+
+function hasCouponInText(text: string | null): boolean {
+  return detectCouponSlots(text).length > 0;
 }
 
 function buildMessage(product: Record<string, unknown>): string {
@@ -598,14 +611,14 @@ serve(async (req) => {
             continue;
           }
 
-          // Get oldest Scheduled product in this zone (try up to 3 products if first ones fail)
+          // Get oldest Scheduled products (allow extra candidates for coupon/failure skipping)
           const { data: zoneProducts } = await supabase
             .from("zone_products")
             .select("*, products(*)")
             .eq("zone_id", zone.id)
             .eq("status", "Scheduled")
             .order("created_at", { ascending: true })
-            .limit(3);
+            .limit(10);
 
           if (!zoneProducts || zoneProducts.length === 0) {
             console.log(`[auto-post] ${zoneLabel}: No scheduled products`);
@@ -768,7 +781,7 @@ serve(async (req) => {
           .eq("user_id", userId)
           .eq("status", "Scheduled")
           .order("created_at", { ascending: true })
-          .limit(5);
+          .limit(10);
 
         if (!generalProducts || generalProducts.length === 0) {
           continue;
@@ -800,9 +813,9 @@ serve(async (req) => {
           continue;
         }
 
-        // Try up to 3 products from general queue
+        // Try eligible products from general queue
         let generalSent = false;
-        for (const product of unassignedProducts.slice(0, 3)) {
+        for (const product of unassignedProducts) {
           // Skip coupon posts if disabled
           if (!sendCouponPosts && hasCouponInText(product.hebrew_description)) {
             console.log(`[auto-post] User ${userId} [General]: Skipping product ${product.id} - has coupon (send_coupon_posts=false)`);
@@ -912,14 +925,14 @@ serve(async (req) => {
           continue;
         }
 
-        // Try up to 3 products (skip failures)
+        // Try oldest products and allow skipping coupon posts / failures
         const { data: candidates } = await supabase
           .from("products")
           .select("*")
           .eq("user_id", userId)
           .eq("status", "Scheduled")
           .order("created_at", { ascending: true })
-          .limit(3);
+          .limit(10);
 
         if (!candidates || candidates.length === 0) {
           results.push({ userId, status: "queue_empty" });
@@ -939,6 +952,11 @@ serve(async (req) => {
 
         let legacySent = false;
         for (const product of candidates) {
+          if (!sendCouponPosts && hasCouponInText(product.hebrew_description)) {
+            console.log(`[auto-post] User ${userId}: Skipping product ${product.id} - has coupon (send_coupon_posts=false)`);
+            continue;
+          }
+
           const { data: legacyLock } = await supabase
             .from("products")
             .update({ status: "processing" })
