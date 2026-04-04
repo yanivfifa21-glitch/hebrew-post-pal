@@ -208,13 +208,20 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
     if (res.ok) return;
     
     const secondError = await res.text();
-    console.log(`[sendToTelegram] Media send failed, falling back to text-only: ${secondError}`);
-    await sendTelegramTextMessage(token, chatId, text);
-    return;
+    throw new Error(`שליחת ${isVideo ? 'וידאו' : 'תמונה'} נכשלה: ${secondError}`);
   }
   
   // No media - send as text message
-  await sendTelegramTextMessage(token, chatId, text);
+  const textUrl = `https://api.telegram.org/bot${token}/sendMessage`;
+  const textBody = { chat_id: chatId, parse_mode: "HTML", text };
+  
+  const textRes = await fetch(textUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(textBody),
+  });
+  
+  if (!textRes.ok) throw new Error(await textRes.text());
 }
 
 // WhatsApp sender - supports video
@@ -337,89 +344,19 @@ serve(async (req) => {
       });
     }
 
-    // Find first eligible product (skip coupon posts if disabled)
-    const product = (candidates || []).find(p => {
+    // Filter eligible products (skip coupon posts if disabled)
+    const eligibleProducts = (candidates || []).filter(p => {
       if (!sendCouponPosts && hasCouponInText(p.hebrew_description)) {
         console.log(`[start-publishing] Skipping product ${p.id} - has coupon (send_coupon_posts=false)`);
         return false;
       }
       return true;
-    }) || null;
+    });
 
-    if (!product) {
+    if (eligibleProducts.length === 0) {
       return new Response(JSON.stringify({ 
         success: false, 
         error: sendCouponPosts ? "אין מוצרים בתור - הוסף מוצרים לתור קודם" : "אין מוצרים בתור (פוסטים עם קופון מדולגים)" 
-      }), { 
-        headers: { ...corsHeaders, "Content-Type": "application/json" } 
-      });
-    }
-
-    // Check if product has affiliate link - if not, try to generate one (only for valid AliExpress URLs)
-    if (!product.affiliate_link) {
-      const originalUrl = product.original_url?.trim() || "";
-      const isValidAliExpressUrl = originalUrl.includes("aliexpress.com") || 
-                                   originalUrl.includes("a.aliexpress.com") || 
-                                   originalUrl.includes("s.click.aliexpress.com");
-      
-      if (isValidAliExpressUrl) {
-        console.log(`[start-publishing] Product ${product.id} has no affiliate link, generating...`);
-        
-        // Try to generate affiliate link
-        const { data: credentials } = await supabase
-          .rpc("get_decrypted_user_credentials", { p_user_id: userId });
-
-        const appKey = credentials?.aliexpress_app_key?.trim();
-        const appSecret = credentials?.aliexpress_app_secret?.trim();
-        const trackingId = settings.aliexpress_tracking_id?.trim() || "TELEGRAM";
-
-        if (appKey && appSecret) {
-          // Generate affiliate link using the API
-          const affiliateResponse = await fetch(`${supabaseUrl}/functions/v1/generate-affiliate-link`, {
-            method: 'POST',
-            headers: {
-              'Authorization': authHeader,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              productUrl: originalUrl,
-              userId: userId
-            })
-          });
-
-          const affiliateData = await affiliateResponse.json();
-          
-          if (affiliateData.success) {
-            // Update product with affiliate link
-            await supabase
-              .from("products")
-              .update({ affiliate_link: affiliateData.affiliateLink })
-              .eq("id", product.id);
-
-            product.affiliate_link = affiliateData.affiliateLink;
-            console.log(`[start-publishing] Generated affiliate link for product ${product.id}`);
-          } else {
-            console.log(`[start-publishing] Failed to generate affiliate link: ${affiliateData.error}, continuing without it`);
-          }
-        } else {
-          console.log(`[start-publishing] No AliExpress credentials, skipping affiliate link generation`);
-        }
-      } else {
-        console.log(`[start-publishing] Product ${product.id} has non-AliExpress URL (${originalUrl}), skipping affiliate link generation`);
-      }
-    }
-
-    // Lock product
-    const { error: lockError } = await supabase
-      .from("products")
-      .update({ status: "processing" })
-      .eq("id", product.id)
-      .eq("status", "Scheduled");
-
-    if (lockError) {
-      return new Response(JSON.stringify({ 
-        success: false, 
-        error: `שגיאה בנעילת מוצר: ${lockError.message}` 
       }), { 
         headers: { ...corsHeaders, "Content-Type": "application/json" } 
       });
@@ -433,7 +370,6 @@ serve(async (req) => {
       .eq("is_active", true);
 
     if (accountsError || !accounts || accounts.length === 0) {
-      await supabase.from("products").update({ status: "Scheduled" }).eq("id", product.id);
       return new Response(JSON.stringify({ 
         success: false, 
         error: "אין חשבונות הודעות פעילים - הוסף חשבון טלגרם או ווטסאפ" 
@@ -442,89 +378,145 @@ serve(async (req) => {
       });
     }
 
-    // Build message and send
-    const message = buildMessage(product);
-    let sendSuccess = false;
-    const sentTo: string[] = [];
-    const errors: string[] = [];
+    // Try each eligible product until one succeeds
+    const allErrors: string[] = [];
 
-    for (const account of accounts) {
-      const { data: credentials, error: credError } = await supabase
-        .rpc("get_decrypted_messaging_account_credentials", { 
-          p_account_id: account.id, 
-          p_user_id: userId 
-        });
+    for (const product of eligibleProducts) {
+      console.log(`[start-publishing] Trying product ${product.id}...`);
 
-      if (credError || !credentials) {
-        errors.push(`${account.account_name}: שגיאה בפענוח credentials`);
+      // Try to generate affiliate link if missing
+      if (!product.affiliate_link) {
+        const originalUrl = product.original_url?.trim() || "";
+        const isValidAliExpressUrl = originalUrl.includes("aliexpress.com") || 
+                                     originalUrl.includes("a.aliexpress.com") || 
+                                     originalUrl.includes("s.click.aliexpress.com");
+        
+        if (isValidAliExpressUrl) {
+          console.log(`[start-publishing] Product ${product.id} has no affiliate link, generating...`);
+          const { data: credentials } = await supabase.rpc("get_decrypted_user_credentials", { p_user_id: userId });
+          const appKey = credentials?.aliexpress_app_key?.trim();
+          const appSecret = credentials?.aliexpress_app_secret?.trim();
+          if (appKey && appSecret) {
+            try {
+              const affiliateResponse = await fetch(`${supabaseUrl}/functions/v1/generate-affiliate-link`, {
+                method: 'POST',
+                headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ productUrl: originalUrl, userId })
+              });
+              const affiliateData = await affiliateResponse.json();
+              if (affiliateData.success) {
+                await supabase.from("products").update({ affiliate_link: affiliateData.affiliateLink }).eq("id", product.id);
+                product.affiliate_link = affiliateData.affiliateLink;
+              }
+            } catch (e) {
+              console.log(`[start-publishing] Affiliate link generation failed: ${e}`);
+            }
+          }
+        } else {
+          console.log(`[start-publishing] Product ${product.id} has non-AliExpress URL, skipping affiliate link generation`);
+        }
+      }
+
+      // Lock product
+      const { data: lockData } = await supabase
+        .from("products")
+        .update({ status: "processing" })
+        .eq("id", product.id)
+        .eq("status", "Scheduled")
+        .select("id");
+
+      if (!lockData || lockData.length === 0) {
+        console.log(`[start-publishing] Product ${product.id} already locked, skipping`);
         continue;
       }
 
-      if (account.account_type === "telegram") {
-        const botToken = credentials.telegram_bot_token;
-        const chatId = account.telegram_chat_id;
+      // Build message and send to all accounts
+      const message = buildMessage(product);
+      let sendSuccess = false;
+      const sentTo: string[] = [];
+      const errors: string[] = [];
 
-        if (botToken && chatId) {
-          try {
-            await sendToTelegram(botToken, chatId, product, message);
-            sendSuccess = true;
-            sentTo.push(`Telegram: ${account.account_name}`);
-          } catch (e) {
-            errors.push(`Telegram ${account.account_name}: ${e}`);
-          }
-        } else {
-          errors.push(`Telegram ${account.account_name}: חסר token או chat ID`);
-        }
-      } else if (account.account_type === "whatsapp") {
-        const instanceId = credentials.greenapi_instance_id;
-        const apiToken = credentials.greenapi_api_token;
-        const chatId = account.whatsapp_chat_id;
+      for (const account of accounts) {
+        const { data: credentials, error: credError } = await supabase
+          .rpc("get_decrypted_messaging_account_credentials", { 
+            p_account_id: account.id, 
+            p_user_id: userId 
+          });
 
-        if (instanceId && apiToken && chatId) {
-          try {
-            await sendToWhatsApp(instanceId, apiToken, chatId, product, message);
-            sendSuccess = true;
-            sentTo.push(`WhatsApp: ${account.account_name}`);
-          } catch (e) {
-            errors.push(`WhatsApp ${account.account_name}: ${e}`);
-          }
-        } else {
-          errors.push(`WhatsApp ${account.account_name}: חסר instance ID, token או chat ID`);
+        if (credError || !credentials) {
+          errors.push(`${account.account_name}: שגיאה בפענוח credentials`);
+          continue;
         }
+
+        if (account.account_type === "telegram") {
+          const botToken = credentials.telegram_bot_token;
+          const chatId = account.telegram_chat_id;
+          if (botToken && chatId) {
+            try {
+              await sendToTelegram(botToken, chatId, product, message);
+              sendSuccess = true;
+              sentTo.push(`Telegram: ${account.account_name}`);
+            } catch (e) {
+              errors.push(`Telegram ${account.account_name}: ${e}`);
+            }
+          } else {
+            errors.push(`Telegram ${account.account_name}: חסר token או chat ID`);
+          }
+        } else if (account.account_type === "whatsapp") {
+          const instanceId = credentials.greenapi_instance_id;
+          const apiToken = credentials.greenapi_api_token;
+          const chatId = account.whatsapp_chat_id;
+          if (instanceId && apiToken && chatId) {
+            try {
+              await sendToWhatsApp(instanceId, apiToken, chatId, product, message);
+              sendSuccess = true;
+              sentTo.push(`WhatsApp: ${account.account_name}`);
+            } catch (e) {
+              errors.push(`WhatsApp ${account.account_name}: ${e}`);
+            }
+          } else {
+            errors.push(`WhatsApp ${account.account_name}: חסר instance ID, token או chat ID`);
+          }
+        }
+      }
+
+      if (sendSuccess) {
+        // Mark product as sent
+        await supabase.from("products").update({ status: "Sent" }).eq("id", product.id);
+
+        // Enable automation if not already enabled
+        await supabase
+          .from("app_settings")
+          .update({ 
+            automation_enabled: true,
+            posting_interval_minutes: settings.posting_interval_minutes || 30
+          })
+          .eq("user_id", userId);
+
+        return new Response(JSON.stringify({ 
+          success: true, 
+          message: `פרסום בוצע בהצלחה! נשלח ל: ${sentTo.join(", ")}`,
+          sentTo,
+          productTitle: product.title,
+          nextPost: `הפרסום הבא בעוד ${settings.posting_interval_minutes || 30} דקות`
+        }), { 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
+        });
+      } else {
+        // Unlock product and try next one
+        console.log(`[start-publishing] Product ${product.id} failed (${errors.join('; ')}), trying next`);
+        await supabase.from("products").update({ status: "Scheduled" }).eq("id", product.id);
+        allErrors.push(...errors);
       }
     }
 
-    // Final status update
-    const finalStatus = sendSuccess ? "Sent" : "Scheduled";
-    await supabase.from("products").update({ status: finalStatus }).eq("id", product.id);
-
-    if (sendSuccess) {
-      // Enable automation if not already enabled
-      await supabase
-        .from("app_settings")
-        .update({ 
-          automation_enabled: true,
-          posting_interval_minutes: settings.posting_interval_minutes || 30
-        })
-        .eq("user_id", userId);
-
-      return new Response(JSON.stringify({ 
-        success: true, 
-        message: `פרסום בוצע בהצלחה! נשלח ל: ${sentTo.join(", ")}`,
-        sentTo,
-        productTitle: product.title,
-        nextPost: `הפרסום הבא בעוד ${settings.posting_interval_minutes || 30} דקות`
-      }), { 
-        headers: { ...corsHeaders, "Content-Type": "application/json" } 
-      });
-    } else {
-      return new Response(JSON.stringify({ 
-        success: false, 
-        error: `שליחה נכשלה: ${errors.join("; ")}` 
-      }), { 
-        headers: { ...corsHeaders, "Content-Type": "application/json" } 
-      });
-    }
+    // All products failed
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: `כל המוצרים נכשלו: ${allErrors.join("; ")}` 
+    }), { 
+      headers: { ...corsHeaders, "Content-Type": "application/json" } 
+    });
 
   } catch (e) {
     console.error("[start-publishing] Error:", e);
