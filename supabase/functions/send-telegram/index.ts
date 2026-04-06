@@ -61,6 +61,29 @@ function escapeHtmlForTelegram(text: string): string {
   return text;
 }
 
+function buildTelegramPhotoCandidates(imageUrl: string): string[] {
+  const candidates = [imageUrl];
+
+  try {
+    const url = new URL(imageUrl);
+    const publicPrefix = "/storage/v1/object/public/";
+
+    if (url.pathname.includes(publicPrefix)) {
+      const renderedUrl = new URL(url.toString());
+      renderedUrl.pathname = url.pathname.replace(publicPrefix, "/storage/v1/render/image/public/");
+      renderedUrl.searchParams.set("width", "2400");
+      renderedUrl.searchParams.set("height", "2400");
+      renderedUrl.searchParams.set("resize", "contain");
+      renderedUrl.searchParams.set("quality", "85");
+      candidates.unshift(renderedUrl.toString());
+    }
+  } catch (error) {
+    console.log("[send-telegram] Failed to build rendered image URL:", error);
+  }
+
+  return Array.from(new Set(candidates));
+}
+
 async function sendTelegramMessage(
   botToken: string,
   chatId: string,
@@ -127,60 +150,71 @@ async function sendTelegramMessage(
         return result;
       }
     } else {
-      // Try blob upload first to avoid CDN/Cloudflare blocks
-      console.log("[send-telegram] Trying blob upload for photo...");
-      try {
-        const photoResponse = await fetch(imageUrl);
-        if (!photoResponse.ok) throw new Error(`Download failed: ${photoResponse.status}`);
-        const photoBlob = await photoResponse.blob();
+      const photoCandidates = buildTelegramPhotoCandidates(imageUrl);
 
-        const formData = new FormData();
-        formData.append("chat_id", chatId);
-        if (!captionTooLong) {
-          formData.append("caption", caption);
-          formData.append("parse_mode", "HTML");
+      console.log("[send-telegram] Trying blob upload for photo...");
+      for (const candidateUrl of photoCandidates) {
+        try {
+          const photoResponse = await fetch(candidateUrl);
+          if (!photoResponse.ok) throw new Error(`Download failed: ${photoResponse.status}`);
+          const photoBlob = await photoResponse.blob();
+
+          const formData = new FormData();
+          formData.append("chat_id", chatId);
+          if (!captionTooLong) {
+            formData.append("caption", caption);
+            formData.append("parse_mode", "HTML");
+          }
+          formData.append("photo", photoBlob, "image.jpg");
+
+          const response = await fetch(
+            `https://api.telegram.org/bot${botToken}/sendPhoto`,
+            { method: "POST", body: formData }
+          );
+          const result = await response.json();
+
+          if (result.ok) {
+            if (captionTooLong) {
+              console.log("[send-telegram] Caption too long, sending text as separate message");
+              await sendTextOnly(botToken, chatId, caption);
+            }
+            return result;
+          }
+
+          console.log(`[send-telegram] Blob upload failed (${candidateUrl === imageUrl ? 'original' : 'rendered'}):`, result.description);
+        } catch (dlErr) {
+          console.log(`[send-telegram] Photo blob approach failed (${candidateUrl === imageUrl ? 'original' : 'rendered'}):`, dlErr);
         }
-        formData.append("photo", photoBlob, "image.jpg");
+      }
+
+      for (const candidateUrl of photoCandidates) {
+        const body: any = { chat_id: chatId, photo: candidateUrl };
+        if (!captionTooLong) {
+          body.caption = caption;
+          body.parse_mode = "HTML";
+        }
 
         const response = await fetch(
           `https://api.telegram.org/bot${botToken}/sendPhoto`,
-          { method: "POST", body: formData }
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }
         );
         const result = await response.json();
 
+        if (captionTooLong && result.ok) {
+          console.log("[send-telegram] Caption too long, sending text as separate message");
+          await sendTextOnly(botToken, chatId, caption);
+        }
+
         if (result.ok) {
-          if (captionTooLong) {
-            console.log("[send-telegram] Caption too long, sending text as separate message");
-            await sendTextOnly(botToken, chatId, caption);
-          }
           return result;
         }
-        console.log("[send-telegram] Blob upload failed:", result.description);
-      } catch (dlErr) {
-        console.log("[send-telegram] Photo blob approach failed:", dlErr);
       }
 
-      // Fallback: URL method
-      const body: any = { chat_id: chatId, photo: imageUrl };
-      if (!captionTooLong) {
-        body.caption = caption;
-        body.parse_mode = "HTML";
-      }
-      const response = await fetch(
-        `https://api.telegram.org/bot${botToken}/sendPhoto`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        }
-      );
-      const result = await response.json();
-      
-      if (captionTooLong && result.ok) {
-        console.log("[send-telegram] Caption too long, sending text as separate message");
-        await sendTextOnly(botToken, chatId, caption);
-      }
-      return result;
+      return { ok: false, description: "Failed to send photo after rendered fallback" };
     }
   } else {
     return await sendTextOnly(botToken, chatId, caption);
@@ -208,7 +242,7 @@ async function sendTelegramAlbum(
 ): Promise<any> {
   const media = albumUrls.map((url, idx) => ({
     type: "photo" as const,
-    media: url,
+    media: buildTelegramPhotoCandidates(url)[0],
     ...(idx === 0 ? { caption, parse_mode: "HTML" } : {}),
   }));
 

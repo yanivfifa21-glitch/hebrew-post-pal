@@ -112,6 +112,29 @@ function hasCouponInText(text: string | null): boolean {
   return detectCouponSlots(text).length > 0;
 }
 
+function buildTelegramPhotoCandidates(imageUrl: string): string[] {
+  const candidates = [imageUrl];
+
+  try {
+    const url = new URL(imageUrl);
+    const publicPrefix = "/storage/v1/object/public/";
+
+    if (url.pathname.includes(publicPrefix)) {
+      const renderedUrl = new URL(url.toString());
+      renderedUrl.pathname = url.pathname.replace(publicPrefix, "/storage/v1/render/image/public/");
+      renderedUrl.searchParams.set("width", "2400");
+      renderedUrl.searchParams.set("height", "2400");
+      renderedUrl.searchParams.set("resize", "contain");
+      renderedUrl.searchParams.set("quality", "85");
+      candidates.unshift(renderedUrl.toString());
+    }
+  } catch (error) {
+    console.log(`[auto-post] Failed to build rendered image URL: ${error}`);
+  }
+
+  return Array.from(new Set(candidates));
+}
+
 function buildMessage(product: Record<string, unknown>): string {
   const rawDescription = String(product.hebrew_description ?? "").trim();
   const description = escapeHtml(rawDescription);
@@ -133,68 +156,59 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
   // Helper: attempt sending with given parse_mode
   async function trySend(parseMode: string | null, caption: string): Promise<boolean> {
     if (imageUrl) {
-      // Always download and upload as blob to avoid Cloudflare/CDN blocks
-      try {
-        const mediaResponse = await fetch(imageUrl);
-        if (!mediaResponse.ok) throw new Error(`Failed to download media: ${mediaResponse.status}`);
-        const mediaBlob = await mediaResponse.blob();
-        
-        const formData = new FormData();
-        formData.append("chat_id", chatId);
-        formData.append("caption", caption);
-        if (parseMode) formData.append("parse_mode", parseMode);
-        
-        let endpoint: string;
-        if (isVideo) {
-          formData.append("video", mediaBlob, "video.mp4");
-          formData.append("supports_streaming", "true");
-          endpoint = `https://api.telegram.org/bot${token}/sendVideo`;
-        } else {
-          formData.append("photo", mediaBlob, "image.jpg");
-          endpoint = `https://api.telegram.org/bot${token}/sendPhoto`;
+      const mediaCandidates = isVideo ? [imageUrl] : buildTelegramPhotoCandidates(imageUrl);
+      const endpoint = `https://api.telegram.org/bot${token}/${isVideo ? 'sendVideo' : 'sendPhoto'}`;
+
+      for (const candidateUrl of mediaCandidates) {
+        try {
+          const mediaResponse = await fetch(candidateUrl);
+          if (!mediaResponse.ok) throw new Error(`Failed to download media: ${mediaResponse.status}`);
+          const mediaBlob = await mediaResponse.blob();
+
+          const formData = new FormData();
+          formData.append("chat_id", chatId);
+          formData.append("caption", caption);
+          if (parseMode) formData.append("parse_mode", parseMode);
+
+          if (isVideo) {
+            formData.append("video", mediaBlob, "video.mp4");
+            formData.append("supports_streaming", "true");
+          } else {
+            formData.append("photo", mediaBlob, "image.jpg");
+          }
+
+          const res = await fetch(endpoint, { method: "POST", body: formData });
+          if (res.ok) return true;
+
+          const errText = await res.text();
+          console.log(`[auto-post] Blob upload failed (${parseMode ?? 'no-parse'} / ${candidateUrl === imageUrl ? 'original' : 'rendered'}): ${errText}`);
+        } catch (dlErr) {
+          console.log(`[auto-post] Media download failed (${candidateUrl === imageUrl ? 'original' : 'rendered'}): ${dlErr}`);
         }
-        
-        const res = await fetch(endpoint, { method: "POST", body: formData });
-        if (res.ok) return true;
-        const errText = await res.text();
-        console.log(`[auto-post] Blob upload failed (${parseMode}): ${errText}`);
-        
-        // Fallback: try URL method in case blob upload had issues
-        const urlBody: any = { chat_id: chatId, caption };
-        if (parseMode) urlBody.parse_mode = parseMode;
-        if (isVideo) {
-          urlBody.video = imageUrl;
-          urlBody.supports_streaming = true;
-        } else {
-          urlBody.photo = imageUrl;
-        }
-        const res2 = await fetch(
-          `https://api.telegram.org/bot${token}/${isVideo ? 'sendVideo' : 'sendPhoto'}`,
-          { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(urlBody) }
-        );
-        if (res2.ok) return true;
-        const errText2 = await res2.text();
-        console.log(`[auto-post] URL method also failed (${parseMode}): ${errText2}`);
-        return false;
-      } catch (dlErr) {
-        console.log(`[auto-post] Media download failed: ${dlErr}, trying URL method...`);
-        // Fallback to URL method
-        const urlBody: any = { chat_id: chatId, caption };
-        if (parseMode) urlBody.parse_mode = parseMode;
-        if (isVideo) {
-          urlBody.video = imageUrl;
-          urlBody.supports_streaming = true;
-        } else {
-          urlBody.photo = imageUrl;
-        }
-        const res = await fetch(
-          `https://api.telegram.org/bot${token}/${isVideo ? 'sendVideo' : 'sendPhoto'}`,
-          { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(urlBody) }
-        );
-        if (res.ok) return true;
-        await res.text();
-        return false;
       }
+
+      for (const candidateUrl of mediaCandidates) {
+        const urlBody: any = { chat_id: chatId, caption };
+        if (parseMode) urlBody.parse_mode = parseMode;
+        if (isVideo) {
+          urlBody.video = candidateUrl;
+          urlBody.supports_streaming = true;
+        } else {
+          urlBody.photo = candidateUrl;
+        }
+
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(urlBody),
+        });
+        if (res.ok) return true;
+
+        const errText = await res.text();
+        console.log(`[auto-post] URL method also failed (${parseMode ?? 'no-parse'} / ${candidateUrl === imageUrl ? 'original' : 'rendered'}): ${errText}`);
+      }
+
+      return false;
     } else {
       const body: any = { chat_id: chatId, text: caption };
       if (parseMode) body.parse_mode = parseMode;
@@ -211,12 +225,12 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
   // Try with HTML parse mode first
   if (await trySend("HTML", text)) return;
   
-  // If HTML failed, try without parse mode (plain text, strip tags)
-  console.log("[auto-post] HTML send failed, retrying as plain text...");
+  // If HTML failed, try without parse mode while still keeping the media
+  console.log("[auto-post] HTML send failed, retrying without HTML formatting...");
   const plainText = stripHtmlTags(text);
   if (await trySend(null, plainText)) return;
   
-  throw new Error("שליחה לטלגרם נכשלה גם עם HTML וגם כטקסט רגיל");
+  throw new Error("שליחה לטלגרם נכשלה גם עם HTML וגם ללא HTML");
 }
 
 async function sendToWhatsApp(instance: string, token: string, chatId: string, product: any, text: string) {
