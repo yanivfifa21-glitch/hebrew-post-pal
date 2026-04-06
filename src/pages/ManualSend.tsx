@@ -197,6 +197,56 @@ export default function ManualSend() {
       img.src = imageUrl;
     });
   };
+
+  const normalizeImageForUpload = async (file: File): Promise<File> => {
+    if (!file.type.startsWith("image/")) return file;
+
+    return new Promise((resolve) => {
+      const objectUrl = URL.createObjectURL(file);
+      const img = new Image();
+
+      img.onload = () => {
+        const maxWidth = 2400;
+        const maxHeight = 2400;
+        const scale = Math.min(1, maxWidth / img.width, maxHeight / img.height);
+        const width = Math.max(1, Math.round(img.width * scale));
+        const height = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+
+        if (!ctx) {
+          URL.revokeObjectURL(objectUrl);
+          resolve(file);
+          return;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob((blob) => {
+          URL.revokeObjectURL(objectUrl);
+
+          if (!blob) {
+            resolve(file);
+            return;
+          }
+
+          const baseName = file.name.replace(/\.[^.]+$/, "") || `image-${Date.now()}`;
+          resolve(new File([blob], `${baseName}.jpg`, { type: "image/jpeg" }));
+        }, "image/jpeg", 0.9);
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve(file);
+      };
+
+      img.src = objectUrl;
+    });
+  };
   // Generate watermarked preview whenever media or watermark settings change
   useEffect(() => {
     const generateWatermarkedPreview = async () => {
@@ -435,18 +485,20 @@ export default function ManualSend() {
 
   const uploadMediaToStorage = async (file: File): Promise<string | null> => {
     try {
-      // Apply watermark if enabled and file is an image
       let fileToUpload = file;
       if (file.type.startsWith("image/")) {
-        fileToUpload = await applyWatermark(file);
+        fileToUpload = addWatermark ? await applyWatermark(file) : file;
+        fileToUpload = await normalizeImageForUpload(fileToUpload);
       }
       
-      const fileExt = fileToUpload.name.split('.').pop();
+      const fileExt = fileToUpload.type.startsWith("image/")
+        ? "jpg"
+        : (fileToUpload.name.split('.').pop() || "bin");
       const fileName = `manual-send/${userId}/${Date.now()}.${fileExt}`;
       
       const { error: uploadError } = await supabase.storage
         .from("product-images")
-        .upload(fileName, fileToUpload, { upsert: true });
+        .upload(fileName, fileToUpload, { upsert: true, contentType: fileToUpload.type || undefined });
 
       if (uploadError) throw uploadError;
 
