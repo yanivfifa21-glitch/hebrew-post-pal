@@ -83,6 +83,9 @@ function stripHtmlTags(text: string): string {
 }
 
 const COUPON_CODE_BLACKLIST = /^(USD|ILS|NIS|CODE|COUPON|HTTP|HTTPS|COM|WWW|OFF|NEW|TOP|APP|HOT|BIG|BUY|GET|VIP|PRO|MAX|SALE|FREE|BEST|SHOP|DEAL|LINK)$/i;
+const PRODUCT_SCAN_BATCH_SIZE = 50;
+const PRODUCT_SCAN_TARGET_COUNT = 10;
+const PRODUCT_SCAN_MAX_RECORDS = 1000;
 
 function detectCouponSlots(text: string | null): string[] {
   if (!text?.trim()) return [];
@@ -110,6 +113,134 @@ function detectCouponSlots(text: string | null): string[] {
 
 function hasCouponInText(text: string | null): boolean {
   return detectCouponSlots(text).length > 0;
+}
+
+async function fetchEligibleZoneQueueProducts(
+  supabase: any,
+  zoneId: string,
+  sendCouponPosts: boolean,
+  desiredCount: number = PRODUCT_SCAN_TARGET_COUNT,
+): Promise<{ zoneProducts: any[]; skippedCouponCount: number }> {
+  const zoneProducts: any[] = [];
+  let skippedCouponCount = 0;
+
+  for (let from = 0; from < PRODUCT_SCAN_MAX_RECORDS && zoneProducts.length < desiredCount; from += PRODUCT_SCAN_BATCH_SIZE) {
+    const to = Math.min(from + PRODUCT_SCAN_BATCH_SIZE - 1, PRODUCT_SCAN_MAX_RECORDS - 1);
+    const { data: batch, error } = await supabase
+      .from("zone_products")
+      .select("*, products(*)")
+      .eq("zone_id", zoneId)
+      .eq("status", "Scheduled")
+      .order("created_at", { ascending: true })
+      .range(from, to);
+
+    if (error) throw error;
+    if (!batch || batch.length === 0) break;
+
+    for (const zoneProduct of batch) {
+      if (!zoneProduct.products) continue;
+
+      if (!sendCouponPosts && hasCouponInText(zoneProduct.products.hebrew_description)) {
+        skippedCouponCount += 1;
+        continue;
+      }
+
+      zoneProducts.push(zoneProduct);
+      if (zoneProducts.length >= desiredCount) break;
+    }
+
+    if (batch.length < PRODUCT_SCAN_BATCH_SIZE) break;
+  }
+
+  return { zoneProducts, skippedCouponCount };
+}
+
+async function fetchEligibleGeneralQueueProducts(
+  supabase: any,
+  userId: string,
+  sendCouponPosts: boolean,
+  desiredCount: number = PRODUCT_SCAN_TARGET_COUNT,
+): Promise<{ products: any[]; skippedCouponCount: number }> {
+  const products: any[] = [];
+  let skippedCouponCount = 0;
+
+  for (let from = 0; from < PRODUCT_SCAN_MAX_RECORDS && products.length < desiredCount; from += PRODUCT_SCAN_BATCH_SIZE) {
+    const to = Math.min(from + PRODUCT_SCAN_BATCH_SIZE - 1, PRODUCT_SCAN_MAX_RECORDS - 1);
+    const { data: batch, error } = await supabase
+      .from("products")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("status", "Scheduled")
+      .order("created_at", { ascending: true })
+      .range(from, to);
+
+    if (error) throw error;
+    if (!batch || batch.length === 0) break;
+
+    const productIds = batch.map((product: any) => product.id);
+    const { data: zoneAssignments, error: zoneAssignmentsError } = await supabase
+      .from("zone_products")
+      .select("product_id")
+      .in("product_id", productIds);
+
+    if (zoneAssignmentsError) throw zoneAssignmentsError;
+
+    const zoneProductIds = new Set((zoneAssignments || []).map((assignment: any) => assignment.product_id));
+
+    for (const product of batch) {
+      if (zoneProductIds.has(product.id)) continue;
+
+      if (!sendCouponPosts && hasCouponInText(product.hebrew_description)) {
+        skippedCouponCount += 1;
+        continue;
+      }
+
+      products.push(product);
+      if (products.length >= desiredCount) break;
+    }
+
+    if (batch.length < PRODUCT_SCAN_BATCH_SIZE) break;
+  }
+
+  return { products, skippedCouponCount };
+}
+
+async function fetchEligibleScheduledProducts(
+  supabase: any,
+  userId: string,
+  sendCouponPosts: boolean,
+  desiredCount: number = PRODUCT_SCAN_TARGET_COUNT,
+): Promise<{ products: any[]; skippedCouponCount: number }> {
+  const products: any[] = [];
+  let skippedCouponCount = 0;
+
+  for (let from = 0; from < PRODUCT_SCAN_MAX_RECORDS && products.length < desiredCount; from += PRODUCT_SCAN_BATCH_SIZE) {
+    const to = Math.min(from + PRODUCT_SCAN_BATCH_SIZE - 1, PRODUCT_SCAN_MAX_RECORDS - 1);
+    const { data: batch, error } = await supabase
+      .from("products")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("status", "Scheduled")
+      .order("created_at", { ascending: true })
+      .range(from, to);
+
+    if (error) throw error;
+    if (!batch || batch.length === 0) break;
+
+    for (const product of batch) {
+      if (!sendCouponPosts && hasCouponInText(product.hebrew_description)) {
+        skippedCouponCount += 1;
+        continue;
+      }
+
+      products.push(product);
+      if (products.length >= desiredCount) break;
+    }
+
+    if (batch.length < PRODUCT_SCAN_BATCH_SIZE) break;
+  }
+
+  return { products, skippedCouponCount };
 }
 
 function buildTelegramPhotoCandidates(imageUrl: string): string[] {
@@ -625,17 +756,14 @@ serve(async (req) => {
             continue;
           }
 
-          // Get oldest Scheduled products (allow extra candidates for coupon/failure skipping)
-          const { data: zoneProducts } = await supabase
-            .from("zone_products")
-            .select("*, products(*)")
-            .eq("zone_id", zone.id)
-            .eq("status", "Scheduled")
-            .order("created_at", { ascending: true })
-            .limit(10);
+          const { zoneProducts, skippedCouponCount } = await fetchEligibleZoneQueueProducts(
+            supabase,
+            zone.id,
+            sendCouponPosts,
+          );
 
           if (!zoneProducts || zoneProducts.length === 0) {
-            console.log(`[auto-post] ${zoneLabel}: No scheduled products`);
+            console.log(`[auto-post] ${zoneLabel}: No eligible scheduled products (skipped coupons: ${skippedCouponCount})`);
             continue;
           }
 
@@ -788,31 +916,14 @@ serve(async (req) => {
           continue;
         }
 
-        // Get products NOT in any zone_products
-        const { data: generalProducts } = await supabase
-          .from("products")
-          .select("*")
-          .eq("user_id", userId)
-          .eq("status", "Scheduled")
-          .order("created_at", { ascending: true })
-          .limit(10);
-
-        if (!generalProducts || generalProducts.length === 0) {
-          continue;
-        }
-
-        // Filter out products that are in zone_products
-        const productIds = generalProducts.map((p: any) => p.id);
-        const { data: zoneAssignments } = await supabase
-          .from("zone_products")
-          .select("product_id")
-          .in("product_id", productIds);
-
-        const zoneProductIds = new Set((zoneAssignments || []).map((za: any) => za.product_id));
-        const unassignedProducts = generalProducts.filter((p: any) => !zoneProductIds.has(p.id));
+        const { products: unassignedProducts, skippedCouponCount } = await fetchEligibleGeneralQueueProducts(
+          supabase,
+          userId,
+          sendCouponPosts,
+        );
 
         if (unassignedProducts.length === 0) {
-          console.log(`[auto-post] User ${userId}: No general queue products (all assigned to zones)`);
+          console.log(`[auto-post] User ${userId}: No eligible general queue products (skipped coupons: ${skippedCouponCount})`);
           continue;
         }
 
@@ -939,16 +1050,14 @@ serve(async (req) => {
           continue;
         }
 
-        // Try oldest products and allow skipping coupon posts / failures
-        const { data: candidates } = await supabase
-          .from("products")
-          .select("*")
-          .eq("user_id", userId)
-          .eq("status", "Scheduled")
-          .order("created_at", { ascending: true })
-          .limit(10);
+        const { products: candidates, skippedCouponCount } = await fetchEligibleScheduledProducts(
+          supabase,
+          userId,
+          sendCouponPosts,
+        );
 
         if (!candidates || candidates.length === 0) {
+          console.log(`[auto-post] User ${userId}: No eligible legacy queue products (skipped coupons: ${skippedCouponCount})`);
           results.push({ userId, status: "queue_empty" });
           continue;
         }

@@ -57,6 +57,9 @@ function stripHtmlTags(text: string): string {
 }
 
 const COUPON_CODE_BLACKLIST = /^(USD|ILS|NIS|CODE|COUPON|HTTP|HTTPS|COM|WWW|OFF|NEW|TOP|APP|HOT|BIG|BUY|GET|VIP|PRO|MAX|SALE|FREE|BEST|SHOP|DEAL|LINK)$/i;
+const PRODUCT_SCAN_BATCH_SIZE = 50;
+const PRODUCT_SCAN_TARGET_COUNT = 10;
+const PRODUCT_SCAN_MAX_RECORDS = 1000;
 
 function detectCouponSlots(text: string | null): string[] {
   if (!text?.trim()) return [];
@@ -80,6 +83,48 @@ function detectCouponSlots(text: string | null): string[] {
   }
 
   return slots.slice(0, 2);
+}
+
+function hasCouponInText(text: string | null): boolean {
+  return detectCouponSlots(text).length > 0;
+}
+
+async function fetchEligibleScheduledProducts(
+  supabase: any,
+  userId: string,
+  sendCouponPosts: boolean,
+  desiredCount: number = PRODUCT_SCAN_TARGET_COUNT,
+): Promise<{ eligibleProducts: any[]; skippedCouponCount: number }> {
+  const eligibleProducts: any[] = [];
+  let skippedCouponCount = 0;
+
+  for (let from = 0; from < PRODUCT_SCAN_MAX_RECORDS && eligibleProducts.length < desiredCount; from += PRODUCT_SCAN_BATCH_SIZE) {
+    const to = Math.min(from + PRODUCT_SCAN_BATCH_SIZE - 1, PRODUCT_SCAN_MAX_RECORDS - 1);
+    const { data: batch, error } = await supabase
+      .from("products")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("status", "Scheduled")
+      .order("created_at", { ascending: true })
+      .range(from, to);
+
+    if (error) throw error;
+    if (!batch || batch.length === 0) break;
+
+    for (const product of batch) {
+      if (!sendCouponPosts && hasCouponInText(product.hebrew_description)) {
+        skippedCouponCount += 1;
+        continue;
+      }
+
+      eligibleProducts.push(product);
+      if (eligibleProducts.length >= desiredCount) break;
+    }
+
+    if (batch.length < PRODUCT_SCAN_BATCH_SIZE) break;
+  }
+
+  return { eligibleProducts, skippedCouponCount };
 }
 
 function buildTelegramPhotoCandidates(imageUrl: string): string[] {
@@ -353,39 +398,33 @@ serve(async (req) => {
 
     // Check if coupon posts should be sent
     const sendCouponPosts: boolean = settings.send_coupon_posts !== false;
-    const hasCouponInText = (text: string | null): boolean => detectCouponSlots(text).length > 0;
 
-    // Fetch scheduled products (get a few to allow skipping coupon ones)
-    const { data: candidates, error: fetchError } = await supabase
-      .from("products")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("status", "Scheduled")
-      .order("created_at", { ascending: true })
-      .limit(10);
+    let eligibleProducts: any[] = [];
+    let skippedCouponCount = 0;
 
-    if (fetchError) {
+    try {
+      ({ eligibleProducts, skippedCouponCount } = await fetchEligibleScheduledProducts(
+        supabase,
+        userId,
+        sendCouponPosts,
+      ));
+    } catch (fetchError) {
       return new Response(JSON.stringify({ 
         success: false, 
-        error: `שגיאה בשליפת מוצר: ${fetchError.message}` 
+        error: `שגיאה בשליפת מוצר: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}` 
       }), { 
         headers: { ...corsHeaders, "Content-Type": "application/json" } 
       });
     }
 
-    // Filter eligible products (skip coupon posts if disabled)
-    const eligibleProducts = (candidates || []).filter(p => {
-      if (!sendCouponPosts && hasCouponInText(p.hebrew_description)) {
-        console.log(`[start-publishing] Skipping product ${p.id} - has coupon (send_coupon_posts=false)`);
-        return false;
-      }
-      return true;
-    });
+    console.log(`[start-publishing] Eligible products found: ${eligibleProducts.length}, skipped coupon products: ${skippedCouponCount}`);
 
     if (eligibleProducts.length === 0) {
       return new Response(JSON.stringify({ 
         success: false, 
-        error: sendCouponPosts ? "אין מוצרים בתור - הוסף מוצרים לתור קודם" : "אין מוצרים בתור (פוסטים עם קופון מדולגים)" 
+        error: sendCouponPosts
+          ? "אין מוצרים בתור - הוסף מוצרים לתור קודם"
+          : "אין כרגע פוסטים זמינים בלי קופון בתור"
       }), { 
         headers: { ...corsHeaders, "Content-Type": "application/json" } 
       });
