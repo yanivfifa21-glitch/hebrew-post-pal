@@ -93,7 +93,7 @@ function detectCouponSlots(text: string | null): string[] {
   const slots: string[] = [];
   const lines = text.split('\n');
   const couponKeywords = /(?:קופון|קופונים|הקופון|קוד|הקוד|code|coupon|הנחה|discount|promo)/i;
-  const codePattern = /(?:^|[\s:;,/|()–\-])([A-Za-z][A-Za-z0-9]{2,19})(?=$|[\s:;,/|()–\-])/g;
+  const codePattern = /[A-Za-z0-9][A-Za-z0-9_-]{2,24}/g;
 
   for (const line of lines) {
     if (!couponKeywords.test(line)) continue;
@@ -102,7 +102,7 @@ function detectCouponSlots(text: string | null): string[] {
     let match: RegExpExecArray | null;
 
     while ((match = codePattern.exec(line)) !== null) {
-      const code = match[1].toUpperCase();
+      const code = match[0].toUpperCase();
       if (COUPON_CODE_BLACKLIST.test(code)) continue;
       if (!slots.includes(code)) slots.push(code);
     }
@@ -113,6 +113,10 @@ function detectCouponSlots(text: string | null): string[] {
 
 function hasCouponInText(text: string | null): boolean {
   return detectCouponSlots(text).length > 0;
+}
+
+function hasPublishableMedia(product: any): boolean {
+  return typeof product?.image_url === "string" && product.image_url.trim().length > 0;
 }
 
 async function fetchEligibleZoneQueueProducts(
@@ -139,6 +143,8 @@ async function fetchEligibleZoneQueueProducts(
 
     for (const zoneProduct of batch) {
       if (!zoneProduct.products) continue;
+
+      if (!hasPublishableMedia(zoneProduct.products)) continue;
 
       if (!sendCouponPosts && hasCouponInText(zoneProduct.products.hebrew_description)) {
         skippedCouponCount += 1;
@@ -190,6 +196,8 @@ async function fetchEligibleGeneralQueueProducts(
     for (const product of batch) {
       if (zoneProductIds.has(product.id)) continue;
 
+      if (!hasPublishableMedia(product)) continue;
+
       if (!sendCouponPosts && hasCouponInText(product.hebrew_description)) {
         skippedCouponCount += 1;
         continue;
@@ -228,6 +236,8 @@ async function fetchEligibleScheduledProducts(
     if (!batch || batch.length === 0) break;
 
     for (const product of batch) {
+      if (!hasPublishableMedia(product)) continue;
+
       if (!sendCouponPosts && hasCouponInText(product.hebrew_description)) {
         skippedCouponCount += 1;
         continue;
