@@ -289,7 +289,7 @@ const AddProduct = () => {
       if (draftProductId) {
         const { error } = await supabase
           .from("products")
-          .update({ ...product, status: "Scheduled" })
+          .update({ ...product, status: "Scheduled", created_at: new Date().toISOString() })
           .eq("id", draftProductId);
         if (error) throw error;
       } else {
