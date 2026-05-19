@@ -350,17 +350,9 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
       }
 
       return false;
-    } else {
-      const body: any = { chat_id: chatId, text: caption };
-      if (parseMode) body.parse_mode = parseMode;
-      const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-      });
-      if (res.ok) return true;
-      const errText = await res.text();
-      console.log(`[auto-post] Message failed (${parseMode}): ${errText}`);
-      return false;
     }
+
+    throw new Error("אין מדיה לפוסט - מדלג כדי לא לשלוח טקסט בלבד");
   }
 
   // Try with HTML parse mode first
@@ -378,9 +370,10 @@ async function sendToWhatsApp(instance: string, token: string, chatId: string, p
   if (!chatId.includes("@")) chatId = `${chatId}@${chatId.length > 15 ? "g.us" : "c.us"}`;
   const baseUrl = `https://api.green-api.com/waInstance${instance}`;
   const imageUrl = product.image_url;
+  if (!imageUrl?.trim()) throw new Error("אין מדיה לפוסט - מדלג כדי לא לשלוח טקסט בלבד");
   const mediaType = product.media_type || 'image';
   const isVideo = mediaType === 'video' || (imageUrl && imageUrl.match(/\.(mp4|mov|avi|webm|mkv)(\?|$)/i) !== null);
-  const url = imageUrl ? `${baseUrl}/sendFileByUrl/${token}` : `${baseUrl}/sendMessage/${token}`;
+  const url = `${baseUrl}/sendFileByUrl/${token}`;
   const body: any = { chatId };
   // WhatsApp doesn't use HTML parse mode, strip any HTML entities
   const plainText = stripHtmlTags(text);
@@ -388,8 +381,6 @@ async function sendToWhatsApp(instance: string, token: string, chatId: string, p
     body.urlFile = imageUrl;
     body.fileName = isVideo ? "video.mp4" : "image.jpg";
     body.caption = plainText;
-  } else {
-    body.message = plainText;
   }
   const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   if (!res.ok) throw new Error(await res.text());
