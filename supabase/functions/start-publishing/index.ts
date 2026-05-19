@@ -67,7 +67,7 @@ function detectCouponSlots(text: string | null): string[] {
   const slots: string[] = [];
   const lines = text.split('\n');
   const couponKeywords = /(?:קופון|קופונים|הקופון|קוד|הקוד|code|coupon|הנחה|discount|promo)/i;
-  const codePattern = /(?:^|[\s:;,/|()–\-])([A-Za-z][A-Za-z0-9]{2,19})(?=$|[\s:;,/|()–\-])/g;
+  const codePattern = /[A-Za-z0-9][A-Za-z0-9_-]{2,24}/g;
 
   for (const line of lines) {
     if (!couponKeywords.test(line)) continue;
@@ -76,7 +76,7 @@ function detectCouponSlots(text: string | null): string[] {
     let match: RegExpExecArray | null;
 
     while ((match = codePattern.exec(line)) !== null) {
-      const code = match[1].toUpperCase();
+      const code = match[0].toUpperCase();
       if (COUPON_CODE_BLACKLIST.test(code)) continue;
       if (!slots.includes(code)) slots.push(code);
     }
@@ -87,6 +87,10 @@ function detectCouponSlots(text: string | null): string[] {
 
 function hasCouponInText(text: string | null): boolean {
   return detectCouponSlots(text).length > 0;
+}
+
+function hasPublishableMedia(product: any): boolean {
+  return typeof product?.image_url === "string" && product.image_url.trim().length > 0;
 }
 
 async function fetchEligibleScheduledProducts(
@@ -112,6 +116,8 @@ async function fetchEligibleScheduledProducts(
     if (!batch || batch.length === 0) break;
 
     for (const product of batch) {
+      if (!hasPublishableMedia(product)) continue;
+
       if (!sendCouponPosts && hasCouponInText(product.hebrew_description)) {
         skippedCouponCount += 1;
         continue;
@@ -285,17 +291,7 @@ async function sendToTelegram(token: string, chatId: string, product: any, text:
     throw new Error(`שליחת ${isVideo ? 'וידאו' : 'תמונה'} נכשלה: ${lastError}`);
   }
   
-  // No media - send as text message
-  const textUrl = `https://api.telegram.org/bot${token}/sendMessage`;
-  const textBody = { chat_id: chatId, parse_mode: "HTML", text };
-  
-  const textRes = await fetch(textUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(textBody),
-  });
-  
-  if (!textRes.ok) throw new Error(await textRes.text());
+  throw new Error("אין מדיה לפוסט - מדלג כדי לא לשלוח טקסט בלבד");
 }
 
 // WhatsApp sender - supports video
@@ -304,21 +300,20 @@ async function sendToWhatsApp(instance: string, token: string, chatId: string, p
 
   const baseUrl = `https://api.green-api.com/waInstance${instance}`;
   const imageUrl = product.image_url;
+  if (!imageUrl?.trim()) throw new Error("אין מדיה לפוסט - מדלג כדי לא לשלוח טקסט בלבד");
   const mediaType = product.media_type || 'image';
   
   // Determine if video based on media_type or file extension
   const isVideo = mediaType === 'video' || 
     (imageUrl && imageUrl.match(/\.(mp4|mov|avi|webm|mkv)(\?|$)/i) !== null);
   
-  const url = imageUrl ? `${baseUrl}/sendFileByUrl/${token}` : `${baseUrl}/sendMessage/${token}`;
+  const url = `${baseUrl}/sendFileByUrl/${token}`;
 
   const body: any = { chatId };
   if (imageUrl) {
     body.urlFile = imageUrl;
     body.fileName = isVideo ? "video.mp4" : "image.jpg";
     body.caption = text;
-  } else {
-    body.message = text;
   }
 
   const res = await fetch(url, {

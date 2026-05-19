@@ -124,10 +124,10 @@ export function detectCouponsInText(text: string): DetectedCouponSlot[] {
     if (couponKeywords.test(line)) {
       // Find Latin alphanumeric codes (3+ chars, starts with letter)
       // Use a pattern that doesn't rely on \b for Hebrew compatibility
-      const codePattern = /(?:^|[\s:;,/|()–\-])([A-Za-z][A-Za-z0-9]{2,19})(?=$|[\s:;,/|()–\-])/g;
+      const codePattern = /[A-Za-z0-9][A-Za-z0-9_-]{2,24}/g;
       let match;
       while ((match = codePattern.exec(line)) !== null) {
-        const code = match[1].toUpperCase();
+        const code = match[0].toUpperCase();
         if (BLACKLIST.test(code)) continue;
         if (!slots.some(s => s.code === code)) {
           slots.push({ code, index: charOffset + match.index });
