@@ -300,21 +300,20 @@ async function sendToWhatsApp(instance: string, token: string, chatId: string, p
 
   const baseUrl = `https://api.green-api.com/waInstance${instance}`;
   const imageUrl = product.image_url;
+  if (!imageUrl?.trim()) throw new Error("אין מדיה לפוסט - מדלג כדי לא לשלוח טקסט בלבד");
   const mediaType = product.media_type || 'image';
   
   // Determine if video based on media_type or file extension
   const isVideo = mediaType === 'video' || 
     (imageUrl && imageUrl.match(/\.(mp4|mov|avi|webm|mkv)(\?|$)/i) !== null);
   
-  const url = imageUrl ? `${baseUrl}/sendFileByUrl/${token}` : `${baseUrl}/sendMessage/${token}`;
+  const url = `${baseUrl}/sendFileByUrl/${token}`;
 
   const body: any = { chatId };
   if (imageUrl) {
     body.urlFile = imageUrl;
     body.fileName = isVideo ? "video.mp4" : "image.jpg";
     body.caption = text;
-  } else {
-    body.message = text;
   }
 
   const res = await fetch(url, {
