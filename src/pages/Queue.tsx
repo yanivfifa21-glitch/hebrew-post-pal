@@ -42,7 +42,7 @@ const Queue = () => {
         .from("products")
         .select("*")
         .in("status", ["Scheduled", "Sent"])
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: true });
 
       if (error) throw error;
       setProducts(data as Product[]);
@@ -411,9 +411,9 @@ const Queue = () => {
   };
 
   const scheduledProducts = products.filter((p) => p.status === "Scheduled");
-  const sentAutoProducts = products.filter((p) => p.status === "Sent" && p.sent_via !== "manual");
-  const sentManualProducts = products.filter((p) => p.status === "Sent" && p.sent_via === "manual");
-  const sentProducts = products.filter((p) => p.status === "Sent");
+  const sentAutoProducts = products.filter((p) => p.status === "Sent" && p.sent_via !== "manual").sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+  const sentManualProducts = products.filter((p) => p.status === "Sent" && p.sent_via === "manual").sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+  const sentProducts = products.filter((p) => p.status === "Sent").sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
   const renderProducts = (items: Product[], showSelection: boolean = false, isManualTab: boolean = false) => {
     if (isLoading) {
