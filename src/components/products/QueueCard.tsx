@@ -385,6 +385,21 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelec
               setHasUnsavedChanges(true);
             }}
           />
+          {/* Skip-send toggle (especially useful for coupon posts) */}
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none" dir="rtl">
+            <Checkbox
+              checked={skipSend}
+              disabled={isTogglingSkip}
+              onCheckedChange={(checked) => handleToggleSkip(checked === true)}
+              className="h-4 w-4"
+            />
+            <span>דלג על פוסט זה באוטומציה (לא יישלח)</span>
+            {skipSend && (
+              <Badge variant="outline" className="text-[10px] py-0 px-1.5 border-warning/40 text-warning">
+                מדולג
+              </Badge>
+            )}
+          </label>
           {/* Hebrew Description */}
           {isEditing ? (
             <div>
