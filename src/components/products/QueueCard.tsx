@@ -37,6 +37,27 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelec
   const [editPrice, setEditPrice] = useState(product.price?.toString() || "");
   const [editAffiliateLink, setEditAffiliateLink] = useState(product.affiliate_link || "");
   const [editImageUrl, setEditImageUrl] = useState(product.image_url || "");
+  const [skipSend, setSkipSend] = useState(!!product.skip_send);
+  const [isTogglingSkip, setIsTogglingSkip] = useState(false);
+
+  const handleToggleSkip = async (next: boolean) => {
+    setIsTogglingSkip(true);
+    setSkipSend(next);
+    try {
+      const { error } = await supabase
+        .from("products")
+        .update({ skip_send: next })
+        .eq("id", product.id);
+      if (error) throw error;
+      product.skip_send = next;
+      toast({ title: next ? "⏭️ הפוסט יידלג באוטומציה" : "✅ הפוסט יישלח כרגיל" });
+    } catch {
+      setSkipSend(!next);
+      toast({ title: "שמירת דילוג נכשלה", variant: "destructive" });
+    } finally {
+      setIsTogglingSkip(false);
+    }
+  };
 
   const handleSaveEdit = async () => {
     setIsSaving(true);
