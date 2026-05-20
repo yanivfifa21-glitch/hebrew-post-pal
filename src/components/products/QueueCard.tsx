@@ -37,6 +37,27 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelec
   const [editPrice, setEditPrice] = useState(product.price?.toString() || "");
   const [editAffiliateLink, setEditAffiliateLink] = useState(product.affiliate_link || "");
   const [editImageUrl, setEditImageUrl] = useState(product.image_url || "");
+  const [skipSend, setSkipSend] = useState(!!product.skip_send);
+  const [isTogglingSkip, setIsTogglingSkip] = useState(false);
+
+  const handleToggleSkip = async (next: boolean) => {
+    setIsTogglingSkip(true);
+    setSkipSend(next);
+    try {
+      const { error } = await supabase
+        .from("products")
+        .update({ skip_send: next })
+        .eq("id", product.id);
+      if (error) throw error;
+      product.skip_send = next;
+      toast({ title: next ? "⏭️ הפוסט יידלג באוטומציה" : "✅ הפוסט יישלח כרגיל" });
+    } catch {
+      setSkipSend(!next);
+      toast({ title: "שמירת דילוג נכשלה", variant: "destructive" });
+    } finally {
+      setIsTogglingSkip(false);
+    }
+  };
 
   const handleSaveEdit = async () => {
     setIsSaving(true);
@@ -364,6 +385,21 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelec
               setHasUnsavedChanges(true);
             }}
           />
+          {/* Skip-send toggle (especially useful for coupon posts) */}
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none" dir="rtl">
+            <Checkbox
+              checked={skipSend}
+              disabled={isTogglingSkip}
+              onCheckedChange={(checked) => handleToggleSkip(checked === true)}
+              className="h-4 w-4"
+            />
+            <span>דלג על פוסט זה באוטומציה (לא יישלח)</span>
+            {skipSend && (
+              <Badge variant="outline" className="text-[10px] py-0 px-1.5 border-warning/40 text-warning">
+                מדולג
+              </Badge>
+            )}
+          </label>
           {/* Hebrew Description */}
           {isEditing ? (
             <div>

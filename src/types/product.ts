@@ -20,6 +20,7 @@ export interface Product {
   last_stock_check?: string | null;
   stock_check_count?: number;
   auto_disabled?: boolean;
+  skip_send?: boolean;
 }
 
 export interface AppSettings {

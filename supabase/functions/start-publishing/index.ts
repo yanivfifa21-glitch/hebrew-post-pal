@@ -118,6 +118,8 @@ async function fetchEligibleScheduledProducts(
     for (const product of batch) {
       if (!hasPublishableMedia(product)) continue;
 
+      if (product.skip_send) continue;
+
       if (!sendCouponPosts && hasCouponInText(product.hebrew_description)) {
         skippedCouponCount += 1;
         continue;

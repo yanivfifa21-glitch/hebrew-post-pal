@@ -146,6 +146,8 @@ async function fetchEligibleZoneQueueProducts(
 
       if (!hasPublishableMedia(zoneProduct.products)) continue;
 
+      if (zoneProduct.products.skip_send) continue;
+
       if (!sendCouponPosts && hasCouponInText(zoneProduct.products.hebrew_description)) {
         skippedCouponCount += 1;
         continue;
@@ -198,6 +200,8 @@ async function fetchEligibleGeneralQueueProducts(
 
       if (!hasPublishableMedia(product)) continue;
 
+      if (product.skip_send) continue;
+
       if (!sendCouponPosts && hasCouponInText(product.hebrew_description)) {
         skippedCouponCount += 1;
         continue;
@@ -237,6 +241,8 @@ async function fetchEligibleScheduledProducts(
 
     for (const product of batch) {
       if (!hasPublishableMedia(product)) continue;
+
+      if (product.skip_send) continue;
 
       if (!sendCouponPosts && hasCouponInText(product.hebrew_description)) {
         skippedCouponCount += 1;
