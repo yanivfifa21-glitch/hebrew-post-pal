@@ -217,7 +217,8 @@ async function sendTelegramMessage(
       return { ok: false, description: "Failed to send photo after rendered fallback" };
     }
   } else {
-    return await sendTextOnly(botToken, chatId, caption);
+    // Strict policy: never send text-only posts
+    return { ok: false, description: "Media required: refusing to send text-only post" };
   }
 }
 
