@@ -630,6 +630,7 @@ export type Database = {
           rating: number | null
           scheduled_time: string | null
           sent_via: string | null
+          skip_send: boolean
           status: string
           stock_check_count: number
           stock_status: string
@@ -653,6 +654,7 @@ export type Database = {
           rating?: number | null
           scheduled_time?: string | null
           sent_via?: string | null
+          skip_send?: boolean
           status?: string
           stock_check_count?: number
           stock_status?: string
@@ -676,6 +678,7 @@ export type Database = {
           rating?: number | null
           scheduled_time?: string | null
           sent_via?: string | null
+          skip_send?: boolean
           status?: string
           stock_check_count?: number
           stock_status?: string

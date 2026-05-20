@@ -1,0 +1,1 @@
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS skip_send boolean NOT NULL DEFAULT false;
