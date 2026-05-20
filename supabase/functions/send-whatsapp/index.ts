@@ -178,29 +178,12 @@ serve(async (req) => {
         throw new Error(imageResult.message || "Failed to send image");
       }
     } else {
-      const textResponse = await fetch(
-        `https://api.greenapi.com/waInstance${instanceId}/sendMessage/${apiToken}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chatId: chatId,
-            message: message,
-          }),
-        }
+      // Strict policy: never send text-only posts
+      console.error("[send-whatsapp] Refusing to send text-only post (no media)");
+      return new Response(
+        JSON.stringify({ success: false, error: "חובה לצרף מדיה - לא נשלח פוסט טקסט בלבד" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
-
-      const textResult = await textResponse.json();
-      console.log("[send-whatsapp] GreenAPI text response:", textResult);
-
-      if (textResult.idMessage) {
-        return new Response(
-          JSON.stringify({ success: true, messageId: textResult.idMessage }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      } else {
-        throw new Error(textResult.message || "Failed to send message");
-      }
     }
   } catch (error: unknown) {
     console.error("[send-whatsapp] Error:", error);
