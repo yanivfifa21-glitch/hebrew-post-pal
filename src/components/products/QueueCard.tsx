@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { StockBadge } from "@/components/products/StockBadge";
 import { Rocket, Trash2, Loader2, ExternalLink, Star, ShoppingCart, Copy, Check, Clock, RotateCcw, Edit, Save, X } from "lucide-react";
 import { CouponBadges } from "@/components/products/CouponBadges";
+import { detectCouponsInText } from "@/lib/couponUtils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -113,6 +114,34 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelec
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
+
+      // Guard 1: skip_send toggle
+      if (product.skip_send) {
+        toast({
+          title: "⏭️ הפוסט מסומן לדילוג",
+          description: "בטל את סימון 'דלג' כדי לשלוח.",
+          variant: "destructive",
+        });
+        setIsSending(false);
+        return;
+      }
+
+      // Guard 2: global 'don't send coupon posts' setting
+      const { data: settings } = await supabase
+        .from("app_settings")
+        .select("send_coupon_posts")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const blockCoupons = settings?.send_coupon_posts === false;
+      if (blockCoupons && detectCouponsInText(hebrewDescription).length > 0) {
+        toast({
+          title: "🚫 פוסט עם קופון נחסם",
+          description: "ההגדרה 'אל תשלח פוסטים עם קופונים' פעילה. הסר את הקופון או שנה את ההגדרה.",
+          variant: "destructive",
+        });
+        setIsSending(false);
+        return;
+      }
 
       // Get active messaging accounts (not app_settings)
       const { data: accounts } = await supabase
