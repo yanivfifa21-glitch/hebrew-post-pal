@@ -346,7 +346,7 @@ const Queue = () => {
     };
 
     try {
-      const productsToCheck = scheduledProducts
+      const productsToCheck = displayScheduledProducts
         .map((product) => ({ product, checkUrl: resolveCheckUrl(product) }))
         .filter((item): item is { product: Product; checkUrl: string } => Boolean(item.checkUrl));
 
@@ -541,7 +541,7 @@ const Queue = () => {
             <Button
               variant="outline"
               onClick={handleCheckAllStock}
-              disabled={isCheckingAllStock || scheduledProducts.length === 0}
+              disabled={isCheckingAllStock || displayScheduledProducts.length === 0}
               className="gap-2"
             >
               {isCheckingAllStock ? (
@@ -549,7 +549,21 @@ const Queue = () => {
               ) : (
                 <PackageSearch className="h-4 w-4" />
               )}
-              {isCheckingAllStock ? `בודק... (${stockCheckProgress}/${stockCheckTotal})` : `בדוק מלאי (${scheduledProducts.length})`}
+              {isCheckingAllStock ? `בודק... (${stockCheckProgress}/${stockCheckTotal})` : `בדוק מלאי (${displayScheduledProducts.length})`}
+            </Button>
+            <Button
+              variant={showOnlyCoupons ? "default" : "outline"}
+              onClick={() => setShowOnlyCoupons(v => !v)}
+              className="gap-2"
+              title={showOnlyCoupons ? "הצג את כל הפוסטים" : "הצג רק פוסטים עם קופונים"}
+            >
+              <Filter className="h-4 w-4" />
+              {showOnlyCoupons ? "קופונים בלבד" : "סנן קופונים"}
+              {showOnlyCoupons && (
+                <span className="bg-primary-foreground/20 text-primary-foreground text-[10px] font-bold px-1.5 py-0 rounded-full">
+                  {displayScheduledProducts.length}
+                </span>
+              )}
             </Button>
             {isCheckingAllStock && stockCheckTotal > 0 && (
               <Progress value={(stockCheckProgress / stockCheckTotal) * 100} className="h-2 w-48" />
@@ -567,7 +581,9 @@ const Queue = () => {
               <Clock className="h-4 w-4" />
               <span className="hidden sm:inline">Scheduled</span>
               <span className="bg-primary/20 text-primary text-xs font-bold px-2 py-0.5 rounded-full">
-                {scheduledProducts.length}
+                {showOnlyCoupons && scheduledProducts.length !== displayScheduledProducts.length
+                  ? `${displayScheduledProducts.length}/${scheduledProducts.length}`
+                  : scheduledProducts.length}
               </span>
             </TabsTrigger>
             <TabsTrigger 
@@ -593,8 +609,21 @@ const Queue = () => {
           </TabsList>
 
           <TabsContent value="scheduled" className="animate-fade-in space-y-4">
+            {/* Filter indicator */}
+            {showOnlyCoupons && (
+              <div className="flex items-center gap-2 p-2 bg-warning/10 border border-warning/20 rounded-lg text-sm text-warning">
+                <Ticket className="h-4 w-4" />
+                <span>מוצגים {displayScheduledProducts.length} פוסטים עם קופונים מתוך {scheduledProducts.length} בתור</span>
+                <button
+                  onClick={() => setShowOnlyCoupons(false)}
+                  className="mr-auto text-xs underline hover:no-underline"
+                >
+                  הצג הכל
+                </button>
+              </div>
+            )}
             {/* Select All Row */}
-            {scheduledProducts.length > 0 && (
+            {displayScheduledProducts.length > 0 && (
               <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border/50 flex-wrap">
                 <Checkbox
                   checked={allScheduledSelected}
@@ -607,7 +636,7 @@ const Queue = () => {
                     ? "בטל בחירה" 
                     : someScheduledSelected 
                       ? `${selectedProducts.size} נבחרו` 
-                      : `בחר הכל (${scheduledProducts.length})`
+                      : `בחר הכל (${displayScheduledProducts.length})`
                   }
                 </span>
                 <div className="mr-auto">
@@ -624,7 +653,7 @@ const Queue = () => {
                         ) : (
                           <Trash2 className="h-4 w-4" />
                         )}
-                        {selectedProducts.size > 0 ? `מחק נבחרים (${selectedProducts.size})` : `מחק הכל (${scheduledProducts.length})`}
+                        {selectedProducts.size > 0 ? `מחק נבחרים (${selectedProducts.size})` : `מחק הכל (${displayScheduledProducts.length})`}
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
@@ -633,7 +662,7 @@ const Queue = () => {
                         <AlertDialogDescription>
                           {selectedProducts.size > 0
                             ? `האם למחוק ${selectedProducts.size} מוצרים נבחרים? פעולה זו לא ניתנת לביטול.`
-                            : `האם למחוק את כל ${scheduledProducts.length} המוצרים בתור? פעולה זו לא ניתנת לביטול.`
+                            : `האם למחוק את כל ${displayScheduledProducts.length} המוצרים בתור? פעולה זו לא ניתנת לביטול.`
                           }
                         </AlertDialogDescription>
                       </AlertDialogHeader>
@@ -651,7 +680,7 @@ const Queue = () => {
                 </div>
               </div>
             )}
-            {renderProducts(scheduledProducts, true)}
+            {renderProducts(displayScheduledProducts, true)}
           </TabsContent>
 
           <TabsContent value="sent-auto" className="animate-fade-in">
