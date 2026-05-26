@@ -417,6 +417,16 @@ const Queue = () => {
   const sentManualProducts = products.filter((p) => p.status === "Sent" && p.sent_via === "manual").sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
   const sentProducts = products.filter((p) => p.status === "Sent").sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
+  // Coupon filter logic
+  const couponKeywordRe = /(?:קופון|קופונים|הקופון|coupon|promo\s*code)/i;
+  const hasCoupon = (product: Product) => {
+    const text = product.hebrew_description || "";
+    return detectCouponsInText(text).length > 0 || couponKeywordRe.test(text);
+  };
+  const displayScheduledProducts = showOnlyCoupons
+    ? scheduledProducts.filter(hasCoupon)
+    : scheduledProducts;
+
   const renderProducts = (items: Product[], showSelection: boolean = false, isManualTab: boolean = false) => {
     if (isLoading) {
       return <SkeletonList count={3} />;
