@@ -314,7 +314,7 @@ const Queue = () => {
   };
 
   const handleCheckAllStock = async () => {
-    if (scheduledProducts.length === 0) return;
+    if (displayScheduledProducts.length === 0) return;
     setIsCheckingAllStock(true);
 
     let checked = 0;
