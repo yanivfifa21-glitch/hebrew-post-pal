@@ -133,7 +133,11 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelec
         .eq("user_id", user.id)
         .maybeSingle();
       const blockCoupons = settings?.send_coupon_posts === false;
-      if (blockCoupons && detectCouponsInText(hebrewDescription).length > 0) {
+      const couponKeywordRe = /(?:קופון|קופונים|הקופון|coupon|promo\s*code)/i;
+      const hasCoupon =
+        detectCouponsInText(hebrewDescription).length > 0 ||
+        couponKeywordRe.test(hebrewDescription || "");
+      if (blockCoupons && hasCoupon) {
         toast({
           title: "🚫 פוסט עם קופון נחסם",
           description: "ההגדרה 'אל תשלח פוסטים עם קופונים' פעילה. הסר את הקופון או שנה את ההגדרה.",

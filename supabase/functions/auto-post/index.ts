@@ -112,6 +112,11 @@ function detectCouponSlots(text: string | null): string[] {
 }
 
 function hasCouponInText(text: string | null): boolean {
+  if (!text?.trim()) return false;
+  // Strong signal: any coupon keyword anywhere in the text marks it as a coupon post,
+  // even if the code appears on a separate line (e.g. "🎟️ קופונים לשימוש:\nSTFWBZ0F9H30").
+  const couponKeywords = /(?:קופון|קופונים|הקופון|coupon|promo\s*code)/i;
+  if (couponKeywords.test(text)) return true;
   return detectCouponSlots(text).length > 0;
 }
 
