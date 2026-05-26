@@ -86,6 +86,9 @@ function detectCouponSlots(text: string | null): string[] {
 }
 
 function hasCouponInText(text: string | null): boolean {
+  if (!text?.trim()) return false;
+  const couponKeywords = /(?:קופון|קופונים|הקופון|coupon|promo\s*code)/i;
+  if (couponKeywords.test(text)) return true;
   return detectCouponSlots(text).length > 0;
 }
 
