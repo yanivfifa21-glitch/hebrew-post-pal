@@ -32,6 +32,7 @@ const Queue = () => {
   const [stockCheckProgress, setStockCheckProgress] = useState(0);
   const [stockCheckTotal, setStockCheckTotal] = useState(0);
   const [isDeletingBulk, setIsDeletingBulk] = useState(false);
+  const [showOnlyCoupons, setShowOnlyCoupons] = useState(false);
 
   useEffect(() => {
     fetchProducts();
