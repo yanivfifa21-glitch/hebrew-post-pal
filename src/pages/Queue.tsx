@@ -90,7 +90,7 @@ const Queue = () => {
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      const allScheduledIds = scheduledProducts.map(p => p.id);
+      const allScheduledIds = displayScheduledProducts.map(p => p.id);
       setSelectedProducts(new Set(allScheduledIds));
     } else {
       setSelectedProducts(new Set());
