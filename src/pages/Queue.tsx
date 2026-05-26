@@ -465,9 +465,9 @@ const Queue = () => {
     );
   };
 
-  const allScheduledSelected = scheduledProducts.length > 0 && 
-    scheduledProducts.every(p => selectedProducts.has(p.id));
-  const someScheduledSelected = scheduledProducts.some(p => selectedProducts.has(p.id));
+  const allScheduledSelected = displayScheduledProducts.length > 0 && 
+    displayScheduledProducts.every(p => selectedProducts.has(p.id));
+  const someScheduledSelected = displayScheduledProducts.some(p => selectedProducts.has(p.id));
 
   return (
     <MainLayout>
