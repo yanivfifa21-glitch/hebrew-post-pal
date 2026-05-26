@@ -11,9 +11,10 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Clock, CheckCircle, Sparkles, Wand2, Loader2, Send, RotateCcw, Ticket, PackageSearch, Trash2 } from "lucide-react";
+import { Clock, CheckCircle, Sparkles, Wand2, Loader2, Send, RotateCcw, Ticket, PackageSearch, Trash2, Filter } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { applyCouponToText, Coupon } from "@/lib/couponUtils";
+import { applyCouponToText, Coupon, detectCouponsInText } from "@/lib/couponUtils";
+
 
 const Queue = () => {
   const navigate = useNavigate();
