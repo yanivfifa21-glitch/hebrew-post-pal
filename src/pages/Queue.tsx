@@ -11,9 +11,10 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Clock, CheckCircle, Sparkles, Wand2, Loader2, Send, RotateCcw, Ticket, PackageSearch, Trash2 } from "lucide-react";
+import { Clock, CheckCircle, Sparkles, Wand2, Loader2, Send, RotateCcw, Ticket, PackageSearch, Trash2, Filter } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { applyCouponToText, Coupon } from "@/lib/couponUtils";
+import { applyCouponToText, Coupon, detectCouponsInText } from "@/lib/couponUtils";
+
 
 const Queue = () => {
   const navigate = useNavigate();
@@ -31,6 +32,7 @@ const Queue = () => {
   const [stockCheckProgress, setStockCheckProgress] = useState(0);
   const [stockCheckTotal, setStockCheckTotal] = useState(0);
   const [isDeletingBulk, setIsDeletingBulk] = useState(false);
+  const [showOnlyCoupons, setShowOnlyCoupons] = useState(false);
 
   useEffect(() => {
     fetchProducts();
@@ -88,7 +90,7 @@ const Queue = () => {
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      const allScheduledIds = scheduledProducts.map(p => p.id);
+      const allScheduledIds = displayScheduledProducts.map(p => p.id);
       setSelectedProducts(new Set(allScheduledIds));
     } else {
       setSelectedProducts(new Set());
@@ -149,7 +151,7 @@ const Queue = () => {
   };
 
   const handleDeleteSelected = async () => {
-    const toDelete = selectedProducts.size > 0 ? Array.from(selectedProducts) : scheduledProducts.map(p => p.id);
+    const toDelete = selectedProducts.size > 0 ? Array.from(selectedProducts) : displayScheduledProducts.map(p => p.id);
     if (toDelete.length === 0) return;
 
     setIsDeletingBulk(true);
@@ -312,7 +314,7 @@ const Queue = () => {
   };
 
   const handleCheckAllStock = async () => {
-    if (scheduledProducts.length === 0) return;
+    if (displayScheduledProducts.length === 0) return;
     setIsCheckingAllStock(true);
 
     let checked = 0;
@@ -344,7 +346,7 @@ const Queue = () => {
     };
 
     try {
-      const productsToCheck = scheduledProducts
+      const productsToCheck = displayScheduledProducts
         .map((product) => ({ product, checkUrl: resolveCheckUrl(product) }))
         .filter((item): item is { product: Product; checkUrl: string } => Boolean(item.checkUrl));
 
@@ -415,6 +417,16 @@ const Queue = () => {
   const sentManualProducts = products.filter((p) => p.status === "Sent" && p.sent_via === "manual").sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
   const sentProducts = products.filter((p) => p.status === "Sent").sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
+  // Coupon filter logic
+  const couponKeywordRe = /(?:קופון|קופונים|הקופון|coupon|promo\s*code)/i;
+  const hasCoupon = (product: Product) => {
+    const text = product.hebrew_description || "";
+    return detectCouponsInText(text).length > 0 || couponKeywordRe.test(text);
+  };
+  const displayScheduledProducts = showOnlyCoupons
+    ? scheduledProducts.filter(hasCoupon)
+    : scheduledProducts;
+
   const renderProducts = (items: Product[], showSelection: boolean = false, isManualTab: boolean = false) => {
     if (isLoading) {
       return <SkeletonList count={3} />;
@@ -453,9 +465,9 @@ const Queue = () => {
     );
   };
 
-  const allScheduledSelected = scheduledProducts.length > 0 && 
-    scheduledProducts.every(p => selectedProducts.has(p.id));
-  const someScheduledSelected = scheduledProducts.some(p => selectedProducts.has(p.id));
+  const allScheduledSelected = displayScheduledProducts.length > 0 && 
+    displayScheduledProducts.every(p => selectedProducts.has(p.id));
+  const someScheduledSelected = displayScheduledProducts.some(p => selectedProducts.has(p.id));
 
   return (
     <MainLayout>
@@ -529,7 +541,7 @@ const Queue = () => {
             <Button
               variant="outline"
               onClick={handleCheckAllStock}
-              disabled={isCheckingAllStock || scheduledProducts.length === 0}
+              disabled={isCheckingAllStock || displayScheduledProducts.length === 0}
               className="gap-2"
             >
               {isCheckingAllStock ? (
@@ -537,7 +549,21 @@ const Queue = () => {
               ) : (
                 <PackageSearch className="h-4 w-4" />
               )}
-              {isCheckingAllStock ? `בודק... (${stockCheckProgress}/${stockCheckTotal})` : `בדוק מלאי (${scheduledProducts.length})`}
+              {isCheckingAllStock ? `בודק... (${stockCheckProgress}/${stockCheckTotal})` : `בדוק מלאי (${displayScheduledProducts.length})`}
+            </Button>
+            <Button
+              variant={showOnlyCoupons ? "default" : "outline"}
+              onClick={() => setShowOnlyCoupons(v => !v)}
+              className="gap-2"
+              title={showOnlyCoupons ? "הצג את כל הפוסטים" : "הצג רק פוסטים עם קופונים"}
+            >
+              <Filter className="h-4 w-4" />
+              {showOnlyCoupons ? "קופונים בלבד" : "סנן קופונים"}
+              {showOnlyCoupons && (
+                <span className="bg-primary-foreground/20 text-primary-foreground text-[10px] font-bold px-1.5 py-0 rounded-full">
+                  {displayScheduledProducts.length}
+                </span>
+              )}
             </Button>
             {isCheckingAllStock && stockCheckTotal > 0 && (
               <Progress value={(stockCheckProgress / stockCheckTotal) * 100} className="h-2 w-48" />
@@ -555,7 +581,9 @@ const Queue = () => {
               <Clock className="h-4 w-4" />
               <span className="hidden sm:inline">Scheduled</span>
               <span className="bg-primary/20 text-primary text-xs font-bold px-2 py-0.5 rounded-full">
-                {scheduledProducts.length}
+                {showOnlyCoupons && scheduledProducts.length !== displayScheduledProducts.length
+                  ? `${displayScheduledProducts.length}/${scheduledProducts.length}`
+                  : scheduledProducts.length}
               </span>
             </TabsTrigger>
             <TabsTrigger 
@@ -581,8 +609,21 @@ const Queue = () => {
           </TabsList>
 
           <TabsContent value="scheduled" className="animate-fade-in space-y-4">
+            {/* Filter indicator */}
+            {showOnlyCoupons && (
+              <div className="flex items-center gap-2 p-2 bg-warning/10 border border-warning/20 rounded-lg text-sm text-warning">
+                <Ticket className="h-4 w-4" />
+                <span>מוצגים {displayScheduledProducts.length} פוסטים עם קופונים מתוך {scheduledProducts.length} בתור</span>
+                <button
+                  onClick={() => setShowOnlyCoupons(false)}
+                  className="mr-auto text-xs underline hover:no-underline"
+                >
+                  הצג הכל
+                </button>
+              </div>
+            )}
             {/* Select All Row */}
-            {scheduledProducts.length > 0 && (
+            {displayScheduledProducts.length > 0 && (
               <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border/50 flex-wrap">
                 <Checkbox
                   checked={allScheduledSelected}
@@ -595,7 +636,7 @@ const Queue = () => {
                     ? "בטל בחירה" 
                     : someScheduledSelected 
                       ? `${selectedProducts.size} נבחרו` 
-                      : `בחר הכל (${scheduledProducts.length})`
+                      : `בחר הכל (${displayScheduledProducts.length})`
                   }
                 </span>
                 <div className="mr-auto">
@@ -612,7 +653,7 @@ const Queue = () => {
                         ) : (
                           <Trash2 className="h-4 w-4" />
                         )}
-                        {selectedProducts.size > 0 ? `מחק נבחרים (${selectedProducts.size})` : `מחק הכל (${scheduledProducts.length})`}
+                        {selectedProducts.size > 0 ? `מחק נבחרים (${selectedProducts.size})` : `מחק הכל (${displayScheduledProducts.length})`}
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
@@ -621,7 +662,7 @@ const Queue = () => {
                         <AlertDialogDescription>
                           {selectedProducts.size > 0
                             ? `האם למחוק ${selectedProducts.size} מוצרים נבחרים? פעולה זו לא ניתנת לביטול.`
-                            : `האם למחוק את כל ${scheduledProducts.length} המוצרים בתור? פעולה זו לא ניתנת לביטול.`
+                            : `האם למחוק את כל ${displayScheduledProducts.length} המוצרים בתור? פעולה זו לא ניתנת לביטול.`
                           }
                         </AlertDialogDescription>
                       </AlertDialogHeader>
@@ -639,7 +680,7 @@ const Queue = () => {
                 </div>
               </div>
             )}
-            {renderProducts(scheduledProducts, true)}
+            {renderProducts(displayScheduledProducts, true)}
           </TabsContent>
 
           <TabsContent value="sent-auto" className="animate-fade-in">

@@ -292,8 +292,11 @@ export const QueueCard = ({ product, onSent, onDeleted, onStatusChanged, isSelec
     }
   };
 
+  const couponKeywordRe = /(?:קופון|קופונים|הקופון|coupon|promo\s*code)/i;
+  const hasCouponInProduct = detectCouponsInText(hebrewDescription).length > 0 || couponKeywordRe.test(hebrewDescription || "");
+
   return (
-    <div className="glass-card card-interactive overflow-hidden animate-fade-in-up">
+    <div className={`glass-card card-interactive overflow-hidden animate-fade-in-up ${hasCouponInProduct ? 'border-l-4 border-l-warning/70' : ''}`}>
       <div className="flex flex-col md:flex-row">
         {/* Checkbox for selection */}
         {showCheckbox && (
