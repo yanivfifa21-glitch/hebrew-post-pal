@@ -151,7 +151,7 @@ const Queue = () => {
   };
 
   const handleDeleteSelected = async () => {
-    const toDelete = selectedProducts.size > 0 ? Array.from(selectedProducts) : scheduledProducts.map(p => p.id);
+    const toDelete = selectedProducts.size > 0 ? Array.from(selectedProducts) : displayScheduledProducts.map(p => p.id);
     if (toDelete.length === 0) return;
 
     setIsDeletingBulk(true);
