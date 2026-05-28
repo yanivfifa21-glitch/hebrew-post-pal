@@ -100,7 +100,7 @@ async function sendTelegramMessage(
     const captionTooLong = caption.length > CAPTION_LIMIT;
     
     if (isVideo) {
-      console.log("[send-telegram] Downloading video for upload (as document to preserve quality)...");
+      console.log("[send-telegram] Downloading video for upload as inline video...");
       try {
         const videoResponse = await fetch(imageUrl);
         if (!videoResponse.ok) throw new Error(`Failed to download video: ${videoResponse.status}`);
@@ -113,12 +113,13 @@ async function sendTelegramMessage(
           formData.append("caption", caption);
           formData.append("parse_mode", "HTML");
         }
-        // Use sendDocument instead of sendVideo to avoid Telegram's heavy re-compression
-        // that causes blurry/smeared videos. Document still plays inline in Telegram clients.
-        formData.append("document", videoBlob, "video.mp4");
+        // Use sendVideo so the video plays inline with the caption (as a post, not a file attachment).
+        // Uploading as a blob with supports_streaming preserves quality better than the URL method.
+        formData.append("video", videoBlob, "video.mp4");
+        formData.append("supports_streaming", "true");
 
         const response = await fetch(
-          `https://api.telegram.org/bot${botToken}/sendDocument`,
+          `https://api.telegram.org/bot${botToken}/sendVideo`,
           { method: "POST", body: formData }
         );
         const result = await response.json();
@@ -131,13 +132,13 @@ async function sendTelegramMessage(
         return result;
       } catch (downloadErr) {
         console.error("[send-telegram] Video download failed, trying URL method:", downloadErr);
-        const body: any = { chat_id: chatId, document: imageUrl };
+        const body: any = { chat_id: chatId, video: imageUrl, supports_streaming: true };
         if (!captionTooLong) {
           body.caption = caption;
           body.parse_mode = "HTML";
         }
         const response = await fetch(
-          `https://api.telegram.org/bot${botToken}/sendDocument`,
+          `https://api.telegram.org/bot${botToken}/sendVideo`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
