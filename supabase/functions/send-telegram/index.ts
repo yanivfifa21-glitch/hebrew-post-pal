@@ -100,7 +100,7 @@ async function sendTelegramMessage(
     const captionTooLong = caption.length > CAPTION_LIMIT;
     
     if (isVideo) {
-      console.log("[send-telegram] Downloading video for upload...");
+      console.log("[send-telegram] Downloading video for upload (as document to preserve quality)...");
       try {
         const videoResponse = await fetch(imageUrl);
         if (!videoResponse.ok) throw new Error(`Failed to download video: ${videoResponse.status}`);
@@ -113,11 +113,12 @@ async function sendTelegramMessage(
           formData.append("caption", caption);
           formData.append("parse_mode", "HTML");
         }
-        formData.append("video", videoBlob, "video.mp4");
-        formData.append("supports_streaming", "true");
+        // Use sendDocument instead of sendVideo to avoid Telegram's heavy re-compression
+        // that causes blurry/smeared videos. Document still plays inline in Telegram clients.
+        formData.append("document", videoBlob, "video.mp4");
 
         const response = await fetch(
-          `https://api.telegram.org/bot${botToken}/sendVideo`,
+          `https://api.telegram.org/bot${botToken}/sendDocument`,
           { method: "POST", body: formData }
         );
         const result = await response.json();
@@ -130,13 +131,13 @@ async function sendTelegramMessage(
         return result;
       } catch (downloadErr) {
         console.error("[send-telegram] Video download failed, trying URL method:", downloadErr);
-        const body: any = { chat_id: chatId, video: imageUrl, supports_streaming: true };
+        const body: any = { chat_id: chatId, document: imageUrl };
         if (!captionTooLong) {
           body.caption = caption;
           body.parse_mode = "HTML";
         }
         const response = await fetch(
-          `https://api.telegram.org/bot${botToken}/sendVideo`,
+          `https://api.telegram.org/bot${botToken}/sendDocument`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
