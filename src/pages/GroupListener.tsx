@@ -552,6 +552,75 @@ const GroupListener = () => {
   };
 
 
+  // Send only — broadcast to selected accounts without adding to queue (like Manual Send)
+  const sendPostOnly = async (post: CapturedPost, userId: string) => {
+    const text = getPostFinalText(post);
+    const mediaUrl = post.image_url || null;
+    const mediaType = post.media_type || "image";
+    const productTitle = text.substring(0, 100) || "Captured Product";
+    let sentCount = 0;
+    let failCount = 0;
+    if (selectedAccounts.length > 0) {
+      const results = await Promise.allSettled(
+        selectedAccounts.map(async (accountId) => {
+          const acc = accounts.find(a => a.id === accountId);
+          if (!acc) return;
+          const fnName = acc.account_type === "telegram" ? "send-telegram" : "send-whatsapp";
+          const { data, error } = await supabase.functions.invoke(fnName, {
+            body: { title: productTitle, hebrewDescription: text, price: 0, imageUrl: mediaUrl, affiliateLink: post.modified_url || null, mediaType, accountId, userId },
+          });
+          if (error || (data && !data.success)) {
+            console.error(`[GroupListener] ${fnName} failed:`, error || data?.error);
+            throw new Error(data?.error || error?.message || "Send failed");
+          }
+        })
+      );
+      results.forEach(r => { if (r.status === 'fulfilled') sentCount++; else failCount++; });
+    }
+    await supabase.from("captured_posts")
+      .update({ status: "approved", reviewed_at: new Date().toISOString() })
+      .eq("id", post.id);
+    return { sentCount, failCount };
+  };
+
+  const handleSingleSendOnly = async (post: CapturedPost) => {
+    if (selectedAccounts.length === 0) return;
+    setIsBulkProcessing(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+      const { failCount } = await sendPostOnly(post, user.id);
+      setCapturedPosts((prev) => prev.filter((p) => p.id !== post.id));
+      setSelectedPostIds(prev => { const n = new Set(prev); n.delete(post.id); return n; });
+      toast({ title: failCount > 0 ? `⚠️ נשלח, ${failCount} שליחות נכשלו` : "✅ נשלח (ללא תור)", variant: failCount > 0 ? "destructive" : "default" });
+    } catch {
+      toast({ title: "שגיאה בשליחה", variant: "destructive" });
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  const handleBulkSendOnly = async () => {
+    const posts = capturedPosts.filter(p => selectedPostIds.has(p.id));
+    if (posts.length === 0 || selectedAccounts.length === 0) return;
+    setIsBulkProcessing(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+      for (const post of posts) {
+        await sendPostOnly(post, user.id);
+      }
+      const sentIds = new Set(posts.map(p => p.id));
+      setCapturedPosts((prev) => prev.filter((p) => !sentIds.has(p.id)));
+      setSelectedPostIds(new Set());
+      toast({ title: `✅ ${posts.length} פוסטים נשלחו (ללא תור)` });
+    } catch {
+      toast({ title: "שגיאה בשליחה", variant: "destructive" });
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
   // Manual AI rewrite (Lovable AI)
   const handleManualRewrite = async (post: CapturedPost) => {
     setRewritingPostId(post.id);
@@ -822,6 +891,10 @@ const GroupListener = () => {
                   {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                   שלח והוסף לתור ({selectedAccounts.length})
                 </Button>
+                <Button variant="outline" size="sm" onClick={() => handleBulkSendOnly()} disabled={isBulkProcessing || selectedAccounts.length === 0} className="gap-1">
+                  {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                  שלח בלבד ({selectedAccounts.length})
+                </Button>
                 <Button variant="destructive" size="sm" onClick={handleBulkDelete} disabled={isBulkProcessing} className="gap-1">
                   {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
                   מחק נבחרים
@@ -993,6 +1066,10 @@ const GroupListener = () => {
                               <Send className="h-3 w-3" />
                               שלח
                             </Button>
+                            <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 flex-1" onClick={() => handleSingleSendOnly(post)} disabled={isBulkProcessing || selectedAccounts.length === 0}>
+                              <Send className="h-3 w-3" />
+                              שלח בלבד
+                            </Button>
                             <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 flex-1" onClick={() => handleManualRewrite(post)} disabled={rewritingPostId === post.id}>
                               {rewritingPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                               AI
@@ -1150,6 +1227,10 @@ const GroupListener = () => {
                           <Button variant="outline" size="sm" onClick={() => { setSendPosts([post]); handleSingleSendAndQueue(post); }} disabled={isBulkProcessing || selectedAccounts.length === 0} className="gap-1">
                             {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                             שלח והוסף לתור
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => handleSingleSendOnly(post)} disabled={isBulkProcessing || selectedAccounts.length === 0} className="gap-1">
+                            {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                            שלח בלבד
                           </Button>
                           <Button variant="outline" size="sm" onClick={() => handleManualRewrite(post)} disabled={rewritingPostId === post.id} className="gap-1">
                             {rewritingPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
@@ -1597,6 +1678,10 @@ const GroupListener = () => {
               <Button variant="outline" size="sm" className="flex-1 gap-1" onClick={() => handleBulkSendAndQueue()} disabled={isBulkProcessing || selectedAccounts.length === 0}>
                 {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                 שלח והוסף לתור ({selectedAccounts.length})
+              </Button>
+              <Button variant="outline" size="sm" className="flex-1 gap-1" onClick={() => handleBulkSendOnly()} disabled={isBulkProcessing || selectedAccounts.length === 0}>
+                {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                שלח בלבד ({selectedAccounts.length})
               </Button>
               <Button variant="destructive" size="sm" className="gap-1" onClick={handleBulkDelete} disabled={isBulkProcessing}>
                 <Trash2 className="h-3 w-3" />
