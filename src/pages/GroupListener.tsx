@@ -552,7 +552,6 @@ const GroupListener = () => {
   };
 
 
-  // Manual AI rewrite (Lovable AI)
   // Send only — broadcast to selected accounts without adding to queue (like Manual Send)
   const sendPostOnly = async (post: CapturedPost, userId: string) => {
     const text = getPostFinalText(post);
