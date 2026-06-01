@@ -83,6 +83,29 @@ function isAliExpressUrl(url: string): boolean {
   }
 }
 
+// Cashback paragraph detection: matches paragraphs that promote a cashback
+// group/channel. We strip those paragraphs (and their URL) so a post that
+// otherwise has a single product link is not skipped for "multiple_links".
+const CASHBACK_KEYWORD_RE = /(קאשבק|קאש\s*בק|cash\s*back|כסף\s*חזרה|החזר\s*כספי)/i;
+
+function stripCashbackParagraphs(rawText: string): { cleanedText: string; removedUrls: string[] } {
+  if (!rawText) return { cleanedText: rawText, removedUrls: [] };
+  const paragraphs = rawText.split(/\n\s*\n/);
+  const removedUrls: string[] = [];
+  const kept: string[] = [];
+  for (const p of paragraphs) {
+    if (CASHBACK_KEYWORD_RE.test(p)) {
+      const urlsInP = extractUrlsFromText(p);
+      if (urlsInP.length > 0) {
+        removedUrls.push(...urlsInP);
+        continue; // drop this whole paragraph (sentence + link)
+      }
+    }
+    kept.push(p);
+  }
+  return { cleanedText: kept.join("\n\n").trim(), removedUrls };
+}
+
 function stripAffiliateParams(url: string): string {
   try {
     const u = new URL(url);
