@@ -1066,6 +1066,10 @@ const GroupListener = () => {
                               <Send className="h-3 w-3" />
                               שלח
                             </Button>
+                            <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 flex-1" onClick={() => handleSingleSendOnly(post)} disabled={isBulkProcessing || selectedAccounts.length === 0}>
+                              <Send className="h-3 w-3" />
+                              שלח בלבד
+                            </Button>
                             <Button variant="outline" size="sm" className="h-7 text-[10px] gap-1 flex-1" onClick={() => handleManualRewrite(post)} disabled={rewritingPostId === post.id}>
                               {rewritingPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                               AI
