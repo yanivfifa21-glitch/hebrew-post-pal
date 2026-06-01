@@ -1228,6 +1228,10 @@ const GroupListener = () => {
                             {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                             שלח והוסף לתור
                           </Button>
+                          <Button variant="outline" size="sm" onClick={() => handleSingleSendOnly(post)} disabled={isBulkProcessing || selectedAccounts.length === 0} className="gap-1">
+                            {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                            שלח בלבד
+                          </Button>
                           <Button variant="outline" size="sm" onClick={() => handleManualRewrite(post)} disabled={rewritingPostId === post.id} className="gap-1">
                             {rewritingPostId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                             נסח מחדש
