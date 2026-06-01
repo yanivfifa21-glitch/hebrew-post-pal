@@ -190,8 +190,14 @@ async function processMessage(supabase: any, supabaseUrl: string, message: any, 
   const rewriteMode: string = relayGroup.rewrite_mode || "link_only";
 
   // Extract text + URLs (supports plain URLs, text_link entities, and inline keyboard links)
-  const text = message.caption || message.text || "";
-  const urls = collectMessageUrls(message);
+  const rawText = message.caption || message.text || "";
+  const { cleanedText, removedUrls: cashbackUrls } = stripCashbackParagraphs(rawText);
+  const text = cleanedText;
+  if (cashbackUrls.length > 0) {
+    console.log(`[telegram-listener-webhook] stripped ${cashbackUrls.length} cashback paragraph(s): ${JSON.stringify(cashbackUrls)}`);
+  }
+  const allUrls = collectMessageUrls(message);
+  const urls = allUrls.filter((u) => !cashbackUrls.includes(u));
 
   // Rule: exactly one link per post; skip posts with zero/multiple links
   if (urls.length !== 1) {
