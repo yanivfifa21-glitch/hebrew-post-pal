@@ -1670,21 +1670,22 @@ const GroupListener = () => {
             {/* Zone selector inline */}
             <ZoneSelector selectedZones={selectedZones} onSelectionChange={setSelectedZones} />
             {/* Action buttons */}
-            <div className="flex gap-2">
-              <Button variant="gradient" size="sm" className="flex-1 gap-1" onClick={() => handleAddToQueue(capturedPosts.filter(p => selectedPostIds.has(p.id)))} disabled={isBulkProcessing}>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="gradient" size="sm" className="gap-1" onClick={() => handleAddToQueue(capturedPosts.filter(p => selectedPostIds.has(p.id)))} disabled={isBulkProcessing}>
                 {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <ListPlus className="h-3 w-3" />}
-                הוסף לתור {selectedZones.length > 0 ? `(${selectedZones.length} אזורים)` : ""}
+                הוסף לתור {selectedZones.length > 0 ? `(${selectedZones.length})` : ""}
               </Button>
-              <Button variant="outline" size="sm" className="flex-1 gap-1" onClick={() => handleBulkSendAndQueue()} disabled={isBulkProcessing || selectedAccounts.length === 0}>
+              <Button variant="outline" size="sm" className="gap-1" onClick={() => handleBulkSendAndQueue()} disabled={isBulkProcessing || selectedAccounts.length === 0}>
                 {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                שלח והוסף לתור ({selectedAccounts.length})
+                שלח+תור ({selectedAccounts.length})
               </Button>
-              <Button variant="outline" size="sm" className="flex-1 gap-1" onClick={() => handleBulkSendOnly()} disabled={isBulkProcessing || selectedAccounts.length === 0}>
+              <Button variant="outline" size="sm" className="gap-1" onClick={() => handleBulkSendOnly()} disabled={isBulkProcessing || selectedAccounts.length === 0}>
                 {isBulkProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                 שלח בלבד ({selectedAccounts.length})
               </Button>
               <Button variant="destructive" size="sm" className="gap-1" onClick={handleBulkDelete} disabled={isBulkProcessing}>
                 <Trash2 className="h-3 w-3" />
+                מחק
               </Button>
             </div>
           </div>
