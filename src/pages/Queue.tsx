@@ -22,6 +22,7 @@ const Queue = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
   const [selectedManualProducts, setSelectedManualProducts] = useState<Set<string>>(new Set());
+  const [selectedAutoProducts, setSelectedAutoProducts] = useState<Set<string>>(new Set());
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isReturningBulk, setIsReturningBulk] = useState(false);
   const [enhanceProgress, setEnhanceProgress] = useState(0);
@@ -114,6 +115,54 @@ const Queue = () => {
       setSelectedManualProducts(new Set(sentManualProducts.map(p => p.id)));
     } else {
       setSelectedManualProducts(new Set());
+    }
+  };
+
+  const handleAutoSelectionChange = (productId: string, selected: boolean) => {
+    setSelectedAutoProducts((prev) => {
+      const newSet = new Set(prev);
+      if (selected) newSet.add(productId); else newSet.delete(productId);
+      return newSet;
+    });
+  };
+
+  const handleSelectAllAuto = (checked: boolean) => {
+    if (checked) {
+      setSelectedAutoProducts(new Set(sentAutoProducts.map(p => p.id)));
+    } else {
+      setSelectedAutoProducts(new Set());
+    }
+  };
+
+  const handleReturnSelectedAutoToQueue = async () => {
+    if (selectedAutoProducts.size === 0) {
+      toast({ title: "לא נבחרו פריטים", variant: "destructive" });
+      return;
+    }
+    setIsReturningBulk(true);
+    try {
+      const ids = Array.from(selectedAutoProducts);
+      const selectedItems = products
+        .filter(p => ids.includes(p.id))
+        .sort((a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime());
+
+      for (let i = 0; i < selectedItems.length; i++) {
+        const newCreatedAt = new Date(Date.now() + (i + 1) * 1000).toISOString();
+        const { error } = await supabase
+          .from("products")
+          .update({ status: "Scheduled", created_at: newCreatedAt })
+          .eq("id", selectedItems[i].id);
+        if (error) throw error;
+      }
+      setProducts((prev) =>
+        prev.map((p) => ids.includes(p.id) ? { ...p, status: "Scheduled" as Product["status"] } : p)
+      );
+      setSelectedAutoProducts(new Set());
+      toast({ title: `✅ ${ids.length} פריטים הוחזרו לתור` });
+    } catch {
+      toast({ title: "שגיאה בהחזרה לתור", variant: "destructive" });
+    } finally {
+      setIsReturningBulk(false);
     }
   };
 
@@ -438,8 +487,12 @@ const Queue = () => {
       );
     }
 
-    const currentSelected = isManualTab ? selectedManualProducts : selectedProducts;
-    const currentHandler = isManualTab ? handleManualSelectionChange : handleSelectionChange;
+    const currentSelected = isManualTab
+      ? selectedManualProducts
+      : (items === sentAutoProducts ? selectedAutoProducts : selectedProducts);
+    const currentHandler = isManualTab
+      ? handleManualSelectionChange
+      : (items === sentAutoProducts ? handleAutoSelectionChange : handleSelectionChange);
 
     return (
       <div className="space-y-4">
@@ -683,8 +736,42 @@ const Queue = () => {
             {renderProducts(displayScheduledProducts, true)}
           </TabsContent>
 
-          <TabsContent value="sent-auto" className="animate-fade-in">
-            {renderProducts(sentAutoProducts, false)}
+          <TabsContent value="sent-auto" className="animate-fade-in space-y-4">
+            {sentAutoProducts.length > 0 && (
+              <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border/50 flex-wrap">
+                <Checkbox
+                  checked={sentAutoProducts.length > 0 && sentAutoProducts.every(p => selectedAutoProducts.has(p.id))}
+                  onCheckedChange={(checked) => handleSelectAllAuto(checked === true)}
+                  className="h-5 w-5"
+                  aria-label="בחר הכל"
+                />
+                <span className="text-sm font-medium">
+                  {sentAutoProducts.every(p => selectedAutoProducts.has(p.id))
+                    ? "בטל בחירה"
+                    : selectedAutoProducts.size > 0
+                      ? `${selectedAutoProducts.size} נבחרו`
+                      : "בחר הכל"
+                  }
+                </span>
+                <div className="mr-auto">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleReturnSelectedAutoToQueue}
+                    disabled={selectedAutoProducts.size === 0 || isReturningBulk}
+                    className="gap-2 border-primary/50 text-primary hover:bg-primary/10"
+                  >
+                    {isReturningBulk ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-4 w-4" />
+                    )}
+                    החזר נבחרים לתור ({selectedAutoProducts.size})
+                  </Button>
+                </div>
+              </div>
+            )}
+            {renderProducts(sentAutoProducts, true)}
           </TabsContent>
 
           <TabsContent value="sent-manual" className="animate-fade-in space-y-4">
