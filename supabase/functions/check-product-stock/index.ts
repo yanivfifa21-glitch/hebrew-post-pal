@@ -21,6 +21,14 @@ const UNAVAILABLE_PATTERNS = [
   "we can't find the page",
   "该商品已下架",
   "商品不存在",
+  '"isNotFound":true',
+  '"notFound":true',
+  '"status":404',
+  "aePageNotFound",
+  "pdp-not-found",
+  "item-not-found",
+  "该商品已失效",
+  "该链接已失效",
 ];
 
 const HOMEPAGE_PATTERNS = [
@@ -81,15 +89,16 @@ async function checkProductAvailability(url: string): Promise<{ status: string; 
     }
 
     // Check for price/add-to-cart indicators (product likely available)
-    const hasPrice = /class="[^"]*price[^"]*"/i.test(html) || /data-price/i.test(html);
-    const hasAddToCart = /add.to.cart/i.test(html) || /buy.now/i.test(html);
+    const hasPrice = /class="[^"]*price[^"]*"/i.test(html) || /data-price/i.test(html) || /"price":\s*\{/i.test(html);
+    const hasAddToCart = /add.to.cart/i.test(html) || /buy.now/i.test(html) || /addtocart/i.test(html);
+    const hasProductData = /product[_-]?id["']?\s*[:=]/i.test(html) || /"productId"/i.test(html) || /window\.__aer_data/i.test(html);
 
-    if (hasPrice || hasAddToCart) {
+    if (hasPrice || hasAddToCart || hasProductData) {
       return { status: "available" };
     }
 
-    // If we got a 200 but can't confirm availability, assume available
-    return { status: "available" };
+    // Page returned 200 but no product indicators found — likely JS-shell for removed product
+    return { status: "unavailable", reason: "No product data found in page" };
   } catch (error) {
     return { status: "error", reason: String(error) };
   }

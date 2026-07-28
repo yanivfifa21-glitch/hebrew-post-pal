@@ -414,6 +414,7 @@ const Queue = () => {
 
       // Process in parallel batches of 5
       const BATCH_SIZE = 5;
+      const unavailableIds: string[] = [];
       for (let i = 0; i < productsToCheck.length; i += BATCH_SIZE) {
         const batch = productsToCheck.slice(i, i + BATCH_SIZE);
         const results = await Promise.allSettled(
@@ -439,11 +440,20 @@ const Queue = () => {
           if (result.value.data?.status) {
             handleStockChecked(result.value.productId, result.value.data.status);
             checked++;
-            if (result.value.data.status === "unavailable") unavailable++;
+            if (result.value.data.status === "unavailable") {
+              unavailable++;
+              unavailableIds.push(result.value.productId);
+            }
           }
         }
 
         setStockCheckProgress(Math.min(i + BATCH_SIZE, productsToCheck.length));
+      }
+
+      // מחק פוסטים שאזלו מהמלאי
+      if (unavailableIds.length > 0) {
+        await supabase.from("products").delete().in("id", unavailableIds);
+        setProducts((prev) => prev.filter((p) => !unavailableIds.includes(p.id)));
       }
 
       toast({
