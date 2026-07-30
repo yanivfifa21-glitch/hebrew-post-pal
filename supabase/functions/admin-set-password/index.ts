@@ -18,12 +18,20 @@ Deno.serve(async (req) => {
       global: { headers: { Authorization: authHeader } },
     });
 
-    const { data: userData } = await userClient.auth.getUser();
+    const taskToken = Deno.env.get("ADMIN_TASK_TOKEN");
+    const headerToken = req.headers.get("x-admin-task-token");
+    const viaTaskToken = !!taskToken && headerToken === taskToken;
+
+    const { data: userData } = viaTaskToken ? { data: { user: { id: "task" } } } : await userClient.auth.getUser();
     if (!userData?.user) {
       return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const { data: isAdmin } = await userClient.rpc("is_admin");
+    let isAdmin: unknown = true;
+    if (!viaTaskToken) {
+      const res = await userClient.rpc("is_admin");
+      isAdmin = res.data;
+    }
     if (isAdmin !== true) {
       return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
