@@ -1,0 +1,1 @@
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS posts_per_send integer NOT NULL DEFAULT 1;
