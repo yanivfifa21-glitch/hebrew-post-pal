@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import postgres from "npm:postgres@3.4.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,6 +48,46 @@ const ALLOWED_FUNCTIONS = new Set([
 ]);
 
 type Filter = { column: string; op: string; value: unknown };
+
+// ---------------------------------------------------------------------------
+// Predefined migrations. NO external SQL is ever accepted — only these named
+// entries can run. All statements must be idempotent (IF NOT EXISTS etc).
+// To add a new column: add a new named entry here, then call
+//   {"action":"migrate","name":"<name>"}
+// ---------------------------------------------------------------------------
+const MIGRATIONS: Record<string, { description: string; sql: string }> = {
+  add_posts_per_send: {
+    description: "Adds app_settings.posts_per_send (integer, default 1)",
+    sql: `ALTER TABLE public.app_settings
+            ADD COLUMN IF NOT EXISTS posts_per_send integer NOT NULL DEFAULT 1;`,
+  },
+};
+
+const runMigration = async (name: string, dryRun: boolean) => {
+  const migration = MIGRATIONS[name];
+  if (!migration) {
+    return json(
+      {
+        error: "migration_not_found",
+        available: Object.keys(MIGRATIONS),
+        hint: 'send {"action":"list_migrations"}',
+      },
+      404,
+    );
+  }
+  if (dryRun) return json({ name, dry_run: true, ...migration });
+
+  const dbUrl = Deno.env.get("SUPABASE_DB_URL");
+  if (!dbUrl) return json({ error: "db_url_not_configured" }, 500);
+
+  const sql = postgres(dbUrl, { prepare: false, max: 1 });
+  try {
+    await sql.unsafe(migration.sql);
+    return json({ success: true, name, description: migration.description });
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+};
 
 const applyFilters = (q: any, filters: Filter[] | undefined) => {
   for (const f of filters ?? []) {
@@ -105,18 +146,28 @@ Deno.serve(async (req) => {
     switch (action) {
       case "help":
         return json({
-          actions: ["help", "list_tables", "select", "insert", "update", "delete", "list_users", "set_password", "invoke"],
+          actions: ["help", "list_tables", "select", "insert", "update", "delete", "list_users", "set_password", "invoke", "list_migrations", "migrate"],
           tables: [...ALLOWED_TABLES],
           functions: [...ALLOWED_FUNCTIONS],
+          migrations: Object.keys(MIGRATIONS),
           examples: {
             select: { action: "select", table: "products", columns: "id,title,status", filters: [{ column: "status", op: "eq", value: "Scheduled" }], order: { column: "created_at", ascending: true }, limit: 20 },
             update: { action: "update", table: "products", values: { skip_send: true }, filters: [{ column: "id", op: "eq", value: "<uuid>" }] },
             invoke: { action: "invoke", function: "start-publishing", body: {} },
+            migrate: { action: "migrate", name: "add_posts_per_send" },
           },
         });
 
       case "list_tables":
         return json({ tables: [...ALLOWED_TABLES] });
+
+      case "list_migrations":
+        return json({
+          migrations: Object.entries(MIGRATIONS).map(([name, m]) => ({ name, description: m.description })),
+        });
+
+      case "migrate":
+        return await runMigration(String(payload?.name ?? ""), payload?.dry_run === true);
 
       case "select": {
         let q = admin.from(table).select(payload.columns ?? "*", { count: "exact" });
