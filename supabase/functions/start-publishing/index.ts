@@ -399,7 +399,8 @@ serve(async (req) => {
     // Check if coupon posts should be sent
     const sendCouponPosts: boolean = settings.send_coupon_posts !== false;
 
-    let eligibleProducts: any[] = [];
+    const postsPerSend = Math.max(1, parseInt(String(settings.posts_per_send || 1)));
+    let sentCount = 0;
     let skippedCouponCount = 0;
 
     try {
