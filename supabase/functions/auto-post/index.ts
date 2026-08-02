@@ -952,8 +952,10 @@ serve(async (req) => {
         }
 
         // Try eligible products from general queue
-        let generalSent = false;
+        let generalSentCount = 0;
         for (const product of unassignedProducts) {
+          if (generalSentCount >= postsPerSend) break;
+
           // Skip coupon posts if disabled
           if (!sendCouponPosts && hasCouponInText(product.hebrew_description)) {
             console.log(`[auto-post] User ${userId} [General]: Skipping product ${product.id} - has coupon (send_coupon_posts=false)`);
@@ -991,8 +993,7 @@ serve(async (req) => {
               .eq("id", product.id);
             console.log(`[auto-post] User ${userId} [General]: ✓ Product ${product.id} sent to ${sentTo.join(", ")}`);
             results.push({ userId, source: "general", productId: product.id, status: "Sent", sentTo });
-            generalSent = true;
-            break;
+            generalSentCount++;
           } else {
             // Skip failed product, try next
             console.log(`[auto-post] User ${userId} [General]: Product ${product.id} failed (${errors.join('; ')}), trying next`);
@@ -1003,7 +1004,7 @@ serve(async (req) => {
           }
         }
 
-        if (!generalSent) {
+        if (generalSentCount === 0) {
           console.log(`[auto-post] User ${userId} [General]: All products failed`);
         }
 
