@@ -401,6 +401,7 @@ serve(async (req) => {
 
     const postsPerSend = Math.max(1, parseInt(String(settings.posts_per_send || 1)));
     let sentCount = 0;
+    let eligibleProducts: any[] = [];
     let skippedCouponCount = 0;
 
     try {
