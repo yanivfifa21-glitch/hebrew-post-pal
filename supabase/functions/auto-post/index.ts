@@ -1087,8 +1087,10 @@ serve(async (req) => {
           continue;
         }
 
-        let legacySent = false;
+        let legacySentCount = 0;
         for (const product of candidates) {
+          if (legacySentCount >= postsPerSend) break;
+
           if (!sendCouponPosts && hasCouponInText(product.hebrew_description)) {
             console.log(`[auto-post] User ${userId}: Skipping product ${product.id} - has coupon (send_coupon_posts=false)`);
             continue;
@@ -1124,8 +1126,7 @@ serve(async (req) => {
               .update({ status: "Sent", ...(product.sent_via ? {} : { sent_via: "auto" }) })
               .eq("id", product.id);
             results.push({ userId, productId: product.id, status: "Sent", sentTo });
-            legacySent = true;
-            break;
+            legacySentCount++;
           } else {
             console.log(`[auto-post] User ${userId}: Product ${product.id} failed (${errors.join('; ')}), trying next`);
             await supabase
@@ -1135,7 +1136,7 @@ serve(async (req) => {
           }
         }
 
-        if (!legacySent) {
+        if (legacySentCount === 0) {
           results.push({ userId, status: "all_products_failed" });
         }
       }
