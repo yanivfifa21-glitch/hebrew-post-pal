@@ -705,6 +705,7 @@ serve(async (req) => {
       const shabbatEndTime: string = userSettings.shabbat_end_time || '20:00';
       const stockCheckEnabled: boolean = userSettings.stock_check_before_publish !== false; // default true
       const sendCouponPosts: boolean = userSettings.send_coupon_posts !== false; // default true
+      const postsPerSend: number = Math.max(1, parseInt(String(userSettings.posts_per_send || 1)));
 
       // Step A: Check Shabbat mode first (global)
       if (isInShabbatMode(currentDayOfWeek, currentTimeStr, shabbatEnabled, shabbatStartTime, shabbatEndTime)) {
@@ -951,8 +952,10 @@ serve(async (req) => {
         }
 
         // Try eligible products from general queue
-        let generalSent = false;
+        let generalSentCount = 0;
         for (const product of unassignedProducts) {
+          if (generalSentCount >= postsPerSend) break;
+
           // Skip coupon posts if disabled
           if (!sendCouponPosts && hasCouponInText(product.hebrew_description)) {
             console.log(`[auto-post] User ${userId} [General]: Skipping product ${product.id} - has coupon (send_coupon_posts=false)`);
@@ -990,8 +993,7 @@ serve(async (req) => {
               .eq("id", product.id);
             console.log(`[auto-post] User ${userId} [General]: ✓ Product ${product.id} sent to ${sentTo.join(", ")}`);
             results.push({ userId, source: "general", productId: product.id, status: "Sent", sentTo });
-            generalSent = true;
-            break;
+            generalSentCount++;
           } else {
             // Skip failed product, try next
             console.log(`[auto-post] User ${userId} [General]: Product ${product.id} failed (${errors.join('; ')}), trying next`);
@@ -1002,7 +1004,7 @@ serve(async (req) => {
           }
         }
 
-        if (!generalSent) {
+        if (generalSentCount === 0) {
           console.log(`[auto-post] User ${userId} [General]: All products failed`);
         }
 
@@ -1085,8 +1087,10 @@ serve(async (req) => {
           continue;
         }
 
-        let legacySent = false;
+        let legacySentCount = 0;
         for (const product of candidates) {
+          if (legacySentCount >= postsPerSend) break;
+
           if (!sendCouponPosts && hasCouponInText(product.hebrew_description)) {
             console.log(`[auto-post] User ${userId}: Skipping product ${product.id} - has coupon (send_coupon_posts=false)`);
             continue;
@@ -1122,8 +1126,7 @@ serve(async (req) => {
               .update({ status: "Sent", ...(product.sent_via ? {} : { sent_via: "auto" }) })
               .eq("id", product.id);
             results.push({ userId, productId: product.id, status: "Sent", sentTo });
-            legacySent = true;
-            break;
+            legacySentCount++;
           } else {
             console.log(`[auto-post] User ${userId}: Product ${product.id} failed (${errors.join('; ')}), trying next`);
             await supabase
@@ -1133,7 +1136,7 @@ serve(async (req) => {
           }
         }
 
-        if (!legacySent) {
+        if (legacySentCount === 0) {
           results.push({ userId, status: "all_products_failed" });
         }
       }
