@@ -564,21 +564,25 @@ serve(async (req) => {
           })
           .eq("user_id", userId);
 
-        return new Response(JSON.stringify({ 
-          success: true, 
-          message: `פרסום בוצע בהצלחה! נשלח ל: ${sentTo.join(", ")}`,
-          sentTo,
-          productTitle: product.title,
-          nextPost: `הפרסום הבא בעוד ${settings.posting_interval_minutes || 30} דקות`
-        }), { 
-          headers: { ...corsHeaders, "Content-Type": "application/json" } 
-        });
+        sentCount++;
+        continue;
       } else {
         // Unlock product and try next one
         console.log(`[start-publishing] Product ${product.id} failed (${errors.join('; ')}), trying next`);
         await supabase.from("products").update({ status: "Scheduled" }).eq("id", product.id);
         allErrors.push(...errors);
       }
+    }
+
+    if (sentCount > 0) {
+      return new Response(JSON.stringify({ 
+        success: true, 
+        message: `פורסמו ${sentCount} פוסטים בהצלחה`,
+        sentCount,
+        nextPost: `הפרסום הבא בעוד ${settings.posting_interval_minutes || 30} דקות`
+      }), { 
+        headers: { ...corsHeaders, "Content-Type": "application/json" } 
+      });
     }
 
     // All products failed
