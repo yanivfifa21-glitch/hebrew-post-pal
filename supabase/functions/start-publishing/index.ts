@@ -452,6 +452,7 @@ serve(async (req) => {
     const allErrors: string[] = [];
 
     for (const product of eligibleProducts) {
+      if (sentCount >= postsPerSend) break;
       console.log(`[start-publishing] Trying product ${product.id}...`);
 
       // Try to generate affiliate link if missing
