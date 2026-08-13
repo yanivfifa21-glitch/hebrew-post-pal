@@ -164,7 +164,7 @@ serve(async (req) => {
     const userId = user.id;
 
     const body = await req.json();
-    const { text, version, provider, productData } = body;
+    const { text, version, provider, productData, shippingOverride } = body;
 
     if (!text) {
       return new Response(JSON.stringify({ error: "Missing text" }), {
@@ -215,7 +215,19 @@ serve(async (req) => {
       productDataSection += "\n---";
     }
 
-    const systemPrompt = `${UNIFIED_PROMPT}${productDataSection}`;
+    // Manual shipping correction — set by the user in Group Listener, overrides
+    // whatever the raw post text says (that text is often wrong/ambiguous).
+    let shippingSection = "";
+    if (shippingOverride?.status === "free") {
+      shippingSection = "\n\n--- הוראת משלוח (נקבעה ידנית על ידי המשתמש - זו העדיפות העליונה, מבטלת כל דבר אחר שכתוב בטקסט המקורי לגבי משלוח) ---\nיש משלוח חינם, ללא תנאי סכום מינימלי.\n---";
+    } else if (shippingOverride?.status === "free_over") {
+      const th = shippingOverride.threshold ? `$${shippingOverride.threshold}` : "";
+      shippingSection = `\n\n--- הוראת משלוח (נקבעה ידנית על ידי המשתמש - זו העדיפות העליונה, מבטלת כל דבר אחר שכתוב בטקסט המקורי לגבי משלוח) ---\nיש משלוח חינם בהזמנה מעל ${th}.\n---`;
+    } else if (shippingOverride?.status === "none") {
+      shippingSection = "\n\n--- הוראת משלוח (נקבעה ידנית על ידי המשתמש - זו העדיפות העליונה) ---\nאין משלוח חינם במוצר הזה - אל תציין שורת משלוח חינם בפוסט, גם אם הטקסט המקורי מרמז על כך.\n---";
+    }
+
+    const systemPrompt = `${UNIFIED_PROMPT}${productDataSection}${shippingSection}`;
 
     let rewrittenText = "";
 

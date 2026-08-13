@@ -61,6 +61,12 @@ const MIGRATIONS: Record<string, { description: string; sql: string }> = {
     sql: `ALTER TABLE public.app_settings
             ADD COLUMN IF NOT EXISTS posts_per_send integer NOT NULL DEFAULT 1;`,
   },
+  add_shipping_override: {
+    description: "Adds captured_posts.shipping_override ('free'|'free_over'|'none') and shipping_threshold (numeric, USD) for manual shipping correction",
+    sql: `ALTER TABLE public.captured_posts
+            ADD COLUMN IF NOT EXISTS shipping_override text,
+            ADD COLUMN IF NOT EXISTS shipping_threshold numeric;`,
+  },
 };
 
 const runMigration = async (name: string, dryRun: boolean) => {

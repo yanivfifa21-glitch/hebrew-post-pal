@@ -677,8 +677,12 @@ const GroupListener = () => {
         }
       }
       
+      const shippingOverride = post.shipping_override
+        ? { status: post.shipping_override, threshold: post.shipping_threshold }
+        : undefined;
+
       const { data, error } = await supabase.functions.invoke("rewrite-openai", {
-        body: { text: textToRewrite, version: currentVersion, provider, productData },
+        body: { text: textToRewrite, version: currentVersion, provider, productData, shippingOverride },
       });
       if (error) throw error;
       if (data?.success && data?.rewrittenText) {
@@ -698,6 +702,37 @@ const GroupListener = () => {
       if (provider === 'openai') setRewritingOpenAIPostId(null);
       else setRewritingPostId(null);
     }
+  };
+
+  // Manual shipping correction — the raw post text is often wrong/ambiguous about
+  // free shipping, so let the user set it explicitly; the rewrite prompts treat
+  // this as the highest-priority source of truth.
+  const handleSetShipping = async (post: CapturedPost, status: 'free' | 'free_over' | 'none') => {
+    const clearing = post.shipping_override === status && status !== 'free_over';
+    let threshold: number | null = null;
+    let finalStatus: string | null = status;
+
+    if (clearing) {
+      finalStatus = null;
+    } else if (status === 'free_over') {
+      const input = window.prompt('מעל איזה סכום ($) יש משלוח חינם?', post.shipping_threshold ? String(post.shipping_threshold) : '12');
+      if (input === null) return;
+      threshold = parseFloat(input);
+      if (!threshold || threshold <= 0) {
+        toast({ title: 'סכום לא תקין', variant: 'destructive' });
+        return;
+      }
+    }
+
+    const { error } = await supabase
+      .from("captured_posts")
+      .update({ shipping_override: finalStatus, shipping_threshold: threshold } as any)
+      .eq("id", post.id);
+    if (error) {
+      toast({ title: 'שגיאה בשמירת המשלוח', variant: 'destructive' });
+      return;
+    }
+    setCapturedPosts(prev => prev.map(p => p.id === post.id ? { ...p, shipping_override: finalStatus as any, shipping_threshold: threshold } : p));
   };
 
   // Cleanup: delete all pending posts except the newest 100
@@ -1083,6 +1118,18 @@ const GroupListener = () => {
                               Gemini
                             </Button>
                           </div>
+                          {/* Manual shipping correction */}
+                          <div className="flex gap-1 p-2 pt-0">
+                            <Button variant={post.shipping_override === 'free' ? 'default' : 'outline'} size="sm" className="h-6 text-[9px] gap-1 flex-1" title="משלוח חינם" onClick={() => handleSetShipping(post, 'free')}>
+                              🚚 חינם
+                            </Button>
+                            <Button variant={post.shipping_override === 'free_over' ? 'default' : 'outline'} size="sm" className="h-6 text-[9px] gap-1 flex-1" title="משלוח חינם מעל סכום" onClick={() => handleSetShipping(post, 'free_over')}>
+                              🚚 מעל {post.shipping_override === 'free_over' && post.shipping_threshold ? `$${post.shipping_threshold}` : '$'}
+                            </Button>
+                            <Button variant={post.shipping_override === 'none' ? 'default' : 'outline'} size="sm" className="h-6 text-[9px] gap-1 flex-1" title="אין משלוח חינם" onClick={() => handleSetShipping(post, 'none')}>
+                              🚫 אין
+                            </Button>
+                          </div>
                         </div>
                       </Card>
                     );
@@ -1243,6 +1290,16 @@ const GroupListener = () => {
                           <Button variant="outline" size="sm" onClick={() => handleExternalRewrite(post, 'gemini')} disabled={rewritingPostId === `gemini_${post.id}`} className="gap-1 border-blue-500/50 text-blue-600 hover:bg-blue-50">
                             {rewritingPostId === `gemini_${post.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                             נסח מחדש – Gemini {openaiVersionMap[`gemini_${post.id}`] ? `(v${openaiVersionMap[`gemini_${post.id}`]})` : ''}
+                          </Button>
+                          {/* Manual shipping correction — overrides whatever the rewrite would guess from the raw text */}
+                          <Button variant={post.shipping_override === 'free' ? 'default' : 'outline'} size="sm" className="gap-1" title="קובע: משלוח חינם, ללא מינימום" onClick={() => handleSetShipping(post, 'free')}>
+                            🚚 משלוח חינם
+                          </Button>
+                          <Button variant={post.shipping_override === 'free_over' ? 'default' : 'outline'} size="sm" className="gap-1" title="קובע: משלוח חינם מעל סכום מסוים" onClick={() => handleSetShipping(post, 'free_over')}>
+                            🚚 חינם מעל {post.shipping_override === 'free_over' && post.shipping_threshold ? `$${post.shipping_threshold}` : '$...'}
+                          </Button>
+                          <Button variant={post.shipping_override === 'none' ? 'default' : 'outline'} size="sm" className="gap-1" title="קובע: אין משלוח חינם" onClick={() => handleSetShipping(post, 'none')}>
+                            🚫 אין משלוח חינם
                           </Button>
                           <Button variant="outline" size="sm" onClick={() => { setEditingPost(post); setEditText(post.modified_text || post.original_text || ""); setEditUrl(post.modified_url || post.original_url || ""); }} className="gap-1">
                             <Edit className="h-3 w-3" />

@@ -52,6 +52,8 @@ export interface CapturedPost {
   modified_url: string | null;
   image_url: string | null;
   media_type?: 'image' | 'video';
+  shipping_override?: 'free' | 'free_over' | 'none' | null;
+  shipping_threshold?: number | null;
   status: 'pending_review' | 'approved' | 'rejected' | 'queued';
   product_id: string | null;
   captured_at: string;
