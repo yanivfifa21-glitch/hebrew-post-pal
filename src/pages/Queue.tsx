@@ -419,10 +419,17 @@ const Queue = () => {
         const batch = productsToCheck.slice(i, i + BATCH_SIZE);
         const results = await Promise.allSettled(
           batch.map(async ({ product, checkUrl }) => {
-            const { data, error } = await supabase.functions.invoke("check-product-stock", {
-              body: { productId: product.id, url: checkUrl },
-            });
-            return { productId: product.id, data, error };
+            try {
+              const res = await fetch('/api/check-stock', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: checkUrl }),
+              });
+              const data = await res.json();
+              return { productId: product.id, data, error: null };
+            } catch (e) {
+              return { productId: product.id, data: null, error: e };
+            }
           })
         );
 

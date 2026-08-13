@@ -236,6 +236,7 @@ const Settings = () => {
   const [useIntervalPosting, setUseIntervalPosting] = useState(false);
   const [intervalStartTime, setIntervalStartTime] = useState('08:00');
   const [intervalEndTime, setIntervalEndTime] = useState('22:00');
+  const [postsPerSend, setPostsPerSend] = useState(1);
   
   // Separate channel interval settings
   const [useSeparateIntervals, setUseSeparateIntervals] = useState(false);
@@ -353,29 +354,33 @@ const Settings = () => {
         return;
       }
 
-      const response = await supabase.functions.invoke('start-publishing', {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
+      const times = Math.max(1, postsPerSend);
+      let lastResult: any = null;
+      let successCount = 0;
 
-      if (response.error) {
-        throw new Error(response.error.message);
+      for (let i = 0; i < times; i++) {
+        const response = await supabase.functions.invoke('start-publishing', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (response.error) throw new Error(response.error.message);
+        const result = response.data;
+        if (result.success) {
+          successCount++;
+          lastResult = result;
+        } else if (i === 0) {
+          // first call already failed — no point continuing
+          toast({ title: "שגיאה בפרסום", description: result.error, variant: "destructive" });
+          return;
+        }
       }
 
-      const result = response.data;
-
-      if (result.success) {
+      if (successCount > 0) {
         setAutomationEnabled(true);
         toast({
           title: "🎉 הפרסום התחיל!",
-          description: result.message,
-        });
-      } else {
-        toast({
-          title: "שגיאה בפרסום",
-          description: result.error,
-          variant: "destructive",
+          description: successCount > 1
+            ? `נשלחו ${successCount} פוסטים בהצלחה`
+            : lastResult?.message,
         });
       }
     } catch (error) {
@@ -403,7 +408,7 @@ const Settings = () => {
       // Fetch app settings (non-sensitive data only)
       const { data, error } = await supabase
         .from('app_settings')
-        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, ai_rewrite_template, posting_interval_hours, posting_interval_minutes, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, interval_start_time, interval_end_time, usd_exchange_rate, whatsapp_interval_minutes, telegram_interval_minutes, whatsapp_interval_start_time, whatsapp_interval_end_time, telegram_interval_start_time, telegram_interval_end_time, use_custom_emoji, openai_api_key, gemini_api_key, send_coupon_posts')
+        .select('id, automation_enabled, posting_times, publishing_days, aliexpress_tracking_id, custom_ai_prompt, ai_rewrite_template, posting_interval_hours, posting_interval_minutes, shabbat_mode_enabled, shabbat_start_time, shabbat_end_time, interval_start_time, interval_end_time, usd_exchange_rate, whatsapp_interval_minutes, telegram_interval_minutes, whatsapp_interval_start_time, whatsapp_interval_end_time, telegram_interval_start_time, telegram_interval_end_time, use_custom_emoji, openai_api_key, gemini_api_key, send_coupon_posts, posts_per_send')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -451,6 +456,7 @@ const Settings = () => {
         setOpenaiApiKey((data as any).openai_api_key || '');
         setGeminiApiKey((data as any).gemini_api_key || '');
         setSendCouponPosts((data as any).send_coupon_posts !== false);
+        setPostsPerSend((data as any).posts_per_send || 1);
       } else {
         // No settings yet - use defaults
         setCustomAiPrompt(DEFAULT_PROMPT);
@@ -534,6 +540,7 @@ const Settings = () => {
         openai_api_key: openaiApiKey || null,
         gemini_api_key: geminiApiKey || null,
         send_coupon_posts: sendCouponPosts,
+        posts_per_send: postsPerSend,
       };
 
       if (settingsId) {
@@ -1144,6 +1151,31 @@ const Settings = () => {
                   <p className="text-xs text-muted-foreground">שלח במרווחים קבועים</p>
                 </button>
               </div>
+            </div>
+
+            {/* Posts per send */}
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">כמות פוסטים בכל שליחה</Label>
+              <div className="grid grid-cols-3 gap-3">
+                {[1, 2, 3].map(n => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setPostsPerSend(n)}
+                    className={`p-4 rounded-xl border-2 text-center transition-all ${
+                      postsPerSend === n
+                        ? 'border-primary bg-primary/10 shadow-lg'
+                        : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                    }`}
+                  >
+                    <div className="text-2xl font-bold text-foreground">{n}</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {n === 1 ? 'פוסט אחד' : `${n} פוסטים`}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">כמה פוסטים יישלחו בכל פעם שמגיע התור</p>
             </div>
 
             {/* Interval Minutes Slider */}
@@ -1988,7 +2020,7 @@ const Settings = () => {
               מפתחות AI לניסוח מחדש
             </CardTitle>
             <CardDescription>
-              הגדר מפתח OpenAI ו/או Gemini לניסוח מחדש של פוסטים. ניתן להשתמש בשניהם או באחד.
+              הגדר מפתח OpenAI ו/או Groq לניסוח מחדש של פוסטים. ניתן להשתמש בשניהם או באחד.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -2010,18 +2042,18 @@ const Settings = () => {
             </div>
             <div className="space-y-2">
               <Label className="text-sm font-medium flex items-center gap-2">
-                Gemini API Key
+                Groq API Key
                 {geminiApiKey && <Badge variant="outline" className="text-xs text-blue-600 border-blue-500/30">מוגדר ✓</Badge>}
               </Label>
               <Input
                 type="password"
                 value={geminiApiKey}
                 onChange={(e) => setGeminiApiKey(e.target.value)}
-                placeholder="AIza..."
+                placeholder="gsk_..."
                 dir="ltr"
               />
               <p className="text-xs text-muted-foreground">
-                ניתן ליצור מפתח ב-<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-primary underline">aistudio.google.com</a>
+                ניתן ליצור מפתח ב-<a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-primary underline">console.groq.com</a> — חינמי לחלוטין
               </p>
             </div>
           </CardContent>

@@ -61,6 +61,8 @@ interface ManualQueueItem {
   created_at: string;
 }
 
+const SELECTED_ACCOUNTS_KEY = "aliaffilio_selected_accounts";
+
 export default function ManualSend() {
   const [message, setMessage] = useState("");
   const [mediaFile, setMediaFile] = useState<File | null>(null);
@@ -290,6 +292,12 @@ export default function ManualSend() {
     }
   }, [userId]);
 
+  // Remember the account selection so it persists across visits until the user changes it
+  useEffect(() => {
+    if (loadingAccounts) return;
+    localStorage.setItem(SELECTED_ACCOUNTS_KEY, JSON.stringify(selectedAccounts));
+  }, [selectedAccounts, loadingAccounts]);
+
   const getCurrentUser = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     setUserId(user?.id || null);
@@ -313,10 +321,22 @@ export default function ManualSend() {
       
       setAllAccounts(configuredAccounts);
       setAccounts(configuredAccounts);
-      
-      // Pre-select only active accounts by default
-      const activeAccounts = configuredAccounts.filter((acc: MessagingAccount) => acc.is_active);
-      setSelectedAccounts(activeAccounts.map((acc: MessagingAccount) => acc.id));
+
+      // Restore the last selection the user made, if any of those accounts still exist.
+      // Otherwise fall back to pre-selecting only active accounts.
+      const configuredIds = new Set(configuredAccounts.map((acc: MessagingAccount) => acc.id));
+      let restored: string[] = [];
+      try {
+        const saved = JSON.parse(localStorage.getItem(SELECTED_ACCOUNTS_KEY) || "[]");
+        if (Array.isArray(saved)) restored = saved.filter((id: string) => configuredIds.has(id));
+      } catch {}
+
+      if (restored.length > 0) {
+        setSelectedAccounts(restored);
+      } else {
+        const activeAccounts = configuredAccounts.filter((acc: MessagingAccount) => acc.is_active);
+        setSelectedAccounts(activeAccounts.map((acc: MessagingAccount) => acc.id));
+      }
     } catch (error) {
       console.error("Error fetching accounts:", error);
       toast({ title: "שגיאה בטעינת הקבוצות", variant: "destructive" });
@@ -645,8 +665,19 @@ export default function ManualSend() {
       const results = await sendToAccounts(message, mediaUrl, selectedAccounts, albumUrls);
 
       if (results.success > 0) {
+        // Also add to zones queue if zones are selected
+        if (selectedZones.length > 0) {
+          await addProductToZoneStacks(selectedZones, {
+            title: message.substring(0, 100) || 'פוסט ידני',
+            hebrew_description: message,
+            affiliate_link: null,
+            image_url: mediaUrl || null,
+          });
+        }
         toast({
-          title: `נשלח בהצלחה ל-${results.success} קבוצות`,
+          title: selectedZones.length > 0
+            ? `נשלח ל-${results.success} קבוצות + נוסף ל-${selectedZones.length} אזורים`
+            : `נשלח בהצלחה ל-${results.success} קבוצות`,
           description: results.failed > 0 ? `${results.failed} שליחות נכשלו` : undefined
         });
         clearForm();
@@ -696,6 +727,18 @@ export default function ManualSend() {
     }
   };
 
+  // Helper: push product into zone stacks via local API
+  const addProductToZoneStacks = async (zoneIds: string[], product: Record<string, unknown>) => {
+    if (!zoneIds.length) return;
+    try {
+      await fetch('/api/zones/stack/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zone_ids: zoneIds, product }),
+      });
+    } catch (e) { console.error('zone stack add error', e); }
+  };
+
   // Action: Add to Both Queues
   const handleAddToBoth = async () => {
     if (!message.trim() && !hasMedia) {
@@ -737,15 +780,12 @@ export default function ManualSend() {
 
       if (productError) throw productError;
 
-      // Assign to zones if selected
-      if (selectedZones.length > 0 && productData) {
-        const zoneInserts = selectedZones.map(zoneId => ({
-          zone_id: zoneId,
-          product_id: productData.id,
-          status: "Scheduled",
-        }));
-        await supabase.from("zone_products").insert(zoneInserts);
-      }
+      await addProductToZoneStacks(selectedZones, {
+        id: productData?.id,
+        hebrew_description: message.trim(),
+        title: message.trim().substring(0, 100) || "פוסט ידני",
+        image_url: mediaUrl,
+      });
 
       toast({ title: "נוסף לשתי המחסניות" });
       clearForm();
@@ -788,19 +828,16 @@ export default function ManualSend() {
 
       if (productError) throw productError;
 
-      // Assign to zones if selected
-      if (selectedZones.length > 0 && productData) {
-        const zoneInserts = selectedZones.map(zoneId => ({
-          zone_id: zoneId,
-          product_id: productData.id,
-          status: "Scheduled",
-        }));
-        await supabase.from("zone_products").insert(zoneInserts);
-      }
+      await addProductToZoneStacks(selectedZones, {
+        id: productData?.id,
+        hebrew_description: message.trim(),
+        title: message.trim().substring(0, 100) || "פוסט ידני",
+        image_url: mediaUrl,
+      });
 
-      toast({ title: selectedZones.length > 0 
-        ? `נוסף למחסנית האוטומטית ול-${selectedZones.length} אזורים` 
-        : "נוסף למחסנית האוטומטית" 
+      toast({ title: selectedZones.length > 0
+        ? `נוסף למחסנית האוטומטית ול-${selectedZones.length} אזורים`
+        : "נוסף למחסנית האוטומטית"
       });
       clearForm();
     } catch (error) {
@@ -850,15 +887,12 @@ export default function ManualSend() {
 
       if (productError) throw productError;
 
-      // Assign to zones if selected
-      if (selectedZones.length > 0 && productData) {
-        const zoneInserts = selectedZones.map(zoneId => ({
-          zone_id: zoneId,
-          product_id: productData.id,
-          status: "Scheduled",
-        }));
-        await supabase.from("zone_products").insert(zoneInserts);
-      }
+      await addProductToZoneStacks(selectedZones, {
+        id: productData?.id,
+        hebrew_description: message.trim(),
+        title: message.trim().substring(0, 100) || "פוסט ידני",
+        image_url: mediaUrl,
+      });
 
       if (results.success > 0) {
         toast({
@@ -911,12 +945,12 @@ export default function ManualSend() {
 
       if (productError) throw productError;
 
-      const zoneInserts = selectedZones.map(zoneId => ({
-        zone_id: zoneId,
-        product_id: productData.id,
-        status: "Scheduled",
-      }));
-      await supabase.from("zone_products").insert(zoneInserts);
+      await addProductToZoneStacks(selectedZones, {
+        id: productData?.id,
+        hebrew_description: message.trim(),
+        title: message.trim().substring(0, 100) || "פוסט ידני",
+        image_url: mediaUrl,
+      });
 
       toast({ title: `✅ נוסף ל-${selectedZones.length} אזורים בלבד` });
       clearForm();

@@ -1,15 +1,14 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Zone {
   id: string;
   name: string;
-  is_active: boolean;
+  is_active: number;
 }
 
 interface ZoneSelectorProps {
@@ -27,11 +26,14 @@ export function ZoneSelector({ selectedZones, onSelectionChange, className }: Zo
   }, []);
 
   const fetchZones = async () => {
-    const { data } = await supabase
-      .from("zones")
-      .select("id, name, is_active")
-      .order("created_at", { ascending: true });
-    setZones((data as Zone[]) || []);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const headers: Record<string, string> = {};
+      if (user?.id) headers['X-User-Id'] = user.id;
+      const r = await fetch('/api/zones', { headers });
+      const data = await r.json();
+      setZones(data || []);
+    } catch {}
     setLoading(false);
   };
 
@@ -45,7 +47,7 @@ export function ZoneSelector({ selectedZones, onSelectionChange, className }: Zo
     );
   };
 
-  const selectAll = () => onSelectionChange(zones.filter(z => z.is_active).map(z => z.id));
+  const selectAll = () => onSelectionChange(zones.filter(z => !!z.is_active).map(z => z.id));
 
   return (
     <div className={cn("space-y-2", className)}>
@@ -73,7 +75,7 @@ export function ZoneSelector({ selectedZones, onSelectionChange, className }: Zo
                 isSelected
                   ? "border-primary/30 bg-primary/10 text-foreground"
                   : "border-border hover:border-primary/20 text-muted-foreground",
-                !zone.is_active && "opacity-50"
+                !zone.is_active && "opacity-40"
               )}
             >
               <Checkbox

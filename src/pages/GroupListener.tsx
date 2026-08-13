@@ -33,6 +33,8 @@ interface MessagingAccountSafe {
   whatsapp_chat_id: string | null;
 }
 
+const SELECTED_ACCOUNTS_KEY = "aliaffilio_selected_accounts";
+
 const GroupListener = () => {
   const [groups, setGroups] = useState<RelayGroup[]>([]);
   const [capturedPosts, setCapturedPosts] = useState<CapturedPost[]>([]);
@@ -101,6 +103,12 @@ const GroupListener = () => {
     setCurrentPage(1);
     fetchCapturedPosts();
   }, [postFilter]);
+
+  // Remember the account selection so it persists across visits until the user changes it
+  useEffect(() => {
+    if (accounts.length === 0) return;
+    localStorage.setItem(SELECTED_ACCOUNTS_KEY, JSON.stringify(selectedAccounts));
+  }, [selectedAccounts, accounts]);
 
   const setupRealtime = () => {
     const channel = supabase
@@ -342,7 +350,17 @@ const GroupListener = () => {
     const { data } = await supabase.rpc("get_my_messaging_accounts_safe");
     const accs = (data as unknown as MessagingAccountSafe[]) || [];
     setAccounts(accs);
-    setSelectedAccounts(accs.filter(a => a.is_active).map(a => a.id));
+
+    // Restore the last selection the user made, if any of those accounts still exist.
+    // Otherwise fall back to pre-selecting only active accounts.
+    const accountIds = new Set(accs.map(a => a.id));
+    let restored: string[] = [];
+    try {
+      const saved = JSON.parse(localStorage.getItem(SELECTED_ACCOUNTS_KEY) || "[]");
+      if (Array.isArray(saved)) restored = saved.filter((id: string) => accountIds.has(id));
+    } catch {}
+
+    setSelectedAccounts(restored.length > 0 ? restored : accs.filter(a => a.is_active).map(a => a.id));
   };
 
   const getPostFinalText = (post: CapturedPost, forcedChoice?: 'original' | 'rewrite') => {
@@ -382,6 +400,17 @@ const GroupListener = () => {
     return replacedText;
   };
 
+  const addProductToZoneStacks = async (zoneIds: string[], product: Record<string, unknown>) => {
+    if (!zoneIds.length) return;
+    try {
+      await fetch('/api/zones/stack/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zone_ids: zoneIds, product }),
+      });
+    } catch (e) { console.error('zone stack add error', e); }
+  };
+
   const handleAddToQueue = async (posts: CapturedPost | CapturedPost[]) => {
     const arr = Array.isArray(posts) ? posts : [posts];
     setIsBulkProcessing(true);
@@ -402,16 +431,20 @@ const GroupListener = () => {
           })
           .select().single();
         if (productError) continue;
-        if (product && selectedZones.length > 0) {
-          await supabase.from("zone_products").insert(
-            selectedZones.map(zoneId => ({ zone_id: zoneId, product_id: product.id }))
-          );
+        if (product) {
+          await addProductToZoneStacks(selectedZones, {
+            id: product.id,
+            hebrew_description: finalText,
+            title: productTitle,
+            affiliate_link: post.modified_url || null,
+            image_url: post.image_url || null,
+          });
         }
         await supabase.from("captured_posts")
-          .update({ status: "queued", product_id: product.id, reviewed_at: new Date().toISOString() })
+          .update({ status: "queued", product_id: product?.id, reviewed_at: new Date().toISOString() })
           .eq("id", post.id);
         setCapturedPosts((prev) => prev.map((p) =>
-          p.id === post.id ? { ...p, status: "queued" as const, product_id: product.id } : p
+          p.id === post.id ? { ...p, status: "queued" as const, product_id: product?.id } : p
         ));
         count++;
       }
@@ -475,10 +508,14 @@ const GroupListener = () => {
             status: "Scheduled", sent_via: "manual",
           })
           .select().single();
-        if (product && selectedZones.length > 0) {
-          await supabase.from("zone_products").insert(
-            selectedZones.map(zoneId => ({ zone_id: zoneId, product_id: product.id }))
-          );
+        if (product) {
+          await addProductToZoneStacks(selectedZones, {
+            id: product.id,
+            hebrew_description: text,
+            title: productTitle,
+            affiliate_link: post.modified_url || null,
+            image_url: mediaUrl,
+          });
         }
         await supabase.from("captured_posts")
           .update({ status: "queued", reviewed_at: new Date().toISOString() })
@@ -532,10 +569,14 @@ const GroupListener = () => {
           status: "Scheduled", sent_via: "manual",
         })
         .select().single();
-      if (product && selectedZones.length > 0) {
-        await supabase.from("zone_products").insert(
-          selectedZones.map(zoneId => ({ zone_id: zoneId, product_id: product.id }))
-        );
+      if (product) {
+        await addProductToZoneStacks(selectedZones, {
+          id: product.id,
+          hebrew_description: text,
+          title: productTitle,
+          affiliate_link: post.modified_url || null,
+          image_url: mediaUrl,
+        });
       }
       await supabase.from("captured_posts")
         .update({ status: "queued", reviewed_at: new Date().toISOString() })
@@ -590,6 +631,15 @@ const GroupListener = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
       const { failCount } = await sendPostOnly(post, user.id);
+      if (selectedZones.length > 0) {
+        const text = getPostFinalText(post);
+        await addProductToZoneStacks(selectedZones, {
+          title: text.substring(0, 100) || 'פוסט',
+          hebrew_description: text,
+          affiliate_link: post.modified_url || null,
+          image_url: post.image_url || null,
+        });
+      }
       setCapturedPosts((prev) => prev.filter((p) => p.id !== post.id));
       setSelectedPostIds(prev => { const n = new Set(prev); n.delete(post.id); return n; });
       toast({ title: failCount > 0 ? `⚠️ נשלח, ${failCount} שליחות נכשלו` : "✅ נשלח (ללא תור)", variant: failCount > 0 ? "destructive" : "default" });
@@ -609,11 +659,20 @@ const GroupListener = () => {
       if (!user) throw new Error("Not authenticated");
       for (const post of posts) {
         await sendPostOnly(post, user.id);
+        if (selectedZones.length > 0) {
+          const text = getPostFinalText(post);
+          await addProductToZoneStacks(selectedZones, {
+            title: text.substring(0, 100) || 'פוסט',
+            hebrew_description: text,
+            affiliate_link: post.modified_url || null,
+            image_url: post.image_url || null,
+          });
+        }
       }
       const sentIds = new Set(posts.map(p => p.id));
       setCapturedPosts((prev) => prev.filter((p) => !sentIds.has(p.id)));
       setSelectedPostIds(new Set());
-      toast({ title: `✅ ${posts.length} פוסטים נשלחו (ללא תור)` });
+      toast({ title: `✅ ${posts.length} פוסטים נשלחו${selectedZones.length > 0 ? ' ונוספו לאזורים' : ''}` });
     } catch {
       toast({ title: "שגיאה בשליחה", variant: "destructive" });
     } finally {
@@ -621,32 +680,50 @@ const GroupListener = () => {
     }
   };
 
-  // Manual AI rewrite (Lovable AI)
+  // Helper: get Gemini key from app_settings
+  const getRewriteKey = async (): Promise<string | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { data } = await supabase.from("app_settings").select("gemini_api_key").eq("user_id", user.id).maybeSingle();
+    return (data as any)?.gemini_api_key || null;
+  };
+
+  const shippingOverrideOf = (post: CapturedPost) =>
+    post.shipping_override
+      ? { status: post.shipping_override, threshold: post.shipping_threshold }
+      : undefined;
+
+  const rewriteViaServer = async (text: string, shippingOverride?: { status: string; threshold?: number | null }): Promise<string> => {
+    const apiKey = await getRewriteKey();
+    if (!apiKey) throw new Error("מפתח Groq לא הוגדר — הוסף בהגדרות");
+    const res = await fetch('/api/rewrite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, apiKey, shippingOverride }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'שגיאה בשרת');
+    return data.rewrittenText;
+  };
+
+  // Manual AI rewrite — via our local Gemini server
   const handleManualRewrite = async (post: CapturedPost) => {
     setRewritingPostId(post.id);
     try {
-      const textToRewrite = post.original_text || "";
-      const { data, error } = await supabase.functions.invoke("generate-hebrew-post", {
-        body: { title: textToRewrite, manualRewrite: true },
-      });
-      if (error) throw error;
-      if (data?.success && data?.hebrewDescription) {
-        const newText = data.hebrewDescription.trim();
-        await supabase.from("captured_posts").update({ modified_text: newText }).eq("id", post.id);
-        setCapturedPosts(prev => prev.map(p => p.id === post.id ? { ...p, modified_text: newText } : p));
-        setTextChoice(prev => ({ ...prev, [post.id]: 'rewrite' }));
-        toast({ title: "✨ ניסוח מחדש הושלם" });
-      } else {
-        toast({ title: "שגיאה בניסוח מחדש", variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "שגיאה בניסוח מחדש", variant: "destructive" });
+      const textToRewrite = post.modified_text || post.original_text || "";
+      const newText = await rewriteViaServer(textToRewrite, shippingOverrideOf(post));
+      await supabase.from("captured_posts").update({ modified_text: newText }).eq("id", post.id);
+      setCapturedPosts(prev => prev.map(p => p.id === post.id ? { ...p, modified_text: newText } : p));
+      setTextChoice(prev => ({ ...prev, [post.id]: 'rewrite' }));
+      toast({ title: "✨ ניסוח מחדש הושלם" });
+    } catch (e: any) {
+      toast({ title: e?.message || "שגיאה בניסוח מחדש", variant: "destructive" });
     } finally {
       setRewritingPostId(null);
     }
   };
 
-  // OpenAI/Gemini rewrite with cycling versions - fetches product data from AliExpress API
+  // OpenAI/Gemini rewrite — Gemini via local server, OpenAI via Supabase function
   const handleExternalRewrite = async (post: CapturedPost, provider: 'openai' | 'gemini') => {
     const stateKey = `${provider}_${post.id}`;
     if (provider === 'openai') setRewritingOpenAIPostId(post.id);
@@ -654,50 +731,44 @@ const GroupListener = () => {
     try {
       const currentVersion = (openaiVersionMap[stateKey] || 0) % 3 + 1;
       const textToRewrite = post.modified_text || post.original_text || "";
-      
-      // Try to fetch product data from AliExpress API (only orders/rating/link - price only if in original text)
-      let productData: any = null;
-      const productUrl = post.original_url || post.modified_url || "";
-      if (productUrl && /aliexpress/i.test(productUrl)) {
-        try {
-          const { data: productInfo } = await supabase.functions.invoke("fetch-ali-product", {
-            body: { productUrl },
-          });
-          if (productInfo?.success && productInfo?.data) {
-            const p = productInfo.data;
-            // Don't pass API price - let AI use exact price from original text
-            productData = {
-              orders: p.orders_count,
-              rating: p.rating,
-              link: post.modified_url || productUrl,
-            };
-          }
-        } catch (e) {
-          console.log("[GroupListener] Could not fetch product data, continuing without it");
-        }
-      }
-      
-      const shippingOverride = post.shipping_override
-        ? { status: post.shipping_override, threshold: post.shipping_threshold }
-        : undefined;
 
-      const { data, error } = await supabase.functions.invoke("rewrite-openai", {
-        body: { text: textToRewrite, version: currentVersion, provider, productData, shippingOverride },
-      });
-      if (error) throw error;
-      if (data?.success && data?.rewrittenText) {
-        const newText = data.rewrittenText.trim();
-        await supabase.from("captured_posts").update({ modified_text: newText }).eq("id", post.id);
-        setCapturedPosts(prev => prev.map(p => p.id === post.id ? { ...p, modified_text: newText } : p));
-        setTextChoice(prev => ({ ...prev, [post.id]: 'rewrite' }));
-        setOpenaiVersionMap(prev => ({ ...prev, [stateKey]: currentVersion }));
-        const label = provider === 'openai' ? 'OpenAI' : 'Gemini';
-        toast({ title: `✨ ${label} גרסה ${currentVersion} הושלמה` });
+      let newText = "";
+      if (provider === 'gemini') {
+        newText = await rewriteViaServer(textToRewrite, shippingOverrideOf(post));
       } else {
-        toast({ title: data?.error || `שגיאה בניסוח ${provider}`, variant: "destructive" });
+        // OpenAI — pull real orders/rating from the product link first (if any),
+        // so the rewrite can fill in gaps the post itself doesn't mention.
+        const link = post.modified_url || post.original_url || "";
+        let productData: { orders?: number; rating?: number; link?: string } | undefined;
+        if (link) {
+          try {
+            const { data: pd } = await supabase.functions.invoke("fetch-ali-product", {
+              body: { productUrl: link },
+            });
+            if (pd?.success && pd.data) {
+              productData = { orders: pd.data.orders_count, rating: pd.data.rating, link };
+            }
+          } catch {
+            // Enrichment is best-effort — fall back to rewriting from the post text alone.
+          }
+        }
+
+        const { data, error } = await supabase.functions.invoke("rewrite-openai", {
+          body: { text: textToRewrite, version: currentVersion, provider: 'openai', productData, shippingOverride: shippingOverrideOf(post) },
+        });
+        if (error) throw error;
+        if (!data?.success) throw new Error(data?.error || "שגיאה ב-OpenAI");
+        newText = data.rewrittenText.trim();
       }
-    } catch {
-      toast({ title: `שגיאה בניסוח ${provider}`, variant: "destructive" });
+
+      await supabase.from("captured_posts").update({ modified_text: newText }).eq("id", post.id);
+      setCapturedPosts(prev => prev.map(p => p.id === post.id ? { ...p, modified_text: newText } : p));
+      setTextChoice(prev => ({ ...prev, [post.id]: 'rewrite' }));
+      setOpenaiVersionMap(prev => ({ ...prev, [stateKey]: currentVersion }));
+      const label = provider === 'openai' ? 'OpenAI' : 'Gemini';
+      toast({ title: `✨ ${label} גרסה ${currentVersion} הושלמה` });
+    } catch (e: any) {
+      toast({ title: e?.message || `שגיאה בניסוח ${provider}`, variant: "destructive" });
     } finally {
       if (provider === 'openai') setRewritingOpenAIPostId(null);
       else setRewritingPostId(null);
@@ -737,31 +808,39 @@ const GroupListener = () => {
 
   // Cleanup: delete all pending posts except the newest 100
   const handleCleanupPending = async () => {
+    if (!confirm("למחוק את כל הפוסטים הממתינים מעבר ל-100 האחרונים?")) return;
     setIsBulkProcessing(true);
     try {
-      // Fetch all pending_review posts ordered by captured_at desc
-      const { data: allPending, error: fetchErr } = await supabase
+      // Fetch only the 100 newest IDs to keep
+      const { data: keepRows, error: fetchErr } = await supabase
         .from("captured_posts")
         .select("id")
         .eq("status", "pending_review")
-        .order("captured_at", { ascending: false });
+        .order("captured_at", { ascending: false })
+        .limit(100);
       if (fetchErr) throw fetchErr;
-      if (!allPending || allPending.length <= 100) {
+
+      if (!keepRows || keepRows.length < 100) {
         toast({ title: "אין פוסטים למחיקה", description: "יש 100 או פחות פוסטים ממתינים" });
         return;
       }
-      const idsToDelete = allPending.slice(100).map(p => p.id);
-      // Delete in batches of 500
-      for (let i = 0; i < idsToDelete.length; i += 500) {
-        const batch = idsToDelete.slice(i, i + 500);
-        const { error } = await supabase.from("captured_posts").delete().in("id", batch);
-        if (error) throw error;
-      }
-      toast({ title: `🗑️ ${idsToDelete.length} פוסטים ישנים נמחקו`, description: "נשארו 100 האחרונים" });
+
+      const keepIds = keepRows.map(p => p.id);
+
+      // Delete ALL pending_review posts NOT in the keep list — one server-side query, no limit
+      const { error, count } = await supabase
+        .from("captured_posts")
+        .delete({ count: "exact" })
+        .eq("status", "pending_review")
+        .not("id", "in", `(${keepIds.join(",")})`);
+
+      if (error) throw error;
+
+      toast({ title: `🗑️ ${count ?? "?"} פוסטים ישנים נמחקו`, description: "נשארו 100 האחרונים" });
       fetchCapturedPosts();
       setSelectedPostIds(new Set());
-    } catch {
-      toast({ title: "שגיאה בניקוי", variant: "destructive" });
+    } catch (e: any) {
+      toast({ title: "שגיאה בניקוי", description: e?.message, variant: "destructive" });
     } finally {
       setIsBulkProcessing(false);
     }
