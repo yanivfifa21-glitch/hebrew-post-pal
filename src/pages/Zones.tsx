@@ -66,7 +66,7 @@ interface StackItem {
   id: string;
   sort_order: number;
   estimated_send_at: number;
-  product: { title?: string; hebrew_description?: string; image_url?: string; affiliate_link?: string };
+  product: { id?: string; title?: string; hebrew_description?: string; image_url?: string; affiliate_link?: string };
 }
 
 export default function Zones() {
