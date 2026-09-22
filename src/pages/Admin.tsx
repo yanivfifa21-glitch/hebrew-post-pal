@@ -5,7 +5,7 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Check, X, UserCheck, Clock, Trash2, ShieldOff, KeyRound, MoreVertical } from "lucide-react";
+import { Loader2, Check, X, UserCheck, Clock, Trash2, ShieldOff, KeyRound, MoreVertical, Activity, RefreshCw } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
