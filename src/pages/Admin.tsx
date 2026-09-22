@@ -5,7 +5,7 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Check, X, UserCheck, Clock, Trash2, ShieldOff, KeyRound, MoreVertical } from "lucide-react";
+import { Loader2, Check, X, UserCheck, Clock, Trash2, ShieldOff, KeyRound, MoreVertical, Activity, RefreshCw } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -168,6 +168,45 @@ const Admin = () => {
       await fetchPendingUsers();
     }
     setProcessingId(null);
+  };
+
+  const [healthChecking, setHealthChecking] = useState(false);
+  const [healthResult, setHealthResult] = useState<{ ok: boolean; dbMs: number | null; authMs: number | null; message: string } | null>(null);
+
+  const handleHealthCheck = async () => {
+    setHealthChecking(true);
+    setHealthResult(null);
+
+    const timed = async (fn: () => Promise<unknown>) => {
+      const t0 = performance.now();
+      try {
+        await fn();
+        return Math.round(performance.now() - t0);
+      } catch {
+        return null;
+      }
+    };
+
+    const dbMs = await timed(async () => {
+      await supabase.from("authorized_users").select("id").limit(1);
+    });
+    const authMs = await timed(() => supabase.auth.getSession());
+
+    const slow = (dbMs ?? 99999) > 2500 || (authMs ?? 99999) > 2500;
+    const ok = dbMs !== null && authMs !== null && !slow;
+
+    setHealthResult({
+      ok,
+      dbMs,
+      authMs,
+      message:
+        dbMs === null || authMs === null
+          ? "השרת לא מגיב כרגע. נסה שוב בעוד דקה."
+          : slow
+          ? "השרת מגיב באיטיות. נסה שוב בעוד מספר דקות."
+          : "המערכת תקינה ומגיבה במהירות.",
+    });
+    setHealthChecking(false);
   };
 
   const handleSendPasswordReset = async (email: string) => {
