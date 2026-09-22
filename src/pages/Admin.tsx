@@ -187,7 +187,9 @@ const Admin = () => {
       }
     };
 
-    const dbMs = await timed(() => supabase.from("authorized_users").select("id").limit(1));
+    const dbMs = await timed(async () => {
+      await supabase.from("authorized_users").select("id").limit(1);
+    });
     const authMs = await timed(() => supabase.auth.getSession());
 
     const slow = (dbMs ?? 99999) > 2500 || (authMs ?? 99999) > 2500;
