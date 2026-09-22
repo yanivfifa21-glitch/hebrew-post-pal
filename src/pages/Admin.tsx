@@ -170,6 +170,43 @@ const Admin = () => {
     setProcessingId(null);
   };
 
+  const [healthChecking, setHealthChecking] = useState(false);
+  const [healthResult, setHealthResult] = useState<{ ok: boolean; dbMs: number | null; authMs: number | null; message: string } | null>(null);
+
+  const handleHealthCheck = async () => {
+    setHealthChecking(true);
+    setHealthResult(null);
+
+    const timed = async (fn: () => Promise<unknown>) => {
+      const t0 = performance.now();
+      try {
+        await fn();
+        return Math.round(performance.now() - t0);
+      } catch {
+        return null;
+      }
+    };
+
+    const dbMs = await timed(() => supabase.from("authorized_users").select("id").limit(1));
+    const authMs = await timed(() => supabase.auth.getSession());
+
+    const slow = (dbMs ?? 99999) > 2500 || (authMs ?? 99999) > 2500;
+    const ok = dbMs !== null && authMs !== null && !slow;
+
+    setHealthResult({
+      ok,
+      dbMs,
+      authMs,
+      message:
+        dbMs === null || authMs === null
+          ? "השרת לא מגיב כרגע. נסה שוב בעוד דקה."
+          : slow
+          ? "השרת מגיב באיטיות. נסה שוב בעוד מספר דקות."
+          : "המערכת תקינה ומגיבה במהירות.",
+    });
+    setHealthChecking(false);
+  };
+
   const handleSendPasswordReset = async (email: string) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,
