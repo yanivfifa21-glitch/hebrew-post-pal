@@ -245,6 +245,45 @@ const Admin = () => {
           <p className="text-muted-foreground">Manage access requests</p>
         </div>
 
+        {/* System Health */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="h-5 w-5 text-primary" />
+              בדיקת תקינות מערכת
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              אם המערכת איטית או שההתחברות נכשלת — לחץ כאן לבדיקה מהירה של זמני התגובה.
+            </p>
+            <Button onClick={handleHealthCheck} disabled={healthChecking} className="w-full sm:w-auto">
+              {healthChecking ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              בדוק תקינות
+            </Button>
+
+            {healthResult && (
+              <div
+                className={`rounded-lg p-3 text-sm space-y-1 border ${
+                  healthResult.ok
+                    ? "bg-green-500/10 border-green-500/30 text-green-600"
+                    : "bg-yellow-500/10 border-yellow-500/30 text-yellow-600"
+                }`}
+              >
+                <p className="font-medium">{healthResult.message}</p>
+                <p className="text-foreground/70">
+                  מסד נתונים: {healthResult.dbMs === null ? "אין תגובה" : `${healthResult.dbMs} מ״ש`} · התחברות:{" "}
+                  {healthResult.authMs === null ? "אין תגובה" : `${healthResult.authMs} מ״ש`}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Pending Requests */}
         <Card>
           <CardHeader>
